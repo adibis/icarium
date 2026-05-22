@@ -28,6 +28,16 @@ typedef struct IcrTok IcrTok;
 IcrTok *icr_tok_load(const char *vocab_path, const char *merges_path);
 void    icr_tok_free(IcrTok *tok);
 
+/* Decode token IDs back to text (best-effort for ASCII identifiers).
+ * Strips the GPT-2 Ġ space-marker prefix from each token before concatenating.
+ * out receives a null-terminated UTF-8 string.
+ * Returns number of chars written (excluding null), or -1 on error. */
+int icr_tok_decode(const IcrTok *tok,
+                   const int64_t *ids,
+                   int            n_ids,
+                   char          *out,
+                   int            out_size);
+
 /* Encode a null-terminated UTF-8 string.
  * Writes token ids into out_ids (caller-allocated, capacity ICR_MAX_SEQ).
  * Writes attention mask (1 for real tokens, 0 for padding) into out_mask.

@@ -30,6 +30,25 @@ int icr_task_fail(IcrDb *db, int64_t task_id, const char *err_msg);
  * Always null-terminates.  Returns 0 on success, -1 on error. */
 int icr_task_list_json(IcrDb *db, int limit, char *out, size_t out_size);
 
+/* Project management ---------------------------------------------------------
+ * Returns project id (>0) on success, -1 on error. */
+int64_t icr_project_get_or_create(IcrDb *db, const char *name,
+                                   const char *root_path);
+
+/* Entity insertion -----------------------------------------------------------
+ * Inserts one NER-extracted entity; ON CONFLICT (project,file,kind,name,line)
+ * DO NOTHING — safe to re-index.
+ * entity_id_out receives the new or existing id.
+ * Returns 0 on success, -1 on error. */
+int icr_entity_insert(IcrDb *db, int64_t project_id, const char *kind,
+                      const char *name, const char *file_path,
+                      int line_start, int line_end, float confidence,
+                      int64_t *entity_id_out);
+
+/* Delete all entities for a given file (call before re-indexing). */
+int icr_entities_delete_file(IcrDb *db, int64_t project_id,
+                              const char *file_path);
+
 /* Shell execution ------------------------------------------------------------
  * Runs cmd via /bin/sh -c, captures stdout (up to out_size-1 bytes).
  * Always null-terminates stdout_out.

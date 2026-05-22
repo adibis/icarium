@@ -4,6 +4,9 @@ const Dir = std.Io.Dir;
 
 const c = @cImport({
     @cInclude("db.h");
+    @cInclude("tok.h");
+    @cInclude("infer.h");
+    @cInclude("index.h");
 });
 
 const log = std.log.scoped(.icariumd);
@@ -547,8 +550,105 @@ fn cmd_status(init: std.process.Init, io: std.Io, ally: std.mem.Allocator) !void
 
 // ── index ─────────────────────────────────────────────────────────────────────
 
+const default_include_dirs = [_][]const u8{ "rtl", "tb", "dv", "uvm", "." };
+
+fn pathBuild(buf: []u8, dir: []const u8, file: []const u8) [*:0]const u8 {
+    const n = std.fmt.bufPrint(buf[0 .. buf.len - 1], "{s}/{s}", .{ dir, file }) catch buf[0..0];
+    buf[n.len] = 0;
+    return @ptrCast(buf.ptr);
+}
+
 fn cmd_index(ally: std.mem.Allocator, args: []const []const u8) !void {
     _ = ally;
-    _ = args;
-    log.info("index triggered (stub — Phase 3 wires NER pipeline)", .{});
+    // Models dir: env ICARIUM_MODELS, then ./models/
+    const models_dir: []const u8 = blk: {
+        const env = std.c.getenv("ICARIUM_MODELS");
+        if (env != null) break :blk std.mem.sliceTo(env.?, 0);
+        break :blk "models";
+    };
+
+    var ner_buf: [1024]u8 = undefined;
+    var enc_buf: [1024]u8 = undefined;
+    var voc_buf: [1024]u8 = undefined;
+    var mrg_buf: [1024]u8 = undefined;
+    const ner_path = pathBuild(&ner_buf, models_dir, "ner.onnx");
+    const enc_path = pathBuild(&enc_buf, models_dir, "encoder.onnx");
+    const voc_path = pathBuild(&voc_buf, models_dir, "vocab.bin");
+    const mrg_path = pathBuild(&mrg_buf, models_dir, "merges.bin");
+
+    std.debug.print("loading models from {s}...\n", .{models_dir});
+
+    const tok = c.icr_tok_load(voc_path, mrg_path) orelse {
+        std.debug.print("error: failed to load tokenizer\n", .{});
+        std.process.exit(1);
+    };
+    defer c.icr_tok_free(tok);
+
+    const rt = c.icr_runtime_load(ner_path, enc_path) orelse {
+        std.debug.print("error: failed to load ONNX runtime\n", .{});
+        std.process.exit(1);
+    };
+    defer c.icr_runtime_free(rt);
+
+    // Connect to PG
+    const db = c.icr_db_open(default_conninfo) orelse {
+        std.debug.print("error: cannot connect to PostgreSQL ({s})\n", .{default_conninfo});
+        std.process.exit(1);
+    };
+    defer c.icr_db_close(db);
+    _ = c.icr_db_migrate(db);
+
+    // Project: use cwd as root (via C getcwd, no io needed)
+    var root_path_z: [4096]u8 = undefined;
+    const got_cwd = std.c.getcwd(&root_path_z, root_path_z.len);
+    if (got_cwd == null) {
+        std.debug.print("error: getcwd failed\n", .{});
+        std.process.exit(1);
+    }
+
+    // Project name = last path component
+    const rp = std.mem.sliceTo(&root_path_z, 0);
+    const proj_name = std.fs.path.basename(rp);
+    var proj_name_z: [256]u8 = undefined;
+    const pnlen = @min(proj_name.len, proj_name_z.len - 1);
+    @memcpy(proj_name_z[0..pnlen], proj_name[0..pnlen]);
+    proj_name_z[pnlen] = 0;
+
+    const project_id = c.icr_project_get_or_create(db, &proj_name_z, &root_path_z);
+    if (project_id < 0) {
+        std.debug.print("error: cannot create project in DB\n", .{});
+        std.process.exit(1);
+    }
+    std.debug.print("project '{s}' (id={d})\n", .{ proj_name, project_id });
+
+    // Determine which directories to index
+    const dirs_to_index: []const []const u8 = &default_include_dirs;
+    var explicit_dir: ?[]const u8 = null;
+    for (args) |a| {
+        if (!std.mem.startsWith(u8, a, "-")) {
+            explicit_dir = a;
+            break;
+        }
+    }
+
+    var total: i32 = 0;
+    if (explicit_dir) |d| {
+        var dz: [4096]u8 = undefined;
+        const dlen = @min(d.len, dz.len - 1);
+        @memcpy(dz[0..dlen], d[0..dlen]);
+        dz[dlen] = 0;
+        const r = c.icr_index_dir(rt, tok, db, project_id, &dz);
+        if (r >= 0) total += r;
+    } else {
+        for (dirs_to_index) |d| {
+            var dz: [256]u8 = undefined;
+            const dlen = @min(d.len, dz.len - 1);
+            @memcpy(dz[0..dlen], d[0..dlen]);
+            dz[dlen] = 0;
+            const r = c.icr_index_dir(rt, tok, db, project_id, &dz);
+            if (r >= 0) total += r;
+        }
+    }
+
+    std.debug.print("done: {d} entities indexed\n", .{total});
 }

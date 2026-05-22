@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
             "src/c/infer.c",
             "src/c/tok.c",
             "src/c/db.c",
+            "src/c/index.c",
         },
         .flags = &.{ "-std=c11", "-Wall", "-Wextra", "-lm" },
     });

@@ -421,3 +421,36 @@ int icr_tok_encode(const IcrTok *tok, const char *text,
 
     return out_pos;
 }
+
+/* ---- Decode ---------------------------------------------------------------- */
+
+/* UTF-8 bytes of U+0120 (Ġ), the GPT-2 space marker prepended to words. */
+#define SPACE_MARKER_B0 ((unsigned char)0xC4)
+#define SPACE_MARKER_B1 ((unsigned char)0xA0)
+
+int icr_tok_decode(const IcrTok *tok,
+                   const int64_t *ids,
+                   int            n_ids,
+                   char          *out,
+                   int            out_size) {
+    if (!tok || !ids || !out || out_size < 1) return -1;
+    int written = 0;
+    for (int i = 0; i < n_ids; i++) {
+        int64_t id = ids[i];
+        if (id <= 0 || (uint64_t)id >= tok->vocab_size) continue;
+        if (id == ICR_TOK_BOS || id == ICR_TOK_EOS || id == ICR_TOK_PAD) continue;
+        const char *s = tok->id_to_str[id];
+        if (!s) continue;
+        /* Strip leading Ġ space-marker */
+        if ((unsigned char)s[0] == SPACE_MARKER_B0 &&
+            (unsigned char)s[1] == SPACE_MARKER_B1) {
+            s += 2;
+        }
+        int slen = (int)strlen(s);
+        if (written + slen >= out_size - 1) break;
+        memcpy(out + written, s, (size_t)slen);
+        written += slen;
+    }
+    out[written] = '\0';
+    return written;
+}

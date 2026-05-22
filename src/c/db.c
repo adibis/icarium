@@ -149,6 +149,79 @@ int icr_task_list_json(IcrDb *db, int limit, char *out, size_t out_size) {
     return 0;
 }
 
+/* ── Project management ──────────────────────────────────────────────────────── */
+
+int64_t icr_project_get_or_create(IcrDb *db, const char *name,
+                                   const char *root_path) {
+    /* Try SELECT first */
+    const char *sel = "SELECT id FROM icarium_projects WHERE name=$1";
+    const char *sel_params[1] = { name };
+    PGresult *res = PQexecParams(db->conn, sel, 1, NULL, sel_params, NULL, NULL, 0);
+    if (PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0) {
+        int64_t id = atoll(PQgetvalue(res, 0, 0));
+        PQclear(res);
+        return id;
+    }
+    PQclear(res);
+
+    /* INSERT ... ON CONFLICT DO NOTHING RETURNING id */
+    const char *ins =
+        "INSERT INTO icarium_projects(name, root_path) VALUES($1,$2)"
+        " ON CONFLICT(name) DO UPDATE SET root_path=EXCLUDED.root_path RETURNING id";
+    const char *ins_params[2] = { name, root_path };
+    res = PQexecParams(db->conn, ins, 2, NULL, ins_params, NULL, NULL, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "icr_project_get_or_create: %s\n", PQerrorMessage(db->conn));
+        PQclear(res);
+        return -1;
+    }
+    int64_t id = atoll(PQgetvalue(res, 0, 0));
+    PQclear(res);
+    return id;
+}
+
+/* ── Entity management ───────────────────────────────────────────────────────── */
+
+int icr_entity_insert(IcrDb *db, int64_t project_id, const char *kind,
+                      const char *name, const char *file_path,
+                      int line_start, int line_end, float confidence,
+                      int64_t *entity_id_out) {
+    const char *sql =
+        "INSERT INTO entities(project_id, kind, name, file_path, line_start, line_end, confidence)"
+        " VALUES($1,$2,$3,$4,$5,$6,$7)"
+        " ON CONFLICT DO NOTHING RETURNING id";
+    char proj_str[24], ls_str[12], le_str[12], conf_str[16];
+    snprintf(proj_str, sizeof(proj_str), "%lld", (long long)project_id);
+    snprintf(ls_str,   sizeof(ls_str),   "%d",   line_start);
+    snprintf(le_str,   sizeof(le_str),   "%d",   line_end);
+    snprintf(conf_str, sizeof(conf_str), "%.4f", (double)confidence);
+    const char *params[7] = { proj_str, kind, name, file_path, ls_str, le_str, conf_str };
+    PGresult *res = PQexecParams(db->conn, sql, 7, NULL, params, NULL, NULL, 0);
+    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "icr_entity_insert: %s\n", PQerrorMessage(db->conn));
+        PQclear(res);
+        return -1;
+    }
+    if (entity_id_out) {
+        *entity_id_out = (PQntuples(res) > 0) ? atoll(PQgetvalue(res, 0, 0)) : 0;
+    }
+    PQclear(res);
+    return 0;
+}
+
+int icr_entities_delete_file(IcrDb *db, int64_t project_id,
+                              const char *file_path) {
+    const char *sql = "DELETE FROM entities WHERE project_id=$1 AND file_path=$2";
+    char proj_str[24];
+    snprintf(proj_str, sizeof(proj_str), "%lld", (long long)project_id);
+    const char *params[2] = { proj_str, file_path };
+    PGresult *res = PQexecParams(db->conn, sql, 2, NULL, params, NULL, NULL, 0);
+    int ok = (PQresultStatus(res) == PGRES_COMMAND_OK);
+    if (!ok) fprintf(stderr, "icr_entities_delete_file: %s\n", PQerrorMessage(db->conn));
+    PQclear(res);
+    return ok ? 0 : -1;
+}
+
 /* ── Shell execution ─────────────────────────────────────────────────────────── */
 
 int icr_exec_shell(const char *cmd, char *stdout_out, size_t out_size,
