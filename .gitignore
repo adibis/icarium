@@ -1,0 +1,18 @@
+# Build output
+zig-out/
+.zig-cache/
+
+# Models — large binary files, track separately or via Git LFS
+models/*.onnx
+models/*.onnx.data
+models/vocab.bin
+models/merges.bin
+
+# Local config (may contain secrets)
+icarium.toml
+
+# PostgreSQL temp files
+*.pid
+
+# OS
+.DS_Store
