@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.io/schema/index_contract.json",
+  "title": "Icarium KB Index Contract",
+  "description": "IPC message sent to icariumd to trigger incremental knowledge-base updates. Any tool that changes source files — git hooks, CI pipelines, IDE plugins — should send this message to keep the KB current.",
+  "type": "object",
+  "required": ["method"],
+  "properties": {
+    "method": {
+      "const": "index",
+      "description": "IPC method name. Must be the literal string 'index'."
+    },
+    "project": {
+      "type": "string",
+      "description": "Project name as registered with icariumd (defaults to git root basename)."
+    },
+    "files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Source file paths that changed, relative to the project root. Omit or send an empty array for a full re-index. When present, the daemon may use this list for incremental indexing (Phase 7+)."
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "method": "index",
+      "project": "opentitan",
+      "files": ["hw/ip/aes/rtl/aes.sv", "hw/ip/aes/dv/env/aes_env.sv"]
+    },
+    {
+      "method": "index",
+      "project": "opentitan"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+#!/bin/sh
+# icarium post-commit hook
+# Notifies icariumd that source files changed so the knowledge base stays current.
+#
+# Install (run from your project root):
+#   cp /path/to/icarium/hooks/post-commit .git/hooks/post-commit
+#   chmod +x .git/hooks/post-commit
+#
+# Config:
+#   ICARIUM_SOCK   Unix socket path (default: /tmp/icarium.sock)
+#   ICARIUM_PROJECT  Project name (default: git root directory name)
+#
+# Message contract: schema/index_contract.json in the icarium repo.
+
+set -e
+
+SOCK="${ICARIUM_SOCK:-/tmp/icarium.sock}"
+
+# Silently skip if the daemon is not running
+[ -S "$SOCK" ] || exit 0
+
+PROJECT="${ICARIUM_PROJECT:-$(git rev-parse --show-toplevel | xargs basename)}"
+
+# Collect source files changed in this commit
+# On the very first commit HEAD~1 doesn't exist; fall back to listing all files.
+CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || \
+          git diff --name-only HEAD 2>/dev/null || true)
+
+FILES=$(printf '%s\n' $CHANGED | grep -E '\.(sv|svh|v|vh|c|h|cpp|hpp|py)$' || true)
+
+# Build JSON payload
+if [ -z "$FILES" ]; then
+    PAYLOAD="{\"method\":\"index\",\"project\":\"${PROJECT}\"}"
+else
+    FILES_JSON=$(printf '%s\n' $FILES | \
+        awk 'BEGIN{printf "["} NR>1{printf ","} {printf "\"%s\"", $0} END{printf "]"}')
+    PAYLOAD="{\"method\":\"index\",\"project\":\"${PROJECT}\",\"files\":${FILES_JSON}}"
+fi
+
+# Fire and forget — do not block the commit
+printf '%s\n' "$PAYLOAD" | nc -U "$SOCK" > /dev/null 2>&1 || true

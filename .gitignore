@@ -23,9 +23,12 @@ PLAN.md
 PROMPT.md
 TUI_PLAN.md
 
-# Knowledge graph — developed as a separate project
-src/zig/gothos.zig
-schema/icarium_ont.ttl
+# External / sibling projects — developed separately
+ext/
+
+# Research paper (separate from daemon source)
+paper/
+Archive.zip
 
 # OS
 .DS_Store

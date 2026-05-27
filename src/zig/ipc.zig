@@ -2,7 +2,7 @@ const std = @import("std");
 const net = std.Io.net;
 const c = @import("c.zig").lib;
 const q = @import("queue.zig");
-const gothos = @import("gothos.zig");
+const kb = @import("query.zig");
 const plugins = @import("plugin_registry.zig");
 const gears = @import("gear_registry.zig");
 
@@ -11,7 +11,7 @@ const log = std.log.scoped(.ipc);
 // Module-level buffers so dispatch can safely return slices to its caller.
 // Single-threaded accept loop — no concurrent access.
 var g_resp_buf: [72000]u8 = undefined; // wrapper: "{"result":...}"
-var g_data_buf: [65536]u8 = undefined; // gothos query output
+var g_data_buf: [65536]u8 = undefined; // kb retrieval output
 
 pub fn handle_connection(io: std.Io, stream: *net.Stream) !void {
     var read_buf: [8192]u8 = undefined;
@@ -121,34 +121,61 @@ fn dispatch(msg: []const u8) ![]const u8 {
         return try q.g_ally.dupe(u8, out.items);
     }
 
-    // ── Gothos query handlers ─────────────────────────────────────────────────
+    // ── KB update trigger (called by git hook — see schema/index_contract.json) ─
+
+    if (matchMethod(msg, "index")) {
+        const project = extractString(msg, "project") orelse "default";
+        const cmd_owned = try q.g_ally.dupe(u8, "icarium index");
+        q.mu_lock();
+        const id = q.g_next_id;
+        q.g_next_id += 1;
+        try q.g_tasks.append(q.g_ally, .{
+            .id           = id,
+            .kind         = .index,
+            .state        = .pending,
+            .cmd          = cmd_owned,
+            .exit_code    = 0,
+            .stdout_tail  = undefined,
+            .stdout_len   = 0,
+            .created_ns   = q.nanoTimestamp(),
+            .completed_ns = 0,
+        });
+        q.mu_unlock();
+        log.info("index task {} queued for project '{s}'", .{ id, project });
+        return std.fmt.bufPrint(&g_resp_buf,
+            "{{\"result\":{{\"task_id\":{d},\"project\":\"{s}\",\"state\":\"queued\"}}}}",
+            .{ id, project },
+        ) catch return "{\"error\":\"buf overflow\"}";
+    }
+
+    // ── KB retrieval queries ──────────────────────────────────────────────────
 
     if (matchMethod(msg, "query")) {
         const db = q.g_db orelse return "{\"error\":\"db not connected\"}";
         const query_type = extractString(msg, "type") orelse
             return "{\"error\":\"missing type (entities|relations|context|no_covergroup)\"}";
         const project = extractString(msg, "project");
-        const pid = gothos.resolveProject(db, project);
+        const pid = kb.resolveProject(db, project);
 
         const data = blk: {
             if (std.mem.eql(u8, query_type, "entities")) {
                 const kind = extractString(msg, "kind");
                 const name_pat = extractString(msg, "name");
-                break :blk gothos.queryEntities(db, pid, kind, name_pat, &g_data_buf) catch
+                break :blk kb.entities(db, pid, kind, name_pat, &g_data_buf) catch
                     return "{\"error\":\"query_entities failed\"}";
             } else if (std.mem.eql(u8, query_type, "relations")) {
                 const from = extractString(msg, "from");
                 const rel = extractString(msg, "rel");
-                break :blk gothos.queryRelations(db, pid, from, rel, &g_data_buf) catch
+                break :blk kb.relations(db, pid, from, rel, &g_data_buf) catch
                     return "{\"error\":\"query_relations failed\"}";
             } else if (std.mem.eql(u8, query_type, "context")) {
                 const focus = extractString(msg, "focus") orelse
                     return "{\"error\":\"missing focus\"}";
                 const depth = extractInt(msg, "depth") orelse 1;
-                break :blk gothos.getContext(db, pid, focus, depth, &g_data_buf) catch
+                break :blk kb.context(db, pid, focus, depth, &g_data_buf) catch
                     return "{\"error\":\"get_context failed\"}";
             } else if (std.mem.eql(u8, query_type, "no_covergroup")) {
-                break :blk gothos.noCovergroup(db, pid, &g_data_buf) catch
+                break :blk kb.noCovergroup(db, pid, &g_data_buf) catch
                     return "{\"error\":\"no_covergroup failed\"}";
             } else {
                 return "{\"error\":\"unknown type — use entities|relations|context|no_covergroup\"}";
@@ -160,8 +187,6 @@ fn dispatch(msg: []const u8) ![]const u8 {
     }
 
     if (matchMethod(msg, "triage")) {
-        // Phase 4: LLM-driven triage. Queue the request; handler fires when the
-        // specified simulation run completes.
         const project = extractString(msg, "project") orelse "default";
         return std.fmt.bufPrint(&g_resp_buf,
             "{{\"result\":{{\"state\":\"queued\",\"project\":\"{s}\"," ++
@@ -173,8 +198,8 @@ fn dispatch(msg: []const u8) ![]const u8 {
     if (matchMethod(msg, "coverage_gaps")) {
         const db = q.g_db orelse return "{\"error\":\"db not connected\"}";
         const project = extractString(msg, "project");
-        const pid = gothos.resolveProject(db, project);
-        const data = gothos.noCovergroup(db, pid, &g_data_buf) catch
+        const pid = kb.resolveProject(db, project);
+        const data = kb.noCovergroup(db, pid, &g_data_buf) catch
             return "{\"error\":\"coverage_gaps query failed\"}";
         return std.fmt.bufPrint(&g_resp_buf, "{{\"result\":{s}}}", .{data}) catch
             return "{\"error\":\"response too large\"}";
