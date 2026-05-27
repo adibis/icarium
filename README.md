@@ -2,12 +2,11 @@
 
 A daemon-first orchestration engine for chip design verification (DV). Icarium
 receives natural-language or structured commands, routes them to multi-step
-pipeline definitions called **gears**, manages parallel LLM calls and simulation
-processes, and writes structured findings back to a knowledge graph.
+pipeline definitions called **gears**, and manages parallel LLM calls and
+simulation processes to drive DV tasks to completion.
 
-The knowledge graph layer (**Gothos**) runs bundled inside the daemon against a
-local PostgreSQL database. When a standalone Gothos service exists it can be
-swapped in by changing one config line.
+Icarium defines `schema/plugin_schema.json` — the contract that knowledge-graph
+indexer plugins must follow. What consumes that data is outside icarium's scope.
 
 ---
 
@@ -77,7 +76,7 @@ icarium status
 # 6. Index your SV/UVM project
 icarium index --project myproject --root /path/to/testbench
 
-# 7. Query the knowledge graph
+# 7. Query indexed entities
 echo '{"method":"query","type":"entities","kind":"UVM_AGENT"}' | nc -U /tmp/icarium.sock
 ```
 
@@ -154,28 +153,28 @@ echo '<json>' | nc -U /tmp/icarium.sock
 → {"result": [{"id": 7, "kind": "shell", "state": "done", "exit_code": 0, ...}]}
 ```
 
-### Gothos graph queries
+### Entity queries
+
+Query the local entity store built by indexer plugins. All parameters except
+`type` are optional filters.
 
 ```jsonc
-// List entities (kind and name are optional filters)
+// List entities by kind or name pattern
 {"method": "query", "type": "entities", "kind": "UVM_AGENT"}
 {"method": "query", "type": "entities", "name": "axi*"}
 
 // Relation graph hop
 {"method": "query", "type": "relations", "from": "axi_agent", "rel": "HAS_DRIVER"}
 
-// Assembled context centered on an entity (for LLM prompts)
+// Assembled context centered on an entity
 {"method": "query", "type": "context", "focus": "dma_agent", "depth": 1}
 
 // UVM agents with no covergroup — coverage gap report
 {"method": "query", "type": "no_covergroup"}
-
-// Shorthand for coverage gaps
 {"method": "coverage_gaps"}
 ```
 
-All query results include a `"project"` filter — omit for the default project or
-pass `"project": "myproject"` to scope to a named project.
+Add `"project": "myproject"` to scope any query to a named project.
 
 ### Gear lookup
 
@@ -213,8 +212,8 @@ Kanban task statuses: `triage → todo → ready → running → blocked → rev
 │    └── runs shell/index/triage tasks                │
 │    └── fires hooks on state changes                 │
 │                                                     │
-│  Bundled Gothos (gothos.zig → db.c → libpq)         │
-│    └── entities, relationships, findings tables     │
+│  Entity store queries (db.c → libpq)                │
+│    └── entities, relationships indexed by plugins   │
 │                                                     │
 │  Gear registry (gear_registry.zig)                  │
 │    └── loads *.gear files from gears/, ~/.icarium/  │
@@ -236,8 +235,8 @@ Kanban task statuses: `triage → todo → ready → running → blocked → rev
 
 ```
 src/c/
-  db.c / db.h          PostgreSQL interface (libpq): entities, tasks, Gothos
-                       queries, kanban CRUD
+  db.c / db.h          PostgreSQL interface (libpq): entities, tasks,
+                       entity store queries, kanban CRUD
   validate.c / .h      NDJSON record validator for plugin output
   infer.c / .h         ONNX Runtime inference (NER model)
   tok.c / .h           BPE tokeniser (matches GraphCodeBERT vocab)
@@ -249,7 +248,7 @@ src/zig/
   daemon.zig           Double-fork, pidfile, socket accept loop, startup init
   ipc.zig              IPC method dispatch (all JSON-over-Unix-socket handlers)
   queue.zig            In-memory task queue + executor thread
-  gothos.zig           Bundled Gothos client (wraps db.c query functions)
+  gothos.zig           Entity store query wrappers (db.c → IPC handlers)
   gear.zig             Gear file parser (YAML-like, arena-allocated)
   gear_registry.zig    Gear discovery: ICARIUM_GEARS, ./gears/, ~/.icarium/gears/
   plugin_registry.zig  Plugin manifest parser + in-process capability dispatch
@@ -267,15 +266,15 @@ src/zig/
 
 ## Database Schema
 
-Applied automatically at daemon startup (`icr_db_migrate` + `icr_kanban_migrate`).
-Manual application: `psql icarium -f schema/001_init.sql`.
+Applied automatically at daemon startup. Manual application:
+`psql icarium -f schema/001_init.sql`.
 
 ```
 entities           NER-extracted SV/UVM entities (kind, name, file, line, confidence,
                    embedding vector(768))
 relationships      Directed structural edges between entities (kind, from_id, to_id)
 tasks              Daemon task queue (shell / index / triage jobs)
-findings           Structured LLM analysis results written back to the graph
+findings           Structured LLM analysis results
 icarium_projects   Named projects with root paths
 kanban_tasks       Kanban board cards (9 statuses, gear_name, gear_run_id)
 kanban_task_links  Parent/child dependency edges between cards
@@ -286,6 +285,90 @@ Entity kinds indexed by the built-in NER model:
 `MODULE` `PORT` `PARAMETER` `PACKAGE` `INTERFACE` `COVERGROUP` `ASSERTION`
 `UVM_AGENT` `UVM_DRIVER` `UVM_MONITOR` `UVM_SEQUENCER` `UVM_SCOREBOARD`
 `UVM_ENV` `UVM_TEST` `UVM_SEQUENCE` `CLASS`
+
+---
+
+## Plugin Contract
+
+Icarium publishes `schema/plugin_schema.json` — the NDJSON record format that
+all extractor plugins must emit. Each line is either an entity or a relation:
+
+```jsonc
+// Entity record
+{"kind": "entity", "type": "UVM_AGENT", "name": "axi_agent",
+ "file": "tb/axi_agent.sv", "line_start": 12, "line_end": 89,
+ "confidence": 0.97}
+
+// Relation record
+{"kind": "relation", "type": "HAS_DRIVER",
+ "from_kind": "UVM_AGENT", "from_name": "axi_agent",
+ "to_kind": "UVM_DRIVER", "to_name": "axi_driver",
+ "confidence": 0.90}
+```
+
+Icarium validates every record from every plugin against this schema before
+ingesting it. Any system that consumes the entity/relation tables — whether a
+graph database, a vector store, or an analysis tool — works from this contract.
+
+---
+
+## Plugin System
+
+Icarium supports two plugin kinds, both declared via a `plugin.yaml` manifest.
+
+### Extractor plugins
+
+Short-lived subprocesses. Read file paths from stdin, write NDJSON records to
+stdout conforming to `schema/plugin_schema.json`.
+
+```yaml
+name: icarium-indexer-codebert
+kind: extractor
+emits_kinds: [UVM_AGENT, UVM_DRIVER, MODULE, COVERGROUP, ...]
+emits_relations: [HAS_DRIVER, HAS_MONITOR, EXTENDS, ...]
+executable: icarium-indexer-codebert
+```
+
+The built-in extractor (`icarium-indexer-codebert`) runs a fine-tuned
+GraphCodeBERT model (125M parameters, MIT licence) for SV/UVM named-entity
+recognition. Model files live in `$ICARIUM_MODELS` or the path set in
+`icarium.toml`.
+
+**Model performance** (epoch 5, 6,257-file corpus):
+F1 = 0.972 · Precision = 0.969 · Recall = 0.975 · Accuracy = 0.995
+
+### Capability plugins
+
+In-process method handlers registered at startup. The kanban plugin ships
+built-in.
+
+```yaml
+name: icarium-kanban
+kind: capability
+provides_methods: [kanban.add, kanban.list, kanban.get, kanban.update,
+                   kanban.move, kanban.link]
+provides_hooks:   [on_task_complete, on_finding]
+```
+
+### Plugin discovery
+
+Daemon scans at startup:
+1. `$ICARIUM_BIN/../plugins/<name>/plugin.yaml` (built-in)
+2. `~/.icarium/plugins/<name>/plugin.yaml` (user)
+3. `./.icarium/plugins/<name>/plugin.yaml` (project, requires `ICARIUM_ENABLE_PROJECT_PLUGINS=1`)
+
+### Hook system
+
+Hooks are fire-and-forget notifications fired on daemon events:
+
+| Hook | Fires when |
+|---|---|
+| `pre_index` | Before plugin_runner starts on a file batch |
+| `post_index` | After plugin_runner completes |
+| `on_task_complete` | A task queue entry reaches `done` or `failed` |
+| `on_finding` | A triage gear writes a finding |
+| `on_gear_stage_complete` | A gear executor stage finishes |
+| `on_gear_complete` | A gear run reaches its termination condition |
 
 ---
 
@@ -336,67 +419,7 @@ Stage types: `llm` `process` `parallel_llm` `condition`
 | `close_coverage` | "close coverage", "coverage closure" | Decompose → simulate → analyze gaps (parallel) → synthesize |
 | `triage` | "triage", "failures", "regression triage" | Parse failure logs → cluster → root-cause per cluster → synthesize |
 | `simulate` | "simulate", "run sim", "smoke test" | Build run command → launch subprocess → parse pass/fail |
-| `debug` | "debug", "why is", "investigate" | Gather graph context → 3 hypotheses → verify each → rank |
-
----
-
-## Plugin System
-
-Icarium supports two plugin kinds, both declared via a `plugin.yaml` manifest.
-
-### Extractor plugins
-
-Short-lived subprocesses. Read file paths from stdin, write NDJSON entity/relation
-records to stdout. Validated against `schema/plugin_schema.json`.
-
-```yaml
-name: icarium-indexer-codebert
-kind: extractor
-emits_kinds: [UVM_AGENT, UVM_DRIVER, MODULE, COVERGROUP, ...]
-emits_relations: [HAS_DRIVER, HAS_MONITOR, EXTENDS, ...]
-executable: icarium-indexer-codebert
-```
-
-The built-in extractor (`icarium-indexer-codebert`) runs a fine-tuned
-GraphCodeBERT model (125M parameters, MIT licence) for SV/UVM named-entity
-recognition. Model files live in `$ICARIUM_MODELS` or the path set in
-`icarium.toml`.
-
-**Model performance** (epoch 5, 6,257-file corpus):
-F1 = 0.972 · Precision = 0.969 · Recall = 0.975 · Accuracy = 0.995
-
-### Capability plugins
-
-In-process method handlers registered at startup. The kanban plugin ships
-built-in.
-
-```yaml
-name: icarium-kanban
-kind: capability
-provides_methods: [kanban.add, kanban.list, kanban.get, kanban.update,
-                   kanban.move, kanban.link]
-provides_hooks:   [on_task_complete, on_finding]
-```
-
-### Plugin discovery
-
-Daemon scans at startup:
-1. `$ICARIUM_BIN/../plugins/<name>/plugin.yaml` (built-in)
-2. `~/.icarium/plugins/<name>/plugin.yaml` (user)
-3. `./.icarium/plugins/<name>/plugin.yaml` (project, requires `ICARIUM_ENABLE_PROJECT_PLUGINS=1`)
-
-### Hook system
-
-Hooks are fire-and-forget notifications fired on daemon events:
-
-| Hook | Fires when |
-|---|---|
-| `pre_index` | Before plugin_runner starts on a file batch |
-| `post_index` | After plugin_runner completes |
-| `on_task_complete` | A task queue entry reaches `done` or `failed` |
-| `on_finding` | A triage gear writes a finding to the graph |
-| `on_gear_stage_complete` | A gear executor stage finishes |
-| `on_gear_complete` | A gear run reaches its termination condition |
+| `debug` | "debug", "why is", "investigate" | Gather context → 3 hypotheses → verify each → rank |
 
 ---
 
@@ -404,7 +427,7 @@ Hooks are fire-and-forget notifications fired on daemon events:
 
 | Phase | Goal | Status |
 |---|---|---|
-| 1 — Gothos client | Bundled graph queries against PostgreSQL | ✓ Done |
+| 1 — Entity store queries | IPC query handlers against indexed entity/relation tables | ✓ Done |
 | 2 — Gear format + parser | Load and validate gear definition files | ✓ Done |
 | 2B — Plugin infrastructure | Plugin manifests, hooks, kanban plugin | ✓ Done |
 | 3 — LLM pool | Parallel structured LLM calls (Anthropic + OpenAI-compat) | Next |
@@ -434,7 +457,7 @@ template-fills `{stage.field}` references from prior outputs, handles
 
 `src/zig/router.zig` — three-tier matching: exact trigger substring → embedding
 cosine similarity → LLM fallback. Pure structural queries (`"list all UVM agents"`)
-bypass gear selection entirely and go straight to Gothos.
+bypass gear selection and go directly to the entity store.
 
 ---
 
@@ -450,9 +473,9 @@ top-level scalars/section headers; indent 2 = list items; indent 4 = object
 fields within list items. All strings are arena-allocated; call `gear.deinit()`
 to free.
 
-**Gothos NULL filter pattern**: optional query filters use PostgreSQL's
-`$N::text IS NULL OR col = $N`. When libpq passes a C NULL pointer for a
-params-array entry, `$N` becomes SQL NULL, the `IS NULL` branch is TRUE, and
+**Optional SQL filters**: nullable query parameters use PostgreSQL's
+`$N::text IS NULL OR col = $N` pattern. When libpq passes a C NULL pointer for
+a params-array entry, `$N` becomes SQL NULL, the `IS NULL` branch is TRUE, and
 the filter is skipped entirely.
 
 **In-process capability plugins**: `plugins/kanban.zig` is linked directly into
