@@ -4,6 +4,8 @@ const Dir = std.Io.Dir;
 const c = @import("c.zig").lib;
 const q = @import("queue.zig");
 const ipc = @import("ipc.zig");
+const llm = @import("llm.zig");
+const config = @import("config.zig");
 const gear_registry = @import("gear_registry.zig");
 const plugin_registry = @import("plugin_registry.zig");
 
@@ -41,6 +43,10 @@ pub fn cmd_start(io: std.Io) !void {
         log.warn("gear loading failed: {}", .{e});
     plugin_registry.loadAll(q.g_ally) catch |e|
         log.warn("plugin loading failed: {}", .{e});
+
+    var cfg_buf: [4096]u8 = undefined;
+    const cfg = config.load(&cfg_buf, "icarium.toml") catch config.Config{};
+    llm.init(io, cfg.llm_endpoint, cfg.llm_model, cfg.llm_api_key_env);
 
     log.info("icariumd started (pid={})", .{std.c.getpid()});
 

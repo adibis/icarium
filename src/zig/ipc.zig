@@ -3,6 +3,7 @@ const net = std.Io.net;
 const c = @import("c.zig").lib;
 const q = @import("queue.zig");
 const kb = @import("query.zig");
+const llm = @import("llm.zig");
 const plugins = @import("plugin_registry.zig");
 const gears = @import("gear_registry.zig");
 
@@ -203,6 +204,37 @@ fn dispatch(msg: []const u8) ![]const u8 {
             return "{\"error\":\"coverage_gaps query failed\"}";
         return std.fmt.bufPrint(&g_resp_buf, "{{\"result\":{s}}}", .{data}) catch
             return "{\"error\":\"response too large\"}";
+    }
+
+    // ── LLM pool ──────────────────────────────────────────────────────────────
+
+    if (matchMethod(msg, "llm.call")) {
+        const cfg = llm.g_cfg orelse return "{\"error\":\"LLM not configured\"}";
+        const user   = extractString(msg, "user")   orelse return "{\"error\":\"missing user\"}";
+        const system = extractString(msg, "system") orelse "";
+
+        const resp = llm.call(q.g_ally, cfg, .{ .system = system, .user = user }) catch |err| {
+            log.warn("llm.call failed: {}", .{err});
+            return "{\"error\":\"llm call failed\"}";
+        };
+        defer q.g_ally.free(resp.content);
+
+        // Escape content into g_data_buf, then wrap in g_resp_buf
+        var di: usize = 0;
+        for (resp.content) |ch| {
+            switch (ch) {
+                '"'  => { if (di + 2 > g_data_buf.len) break; g_data_buf[di] = '\\'; g_data_buf[di+1] = '"';  di += 2; },
+                '\\' => { if (di + 2 > g_data_buf.len) break; g_data_buf[di] = '\\'; g_data_buf[di+1] = '\\'; di += 2; },
+                '\n' => { if (di + 2 > g_data_buf.len) break; g_data_buf[di] = '\\'; g_data_buf[di+1] = 'n';  di += 2; },
+                '\r' => { if (di + 2 > g_data_buf.len) break; g_data_buf[di] = '\\'; g_data_buf[di+1] = 'r';  di += 2; },
+                '\t' => { if (di + 2 > g_data_buf.len) break; g_data_buf[di] = '\\'; g_data_buf[di+1] = 't';  di += 2; },
+                else => { if (di + 1 > g_data_buf.len) break; g_data_buf[di] = ch; di += 1; },
+            }
+        }
+        return std.fmt.bufPrint(&g_resp_buf,
+            "{{\"result\":{{\"content\":\"{s}\",\"input_tokens\":{d},\"output_tokens\":{d},\"latency_ms\":{d}}}}}",
+            .{ g_data_buf[0..di], resp.input_tokens, resp.output_tokens, resp.latency_ms },
+        ) catch return "{\"error\":\"buf overflow\"}";
     }
 
     // ── Capability plugin method routing ─────────────────────────────────────
