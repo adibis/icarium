@@ -1,0 +1,24 @@
+name: triage
+version: 1
+
+triggers:
+  - "triage"
+  - "analyze failures"
+  - "root cause"
+  - "why did the regression fail"
+  - "what failed"
+
+stages:
+  - id: locate
+    type: process
+  - id: cluster
+    type: llm
+  - id: analyze_clusters
+    type: parallel_llm
+  - id: synthesize
+    type: llm
+
+termination:
+  condition: synthesize.status == done
+  max_iterations: 3
+  on_max: return_last_synthesize

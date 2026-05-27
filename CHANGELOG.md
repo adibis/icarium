@@ -7,7 +7,7 @@ Format: [version/date] — what changed and why.
 
 ## [0.3.0] — 2026-05-11
 
-### House 01 Complete — Fine-Tuned SV/UVM NER Model
+### Gear 01 Complete — Fine-Tuned SV/UVM NER Model
 
 **Model**: GraphCodeBERT (125M, MIT) fine-tuned for SV/UVM NER + embeddings
 **Output**: `azath_sv_v1.onnx` (pending ONNX export, Step 9)
@@ -37,7 +37,7 @@ Each entity node carries 4 embedding properties instead of 1:
 Rationale: name/port similarity alone cannot find two frame-processing sequences with
 different names; behavioral and summary tracks capture protocol-level intent.
 
-**Architecture decision — Behavioral embedding pipeline** (House 02b, to be built):
+**Architecture decision — Behavioral embedding pipeline** (Gear 02b, to be built):
 Local Qwen2.5-Coder-7B generates `summary_text` per entity body at index time.
 `all-MiniLM-L6-v2` embeds it to `summary_embedding`. No API calls.
 

@@ -1,0 +1,27 @@
+name: icarium-indexer-codebert
+version: 1.0.0
+description: GraphCodeBERT NER for SV/UVM entity and relation extraction
+kind: extractor
+executable: icarium-indexer-codebert
+emits_kinds:
+  - UVM_AGENT
+  - UVM_DRIVER
+  - UVM_MONITOR
+  - UVM_SEQUENCER
+  - UVM_SCOREBOARD
+  - UVM_ENV
+  - UVM_TEST
+  - MODULE
+  - INTERFACE
+  - COVERGROUP
+  - ASSERTION
+  - CLASS
+emits_relations:
+  - HAS_DRIVER
+  - HAS_MONITOR
+  - HAS_SEQUENCER
+  - EXTENDS
+  - DRIVES
+  - MONITORS
+  - INSTANTIATES
+  - RUNS_ON

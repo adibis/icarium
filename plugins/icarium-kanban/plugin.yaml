@@ -1,0 +1,15 @@
+name: icarium-kanban
+version: 1.0.0
+description: Kanban task board for DV work items and gear runs
+kind: capability
+executable: icarium-kanban
+provides_methods:
+  - kanban.add
+  - kanban.list
+  - kanban.get
+  - kanban.update
+  - kanban.move
+  - kanban.link
+provides_hooks:
+  - on_task_complete
+  - on_finding

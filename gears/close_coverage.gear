@@ -1,0 +1,25 @@
+name: close_coverage
+version: 1
+
+triggers:
+  - "close coverage"
+  - "close_coverage"
+  - "coverage closure"
+  - "close cov"
+
+stages:
+  - id: decompose
+    type: llm
+  - id: execute
+    type: process
+  - id: analyze
+    type: llm
+  - id: analyze_gaps
+    type: parallel_llm
+  - id: synthesize
+    type: llm
+
+termination:
+  condition: synthesize.status == done
+  max_iterations: 10
+  on_max: return_last_synthesize

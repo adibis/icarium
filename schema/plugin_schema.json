@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$id": "https://icarium.io/schema/plugin.json",
+  "title": "Icarium Plugin Record",
+  "description": "One newline-delimited JSON line emitted by an Icarium indexer plugin. Validated by icariumd before DB insertion. See ONTOLOGY.md §7 for full specification.",
+  "oneOf": [
+    { "$ref": "#/$defs/EntityRecord" },
+    { "$ref": "#/$defs/RelationRecord" }
+  ],
+  "$defs": {
+    "ConfidenceSource": {
+      "type": "string",
+      "enum": ["ml_predicted", "static_parsed", "heuristic", "explicit"]
+    },
+    "EntityKind": {
+      "type": "string",
+      "enum": [
+        "MODULE", "INTERFACE", "PORT", "MODPORT", "PARAMETER",
+        "PACKAGE", "CLOCK_DOMAIN", "CLOCKING_BLOCK",
+        "UVM_TEST", "UVM_ENV", "UVM_AGENT", "UVM_DRIVER",
+        "UVM_MONITOR", "UVM_SCOREBOARD", "UVM_SEQUENCER",
+        "UVM_SEQUENCE", "UVM_SEQ_ITEM",
+        "CONSTRAINT_BLOCK", "RAND_VAR", "CONFIG_DB_ENTRY", "FACTORY_OVERRIDE",
+        "COVERGROUP", "COVERPOINT", "ASSERTION", "CHECKER",
+        "SVA_PROPERTY", "SVA_SEQUENCE",
+        "REG_MAP", "REG_BLOCK", "REGISTER", "REG_FIELD"
+      ]
+    },
+    "RelationKind": {
+      "type": "string",
+      "enum": [
+        "INSTANTIATES", "HAS_PORT", "HAS_MODPORT", "HAS_PARAMETER",
+        "USES_PACKAGE", "HAS_CLOCKING_BLOCK", "DECLARED_IN", "IN_CLOCK_DOMAIN",
+        "BRIDGES_FROM_DOMAIN", "BRIDGES_TO_DOMAIN",
+        "CONTAINS", "INSTANTIATES_ENV", "PULLS_FROM", "PUBLISHES_TO",
+        "HAS_VIRTUAL_IF", "HAS_CONSTRAINT", "HAS_RAND_VAR",
+        "DECLARES_OVERRIDE", "SETS_CONFIG", "GETS_CONFIG",
+        "GENERATES", "RUNS_ON", "EXTENDS",
+        "PART_OF", "CROSSES_WITH",
+        "DRIVES", "MONITORS", "CALLS_BFM", "TESTS", "CHECKS", "COVERS",
+        "REFERENCES", "BOUND_TO", "STIMULATES", "ABSTRACTS", "MAPS_TO",
+        "REFERENCES_PROPERTY", "REFERENCES_SEQUENCE", "MAPS_REGISTER",
+        "SAMPLES", "INSTANTIATES_CG",
+        "OVERRIDES_CONSTRAINT", "DISABLES_CONSTRAINT", "RANDOMIZES",
+        "STARTS", "GETS_RESPONSE"
+      ]
+    },
+    "EntityRecord": {
+      "type": "object",
+      "title": "Entity Record",
+      "description": "Declares one entity to be inserted into the Icarium knowledge graph.",
+      "required": ["type", "partition", "kind", "name", "file", "line_start", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "type":       { "const": "entity" },
+        "partition": {
+          "type": "string",
+          "enum": ["structural", "verification", "coverage", "register"],
+          "description": "Logical partition. Must match the kind field — see partition/kind table below."
+        },
+        "kind":       { "$ref": "#/$defs/EntityKind" },
+        "name":       { "type": "string", "minLength": 1 },
+        "file":       {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Absolute path to the source file containing this entity."
+        },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end":   { "type": "integer", "minimum": 1 },
+        "confidence": {
+          "type": "number", "minimum": 0.0, "maximum": 1.0,
+          "description": "Extraction confidence in [0,1]. Below 0.5 triggers a daemon warning."
+        },
+        "confidence_source": {
+          "$ref": "#/$defs/ConfidenceSource",
+          "default": "ml_predicted"
+        },
+        "properties": {
+          "type": "object",
+          "description": "Kind-specific optional properties. See ONTOLOGY.md §4 per-kind property tables.",
+          "additionalProperties": true,
+          "properties": {
+            "portDirection":    { "type": "string", "enum": ["input", "output", "inout", "ref"] },
+            "widthBits":        { "type": "integer", "minimum": 1 },
+            "isClock":          { "type": "boolean" },
+            "isReset":          { "type": "boolean" },
+            "isActive":         { "type": "string", "enum": ["active", "passive"] },
+            "className":        { "type": "string" },
+            "reqType":          { "type": "string" },
+            "rspType":          { "type": "string" },
+            "protocol":         { "type": "string" },
+            "hasModport":       { "type": "boolean" },
+            "abstractionLevel": { "type": "string", "enum": ["RTL", "BFM", "TLM"] },
+            "portCount":        { "type": "integer", "minimum": 0 },
+            "nCoverpoints":     { "type": "integer", "minimum": 0 },
+            "assertionType":    { "type": "string", "enum": ["assert", "assume", "cover", "restrict"] },
+            "accessPolicy":     { "type": "string", "enum": ["RW", "RO", "WO", "W1C", "RC", "RS", "WRC", "WRS", "W1S", "W1T", "NOACCESS"] },
+            "lsb":              { "type": "integer", "minimum": 0 },
+            "msb":              { "type": "integer", "minimum": 0 },
+            "resetValue":       { "type": "string" },
+            "samplingMechanism": { "type": "string", "enum": ["clocking_event", "explicit_call", "embedded"] },
+            "declaringClass":    { "type": "string" },
+            "isBoundCg":         { "type": "boolean" },
+            "isInline":          { "type": "boolean" },
+            "constraintMode":    { "type": "string", "enum": ["hard", "soft"] }
+          }
+        }
+      },
+      "if":   { "properties": { "kind": { "const": "PORT" } } },
+      "then": {
+        "properties": {
+          "properties": {
+            "required": ["portDirection"]
+          }
+        }
+      }
+    },
+    "RelationRecord": {
+      "type": "object",
+      "title": "Relation Record",
+      "description": "Declares one typed directed relationship between two entities already declared in this stream or present in the DB.",
+      "required": ["type", "kind", "from_kind", "from_name", "to_kind", "to_name", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "relation" },
+        "kind":      { "$ref": "#/$defs/RelationKind" },
+        "from_kind": { "$ref": "#/$defs/EntityKind" },
+        "from_name": { "type": "string", "minLength": 1 },
+        "to_kind":   { "$ref": "#/$defs/EntityKind" },
+        "to_name":   { "type": "string", "minLength": 1 },
+        "confidence": {
+          "type": "number", "minimum": 0.0, "maximum": 1.0
+        },
+        "confidence_source": {
+          "$ref": "#/$defs/ConfidenceSource",
+          "default": "heuristic"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Relationship-specific properties. E.g. viaModport for DRIVES/MONITORS, paramBindings for INSTANTIATES, bindTarget for BOUND_TO.",
+          "properties": {
+            "viaModport":    { "type": "string" },
+            "paramBindings": { "type": "object" },
+            "bindTarget":    { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "x-partition-kind-map": {
+    "description": "Cross-field constraint enforced by daemon (not expressible in JSON Schema). See ONTOLOGY.md §7.3.",
+    "structural":   ["MODULE","INTERFACE","PORT","MODPORT","PARAMETER","PACKAGE","CLOCK_DOMAIN","CLOCKING_BLOCK"],
+    "verification": ["UVM_TEST","UVM_ENV","UVM_AGENT","UVM_DRIVER","UVM_MONITOR","UVM_SCOREBOARD","UVM_SEQUENCER","UVM_SEQUENCE","UVM_SEQ_ITEM","CONSTRAINT_BLOCK","RAND_VAR","CONFIG_DB_ENTRY","FACTORY_OVERRIDE"],
+    "coverage":     ["COVERGROUP","COVERPOINT","ASSERTION","CHECKER","SVA_PROPERTY","SVA_SEQUENCE"],
+    "register":     ["REG_MAP","REG_BLOCK","REGISTER","REG_FIELD"]
+  }
+}

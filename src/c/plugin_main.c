@@ -1,0 +1,195 @@
+/*
+ * icarium-indexer-codebert — built-in NER indexer plugin
+ *
+ * Protocol (icarium plugin subprocess contract):
+ *   argv[1]  : models directory (overrides ICARIUM_MODELS env)
+ *   stdin    : newline-delimited absolute file paths
+ *   stdout   : newline-delimited JSON entity records (plugin_schema.json format)
+ *   stderr   : human-readable diagnostics
+ *
+ * No DB access — the daemon validates and ingests stdout records.
+ */
+
+#include "infer.h"
+#include "tok.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
+/* ── BIO label tables ─────────────────────────────────────────────────────── */
+
+static const char *label_kind(int label) {
+    switch (label) {
+        case  1: case  2: return "MODULE";
+        case  3: case  4: return "INTERFACE";
+        case  5: case  6: return "PACKAGE";
+        case  7: case  8: return "PARAMETER";
+        case  9: case 10: return "PORT";
+        case 11: case 12: return "UVM_ENV";
+        case 13: case 14: return "UVM_AGENT";
+        case 15: case 16: return "UVM_DRIVER";
+        case 17: case 18: return "UVM_MONITOR";
+        case 19: case 20: return "UVM_SCOREBOARD";
+        case 21: case 22: return "UVM_SEQUENCE";
+        case 23: case 24: return "UVM_SEQ_ITEM";
+        case 25: case 26: return "UVM_TEST";
+        case 27: case 28: return "COVERGROUP";
+        case 29: case 30: return "CLOCK_DOMAIN";
+        default:           return NULL;
+    }
+}
+
+static const char *label_partition(int label) {
+    switch (label) {
+        case 11: case 12:
+        case 13: case 14:
+        case 15: case 16:
+        case 17: case 18:
+        case 19: case 20:
+        case 21: case 22:
+        case 23: case 24:
+        case 25: case 26: return "verification";
+        case 27: case 28: return "coverage";
+        default:           return "structural";
+    }
+}
+
+static int is_begin(int label) {
+    return (label > 0) && (label % 2 == 1);
+}
+
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
+
+static int find_line(const char *src, const char *needle) {
+    const char *pos = strstr(src, needle);
+    if (!pos) return 1;
+    int line = 1;
+    for (const char *p = src; p < pos; p++)
+        if (*p == '\n') line++;
+    return line;
+}
+
+/* JSON-escape s into buf; always null-terminates. Returns buf. */
+static const char *json_escape(const char *s, char *buf, size_t buf_size) {
+    size_t out = 0;
+    for (size_t i = 0; s[i] && out + 4 < buf_size; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if      (c == '"')  { buf[out++] = '\\'; buf[out++] = '"';  }
+        else if (c == '\\') { buf[out++] = '\\'; buf[out++] = '\\'; }
+        else if (c >= 0x20) { buf[out++] = (char)c; }
+        /* skip control chars */
+    }
+    buf[out] = '\0';
+    return buf;
+}
+
+/* ── Per-file indexing ────────────────────────────────────────────────────── */
+
+static void index_file(IcrRuntime *rt, IcrTok *tok, const char *file_path) {
+    FILE *f = fopen(file_path, "r");
+    if (!f) {
+        fprintf(stderr, "# skip %s: %s\n", file_path, strerror(errno));
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    rewind(f);
+    if (sz <= 0) { fclose(f); return; }
+
+    char *source = malloc((size_t)sz + 1);
+    if (!source) { fclose(f); return; }
+    size_t n = fread(source, 1, (size_t)sz, f);
+    source[n] = '\0';
+    fclose(f);
+
+    int64_t ids[ICR_MAX_SEQ], mask_arr[ICR_MAX_SEQ];
+    int seq_len = icr_tok_encode(tok, source, ids, mask_arr, ICR_MAX_SEQ);
+    if (seq_len < 2) { free(source); return; }
+
+    IcrNerResult ner = {0};
+    if (icr_ner_run(rt, ids, mask_arr, seq_len, &ner) != 0) {
+        fprintf(stderr, "# ner error: %s\n", file_path);
+        free(source);
+        return;
+    }
+
+    char esc_file[4096], esc_name[256];
+    json_escape(file_path, esc_file, sizeof esc_file);
+
+    for (int i = 1; i < ner.seq_len - 1; ) {
+        int label = ner.labels[i];
+        if (!is_begin(label)) { i++; continue; }
+
+        int span_start = i;
+        int i_label    = label + 1;
+        i++;
+        while (i < ner.seq_len - 1 && ner.labels[i] == i_label) i++;
+
+        char name[128];
+        int nlen = icr_tok_decode(tok, ids + span_start, i - span_start,
+                                  name, sizeof name);
+        if (nlen <= 0 || name[0] == '\0') continue;
+
+        const char *kind      = label_kind(label);
+        const char *partition = label_partition(label);
+        if (!kind) continue;
+
+        float conf = ner.scores[span_start];
+        int   line = find_line(source, name);
+
+        json_escape(name, esc_name, sizeof esc_name);
+
+        printf("{\"type\":\"entity\",\"partition\":\"%s\",\"kind\":\"%s\","
+               "\"name\":\"%s\",\"file\":\"%s\",\"line_start\":%d,"
+               "\"confidence\":%.4f}\n",
+               partition, kind, esc_name, esc_file, line, (double)conf);
+    }
+
+    icr_ner_result_free(&ner);
+    free(source);
+    fflush(stdout);
+}
+
+/* ── Entry point ──────────────────────────────────────────────────────────── */
+
+int main(int argc, char **argv) {
+    /* Resolve models directory: argv[1] > env > default */
+    const char *models_dir = (argc > 1 && argv[1][0] != '\0') ? argv[1]
+                           : getenv("ICARIUM_MODELS");
+    if (!models_dir || models_dir[0] == '\0') models_dir = "models";
+
+    char ner_path[1024], enc_path[1024], voc_path[1024], mrg_path[1024];
+    snprintf(ner_path, sizeof ner_path, "%s/ner.onnx",     models_dir);
+    snprintf(enc_path, sizeof enc_path, "%s/encoder.onnx", models_dir);
+    snprintf(voc_path, sizeof voc_path, "%s/vocab.bin",    models_dir);
+    snprintf(mrg_path, sizeof mrg_path, "%s/merges.bin",   models_dir);
+
+    IcrTok *tok = icr_tok_load(voc_path, mrg_path);
+    if (!tok) {
+        fprintf(stderr, "error: tokenizer load failed (%s, %s)\n",
+                voc_path, mrg_path);
+        return 1;
+    }
+
+    IcrRuntime *rt = icr_runtime_load(ner_path, enc_path);
+    if (!rt) {
+        icr_tok_free(tok);
+        fprintf(stderr, "error: ONNX runtime load failed (%s, %s)\n",
+                ner_path, enc_path);
+        return 1;
+    }
+
+    char line[4096];
+    while (fgets(line, sizeof line, stdin)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
+            line[--len] = '\0';
+        if (len == 0) continue;
+        index_file(rt, tok, line);
+    }
+
+    icr_runtime_free(rt);
+    icr_tok_free(tok);
+    return 0;
+}

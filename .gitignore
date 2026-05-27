@@ -14,5 +14,14 @@ icarium.toml
 # PostgreSQL temp files
 *.pid
 
+# Planning docs — local only, not for version control
+ARCHITECTURE.md
+CRITIQUE.md
+HERMES_COMPARISON.md
+GEAR_01_MODEL.md
+PLAN.md
+PROMPT.md
+TUI_PLAN.md
+
 # OS
 .DS_Store

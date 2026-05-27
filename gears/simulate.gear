@@ -1,0 +1,23 @@
+name: simulate
+version: 1
+
+triggers:
+  - "run regression"
+  - "run sim"
+  - "run test"
+  - "simulate"
+  - "launch regression"
+  - "run the"
+
+stages:
+  - id: decompose
+    type: llm
+  - id: execute
+    type: process
+  - id: analyze
+    type: llm
+
+termination:
+  condition: analyze.status == done
+  max_iterations: 1
+  on_max: return_last_analyze

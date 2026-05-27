@@ -1,0 +1,26 @@
+name: debug
+version: 1
+
+triggers:
+  - "debug"
+  - "why is"
+  - "what is causing"
+  - "find the bug"
+  - "investigate"
+  - "assertion failure"
+  - "why does"
+
+stages:
+  - id: decompose
+    type: llm
+  - id: hypothesize
+    type: llm
+  - id: verify
+    type: parallel_llm
+  - id: synthesize
+    type: llm
+
+termination:
+  condition: synthesize.status == done
+  max_iterations: 5
+  on_max: return_last_synthesize
