@@ -23,5 +23,9 @@ PLAN.md
 PROMPT.md
 TUI_PLAN.md
 
+# Knowledge graph — developed as a separate project
+src/zig/gothos.zig
+schema/icarium_ont.ttl
+
 # OS
 .DS_Store
