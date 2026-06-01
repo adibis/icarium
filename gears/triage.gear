@@ -1,5 +1,5 @@
 name: triage
-version: 1
+version: 2
 
 triggers:
   - "triage"
@@ -11,12 +11,16 @@ triggers:
 stages:
   - id: locate
     type: process
+    prompt: "grep -rE 'ERROR|FAILED|FATAL|TIMEOUT' sim.log 2>/dev/null | head -50 || echo 'no sim.log found'"
   - id: cluster
     type: llm
+    prompt: "Cluster these UVM/simulation failure messages by root cause. Output JSON: [{\"cluster\": \"name\", \"count\": N, \"representative\": \"message\", \"likely_cause\": \"description\"}]\n\nFailures:\n{locate}"
   - id: analyze_clusters
     type: parallel_llm
+    prompt: "For each failure cluster below, identify the most likely root cause in the UVM testbench or RTL. Be specific about which component, signal, or sequence is likely at fault.\n\nClusters:\n{cluster}\n\nKnown entities:\n{context}"
   - id: synthesize
     type: llm
+    prompt: "Synthesize this regression triage into a prioritized bug list. For each bug: severity, affected component, recommended first debugging step.\n\nClusters:\n{cluster}\n\nRoot cause analysis:\n{analyze_clusters}"
 
 termination:
   condition: synthesize.status == done

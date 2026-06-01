@@ -1,7 +1,35 @@
-# AZATH Changelog
+# icarium Changelog
 
 All notable changes will be documented here.
 Format: [version/date] — what changed and why.
+
+---
+
+## [0.5.0] — 2026-05-31
+
+### Phases 3 + 4: LLM Pool and Gear Executor
+
+**Phase 3 — LLM pool** (`src/zig/llm.zig`):
+- Two backends: Anthropic (native `tool_use`) and OpenAI-compatible (`json_schema`)
+- `llm.call()` — synchronous HTTPS call; returns content, token counts, latency
+- `llm.callParallel()` — fan-out to N threads, results indexed by request
+- `llm.call` exposed via IPC: `{"method": "llm.call", "user": "...", "system": "..."}`
+
+**Phase 4 — Gear executor** (`src/zig/executor.zig`):
+- `executor.run(ally, gear, input, context)` — runs all stages in sequence
+- Template engine: `{input}`, `{context}`, `{stage_id}` substituted at runtime
+- `llm`/`parallel_llm` stages call LLM pool; `process` stages run via shell
+- Termination condition checked after each pass; `max_iterations` enforced
+- `gear.run` IPC method: match query → gear by trigger, run executor, return output
+
+**Gear files** (all four updated to version 2 with concrete prompt templates):
+- `close_coverage`: decompose → execute (shell) → analyze → analyze_gaps → synthesize
+- `triage`: locate (grep sim.log) → cluster → analyze_clusters → synthesize
+- `simulate`: decompose (LLM → shell cmd) → execute → analyze
+- `debug`: decompose → hypothesize → verify → synthesize
+
+**Gear format extended**:
+- `Stage.prompt: []const u8` field (default `""`); parsed at indent-4
 
 ---
 

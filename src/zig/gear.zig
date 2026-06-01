@@ -1,6 +1,6 @@
 // Gear file parser. Handles the .gear YAML-like format for pipeline definitions.
-// Parses: name, version, triggers, stages (id + type), and termination fields.
-// Stage prompt templates and output schemas are left for the Phase 4 executor.
+// Parses: name, version, triggers, stages (id, type, prompt), and termination fields.
+// Prompt templates support {input}, {context}, and {stage_id} substitution tokens.
 
 const std = @import("std");
 
@@ -19,8 +19,9 @@ pub const StageType = enum {
 };
 
 pub const Stage = struct {
-    id: []const u8,
-    kind: StageType,
+    id:     []const u8,
+    kind:   StageType,
+    prompt: []const u8 = "",  // template: {input}, {context}, {stage_id}
 };
 
 pub const Gear = struct {
@@ -119,6 +120,8 @@ pub fn load(backing_ally: std.mem.Allocator, path: []const u8) !Gear {
                         cur_stage.?.id = try ally.dupe(u8, unquote(p.val));
                     if (std.mem.eql(u8, p.key, "type"))
                         cur_stage.?.kind = StageType.parse(unquote(p.val));
+                    if (std.mem.eql(u8, p.key, "prompt"))
+                        cur_stage.?.prompt = try ally.dupe(u8, unquote(p.val));
                 }
             }
         }

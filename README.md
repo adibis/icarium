@@ -176,7 +176,21 @@ Query the local entity store built by indexer plugins. All parameters except
 
 Add `"project": "myproject"` to scope any query to a named project.
 
-### Gear lookup
+### Gear execution
+
+Run a gear end-to-end. The daemon matches the query to a gear by trigger,
+runs each stage (LLM call or shell command), substitutes `{stage_id}` template
+tokens between stages, and returns the final synthesized output.
+
+```jsonc
+{"method": "gear.run", "query": "close coverage on the AXI agent"}
+→ {"result": {"gear": "close_coverage", "output": "..."}}
+
+{"method": "gear.run", "query": "triage the nightly regression"}
+→ {"result": {"gear": "triage", "output": "..."}}
+```
+
+Lookup only (no execution):
 
 ```jsonc
 {"method": "gear.find", "q": "close coverage"}
@@ -218,6 +232,10 @@ Kanban task statuses: `triage → todo → ready → running → blocked → rev
 │  Gear registry (gear_registry.zig)                  │
 │    └── loads *.gear files from gears/, ~/.icarium/  │
 │                                                     │
+│  Gear executor (executor.zig)                       │
+│    └── stage loop, template fill, LLM + process    │
+│    └── called synchronously by gear.run IPC method  │
+│                                                     │
 │  Plugin registry (plugin_registry.zig)              │
 │    └── kanban (in-process, plugins/kanban.zig)      │
 │    └── extractor plugins (short-lived subprocesses) │
@@ -248,9 +266,10 @@ src/zig/
   daemon.zig           Double-fork, pidfile, socket accept loop, startup init
   ipc.zig              IPC method dispatch (all JSON-over-Unix-socket handlers)
   queue.zig            In-memory task queue + executor thread
-  gothos.zig           Entity store query wrappers (db.c → IPC handlers)
+  query.zig            Entity store query wrappers (db.c → IPC handlers)
   gear.zig             Gear file parser (YAML-like, arena-allocated)
   gear_registry.zig    Gear discovery: ICARIUM_GEARS, ./gears/, ~/.icarium/gears/
+  executor.zig         Gear stage runner: template fill, LLM calls, process stages
   plugin_registry.zig  Plugin manifest parser + in-process capability dispatch
   hooks.zig            Fire-and-forget hook registry (64 slots)
   plugins/kanban.zig   Kanban capability plugin (handles kanban.* methods)
@@ -385,30 +404,35 @@ The daemon loads them at startup from (in priority order):
 
 ```yaml
 name: close_coverage
-version: 1
+version: 2
 
 triggers:
   - "close coverage"
-  - "close_coverage"
   - "coverage closure"
 
 stages:
   - id: decompose
     type: llm
+    prompt: "Identify which functional scenarios will close remaining coverage holes.\n\nTask: {input}\nKnown entities:\n{context}"
   - id: execute
     type: process
+    prompt: "echo 'Coverage plan: {decompose}' && date"
   - id: analyze
     type: llm
-  - id: analyze_gaps
-    type: parallel_llm
+    prompt: "Analyze the simulation output and identify remaining gaps.\n\nPlan:\n{decompose}\n\nOutput:\n{execute}"
   - id: synthesize
     type: llm
+    prompt: "Synthesize into a prioritized action list.\n\nAnalysis:\n{analyze}"
 
 termination:
   condition: synthesize.status == done
-  max_iterations: 10
+  max_iterations: 3
   on_max: return_last_synthesize
 ```
+
+**Template tokens**: `{input}` = original user query, `{context}` = entity-store
+context injected by the executor, `{stage_id}` = output from a prior stage.
+`\n` in prompt strings is unescaped to a real newline at runtime.
 
 Stage types: `llm` `process` `parallel_llm` `condition`
 
@@ -430,34 +454,49 @@ Stage types: `llm` `process` `parallel_llm` `condition`
 | 1 — Entity store queries | IPC query handlers against indexed entity/relation tables | ✓ Done |
 | 2 — Gear format + parser | Load and validate gear definition files | ✓ Done |
 | 2B — Plugin infrastructure | Plugin manifests, hooks, kanban plugin | ✓ Done |
-| 3 — LLM pool | Parallel structured LLM calls (Anthropic + OpenAI-compat) | Next |
-| 4 — Gear executor | Run a gear end-to-end: stage loop, template fill, iteration | Next |
-| 5 — Router | Natural language → gear selection (trigger match → embedding → LLM) | |
-| 6 — Built-in gears | Full prompt templates and output schemas for all four gears | |
-| 7 — Relation extraction | Heuristic SV relation extractor (EXTENDS, HAS_DRIVER, DRIVES…) | |
-| 8 — pgvector embeddings | Semantic entity search via HNSW index | |
-| 9 — TUI | Interactive REPL + live task queue + findings panes | |
-| 10 — Hardening | Docs, `icariumd doctor`, config validation, structured errors | |
+| 3 — LLM pool | Parallel structured LLM calls (Anthropic + OpenAI-compat) | ✓ Done |
+| 4 — Gear executor | Run a gear end-to-end: stage loop, template fill, iteration | ✓ Done |
+| 5 — Router | Natural language → gear selection (trigger match → embedding → LLM) | Next |
+| 6 — Relation extraction | Heuristic SV relation extractor (EXTENDS, HAS_DRIVER, DRIVES…) | |
+| 7 — pgvector embeddings | Semantic entity search via HNSW index | |
+| 8 — TUI | Interactive REPL + live task queue + findings panes | |
+| 9 — Hardening | `icariumd doctor`, config validation, structured errors | |
 
-### Phase 3 — LLM Pool (next)
+### Phase 3 — LLM Pool ✓
 
-`src/zig/llm.zig` — two backends (Anthropic native tool_use, OpenAI-compatible
-json_schema), parallel call support via thread pool, structured JSON output
-enforced by schema. Done when two parallel LLM calls return valid JSON against
-a test schema.
+`src/zig/llm.zig` — two backends: Anthropic (native `tool_use` for structured
+output) and OpenAI-compatible (`json_schema` mode). Synchronous single calls via
+`llm.call()` and parallel fan-out via `llm.callParallel()` (thread-per-request).
+Backend auto-detected from endpoint URL; API key resolved from env at init time.
 
-### Phase 4 — Gear Executor (next, parallel with Phase 3)
+### Phase 4 — Gear Executor ✓
 
-`src/zig/executor.zig` — the core iteration loop. Runs each gear stage in order,
-template-fills `{stage.field}` references from prior outputs, handles
-`continue`/`done` termination conditions, enforces `max_iterations`. Done when
-`close_coverage` runs end-to-end with a stubbed LLM echo server.
+`src/zig/executor.zig` — the stage runner called by `gear.run`. Loops through
+each stage in order; for `llm`/`parallel_llm` stages calls `llm.call()` with the
+template-filled prompt; for `process` stages runs the command via `icr_exec_shell`.
+Template engine substitutes `{input}`, `{context}`, and `{stage_id}` tokens using
+prior stage outputs. Respects `termination.condition` and `max_iterations`. All
+four built-in gear files carry concrete prompt templates.
 
-### Phase 5 — Router
+### Phase 5 — Router (next)
 
-`src/zig/router.zig` — three-tier matching: exact trigger substring → embedding
-cosine similarity → LLM fallback. Pure structural queries (`"list all UVM agents"`)
-bypass gear selection and go directly to the entity store.
+`src/zig/router.zig` — three-tier query classification:
+
+1. **Structural match** — pure entity-store queries (`"list all UVM agents"`,
+   `"which modules have no covergroup"`) bypass gears entirely and go directly
+   to the `query` IPC handler.
+2. **Trigger match** — substring match against gear trigger lists. Already
+   implemented in `gear_registry.zig`; the router formalizes it as a first-pass.
+3. **Embedding similarity** — encode the query with the encoder model; cosine
+   similarity against cached gear trigger embeddings. Fallback when trigger
+   match misses.
+4. **LLM fallback** — for ambiguous or novel queries, a lightweight LLM call
+   with the gear list selects the best match or returns `null` for direct
+   entity-store dispatch.
+
+Done when a router test suite correctly routes 20 labelled queries across all
+four gear types plus the structural bypass case, with no LLM calls for
+trigger-matched or structural inputs.
 
 ---
 
@@ -481,7 +520,7 @@ the filter is skipped entirely.
 **In-process capability plugins**: `plugins/kanban.zig` is linked directly into
 the daemon rather than running as a sidecar process. The external-process
 protocol (Unix socket NDJSON with `{"ready":true,"socket":"..."}` handshake)
-is planned for Phase 10.
+is planned for Phase 9 (Hardening).
 
 ---
 

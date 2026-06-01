@@ -1,5 +1,5 @@
 name: debug
-version: 1
+version: 2
 
 triggers:
   - "debug"
@@ -13,12 +13,16 @@ triggers:
 stages:
   - id: decompose
     type: llm
+    prompt: "Break this DV debugging task into 3-5 specific questions to investigate. Be concrete about which signals, sequences, or components to examine.\n\nTask: {input}\n\nKnown entities:\n{context}"
   - id: hypothesize
     type: llm
+    prompt: "Generate 3 ranked hypotheses for the root cause of this bug, from most to least likely. For each: state the hypothesis, the evidence that supports it, and the evidence against it.\n\nDebug questions:\n{decompose}\n\nKnown entities:\n{context}"
   - id: verify
     type: parallel_llm
+    prompt: "For each hypothesis below, describe exactly what simulation, waveform inspection, or code review would confirm or rule it out.\n\nHypotheses:\n{hypothesize}"
   - id: synthesize
     type: llm
+    prompt: "Synthesize this debug analysis into a ranked list of suspected root causes and the single most important next debugging step for each.\n\nHypotheses:\n{hypothesize}\n\nVerification plan:\n{verify}"
 
 termination:
   condition: synthesize.status == done

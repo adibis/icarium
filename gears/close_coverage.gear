@@ -1,5 +1,5 @@
 name: close_coverage
-version: 1
+version: 2
 
 triggers:
   - "close coverage"
@@ -10,16 +10,21 @@ triggers:
 stages:
   - id: decompose
     type: llm
+    prompt: "You are a chip DV expert. Given this coverage closure request, identify which functional scenarios are most likely to close remaining coverage holes. List 3-5 concrete simulation scenarios.\n\nTask: {input}\n\nKnown entities:\n{context}"
   - id: execute
     type: process
+    prompt: "echo 'Coverage simulation plan: {decompose}' && date"
   - id: analyze
     type: llm
+    prompt: "Analyze these coverage simulation results and identify which holes were closed and which remain open.\n\nOriginal plan:\n{decompose}\n\nSimulation output:\n{execute}"
   - id: analyze_gaps
     type: parallel_llm
+    prompt: "For each remaining coverage gap, suggest the specific test scenario or stimulus values that would close it.\n\nGaps:\n{analyze}"
   - id: synthesize
     type: llm
+    prompt: "Synthesize this coverage closure analysis into a final prioritized action list.\n\nPlan:\n{decompose}\n\nGap analysis:\n{analyze_gaps}"
 
 termination:
   condition: synthesize.status == done
-  max_iterations: 10
+  max_iterations: 3
   on_max: return_last_synthesize

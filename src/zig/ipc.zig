@@ -3,9 +3,10 @@ const net = std.Io.net;
 const c = @import("c.zig").lib;
 const q = @import("queue.zig");
 const kb = @import("query.zig");
-const llm = @import("llm.zig");
-const plugins = @import("plugin_registry.zig");
-const gears = @import("gear_registry.zig");
+const llm      = @import("llm.zig");
+const executor = @import("executor.zig");
+const plugins  = @import("plugin_registry.zig");
+const gears    = @import("gear_registry.zig");
 
 const log = std.log.scoped(.ipc);
 
@@ -246,7 +247,43 @@ fn dispatch(msg: []const u8) ![]const u8 {
         }
     }
 
-    // ── Gear lookup (informational for now; executor wired in Phase 4) ────────
+    // ── Gear executor ─────────────────────────────────────────────────────────
+
+    if (matchMethod(msg, "gear.run")) {
+        const query = extractString(msg, "query") orelse extractString(msg, "q") orelse
+            return "{\"error\":\"missing query\"}";
+
+        const g = gears.findGear(query) orelse
+            return "{\"result\":{\"matched\":false}}";
+
+        log.info("gear.run: matched '{s}' for query '{s}'", .{ g.name, query });
+
+        const output = executor.run(q.g_ally, g, query, "") catch |err| {
+            log.warn("gear.run '{s}' failed: {}", .{ g.name, err });
+            return "{\"error\":\"gear execution failed\"}";
+        };
+        defer q.g_ally.free(output);
+
+        var di: usize = 0;
+        for (output) |ch| {
+            if (di + 2 >= g_data_buf.len) break;
+            switch (ch) {
+                '"'  => { g_data_buf[di] = '\\'; g_data_buf[di+1] = '"';  di += 2; },
+                '\\' => { g_data_buf[di] = '\\'; g_data_buf[di+1] = '\\'; di += 2; },
+                '\n' => { g_data_buf[di] = '\\'; g_data_buf[di+1] = 'n';  di += 2; },
+                '\r' => { g_data_buf[di] = '\\'; g_data_buf[di+1] = 'r';  di += 2; },
+                '\t' => { g_data_buf[di] = '\\'; g_data_buf[di+1] = 't';  di += 2; },
+                else => { g_data_buf[di] = ch; di += 1; },
+            }
+        }
+
+        return std.fmt.bufPrint(&g_resp_buf,
+            "{{\"result\":{{\"gear\":\"{s}\",\"output\":\"{s}\"}}}}",
+            .{ g.name, g_data_buf[0..di] },
+        ) catch return "{\"error\":\"buf overflow\"}";
+    }
+
+    // ── Gear lookup ───────────────────────────────────────────────────────────
     if (matchMethod(msg, "gear.find")) {
         const query = extractString(msg, "q") orelse extractString(msg, "query") orelse
             return "{\"error\":\"missing q\"}";
