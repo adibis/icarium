@@ -7,6 +7,7 @@ const llm      = @import("llm.zig");
 const executor = @import("executor.zig");
 const plugins  = @import("plugin_registry.zig");
 const gears    = @import("gear_registry.zig");
+const router   = @import("router.zig");
 
 const log = std.log.scoped(.ipc);
 
@@ -247,14 +248,64 @@ fn dispatch(msg: []const u8) ![]const u8 {
         }
     }
 
+    // ── Router classification ─────────────────────────────────────────────────
+
+    if (matchMethod(msg, "router.classify")) {
+        const qstr = extractString(msg, "q") orelse extractString(msg, "query") orelse
+            return "{\"error\":\"missing q\"}";
+        const decision = router.classify(qstr);
+        return switch (decision) {
+            .structural => |kind| std.fmt.bufPrint(&g_resp_buf,
+                "{{\"result\":{{\"route\":\"structural\",\"kind\":\"{s}\"}}}}",
+                .{kind.name()},
+            ) catch return "{\"error\":\"buf overflow\"}",
+            .gear => |g| std.fmt.bufPrint(&g_resp_buf,
+                "{{\"result\":{{\"route\":\"gear\",\"name\":\"{s}\"}}}}",
+                .{g.name},
+            ) catch return "{\"error\":\"buf overflow\"}",
+            .embedding_needed => "{\"result\":{\"route\":\"embedding_needed\"}}",
+            .llm_needed       => "{\"result\":{\"route\":\"llm_needed\"}}",
+        };
+    }
+
     // ── Gear executor ─────────────────────────────────────────────────────────
 
     if (matchMethod(msg, "gear.run")) {
         const query = extractString(msg, "query") orelse extractString(msg, "q") orelse
             return "{\"error\":\"missing query\"}";
 
-        const g = gears.findGear(query) orelse
-            return "{\"result\":{\"matched\":false}}";
+        const decision = router.classify(query);
+
+        // Structural queries bypass the gear executor entirely.
+        if (decision == .structural) {
+            const db = q.g_db orelse return "{\"error\":\"db not connected\"}";
+            const project = extractString(msg, "project");
+            const pid = kb.resolveProject(db, project);
+            const kind = decision.structural;
+            const data: []const u8 = if (kind == .entities)
+                kb.entities(db, pid, null, null, &g_data_buf) catch
+                    return "{\"error\":\"structural query failed\"}"
+            else if (kind == .relations)
+                kb.relations(db, pid, null, null, &g_data_buf) catch
+                    return "{\"error\":\"structural query failed\"}"
+            else if (kind == .no_covergroup)
+                kb.noCovergroup(db, pid, &g_data_buf) catch
+                    return "{\"error\":\"structural query failed\"}"
+            else data_blk: {
+                const focus = extractString(msg, "focus") orelse query;
+                break :data_blk kb.context(db, pid, focus, 1, &g_data_buf) catch
+                    return "{\"error\":\"structural query failed\"}";
+            };
+            return std.fmt.bufPrint(&g_resp_buf,
+                "{{\"result\":{{\"route\":\"structural\",\"kind\":\"{s}\",\"data\":{s}}}}}",
+                .{ kind.name(), data },
+            ) catch return "{\"error\":\"buf overflow\"}";
+        }
+
+        const g = switch (decision) {
+            .gear => |g| g,
+            else  => return "{\"result\":{\"matched\":false}}",
+        };
 
         log.info("gear.run: matched '{s}' for query '{s}'", .{ g.name, query });
 
