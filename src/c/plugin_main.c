@@ -1,11 +1,13 @@
 /*
  * icarium-indexer-codebert — built-in NER indexer plugin
  *
- * Protocol (icarium plugin subprocess contract):
- *   argv[1]  : models directory (overrides ICARIUM_MODELS env)
- *   stdin    : newline-delimited absolute file paths
- *   stdout   : newline-delimited JSON entity records (plugin_schema.json format)
- *   stderr   : human-readable diagnostics
+ * Modes (selected via argv):
+ *   (default)         stdin: file paths → stdout: entity NDJSON
+ *   --encode-server   stdin: text lines → stdout: {"embed":[...768 floats...]}
+ *
+ * argv[1] : optional models directory (overrides ICARIUM_MODELS env),
+ *           OR the --encode-server flag if that is the only argument.
+ * argv[2] : models directory when argv[1] is --encode-server.
  *
  * No DB access — the daemon validates and ingests stdout records.
  */
@@ -151,12 +153,59 @@ static void index_file(IcrRuntime *rt, IcrTok *tok, const char *file_path) {
     fflush(stdout);
 }
 
+/* ── Encode-server mode ───────────────────────────────────────────────────── */
+
+/* Reads text lines from stdin; for each, emits {"embed":[...768 floats...]}.
+ * Outputs {"embed":null} on tokenization or inference failure so the daemon
+ * always gets one response per request and the protocol stays in sync. */
+static int run_encode_server(IcrRuntime *rt, IcrTok *tok) {
+    char line[8192];
+    while (fgets(line, (int)sizeof line, stdin)) {
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
+            line[--len] = '\0';
+        if (len == 0) continue;
+
+        int64_t ids[ICR_MAX_SEQ], mask[ICR_MAX_SEQ];
+        int seq_len = icr_tok_encode(tok, line, ids, mask, ICR_MAX_SEQ);
+        if (seq_len < 2) {
+            fputs("{\"embed\":null}\n", stdout);
+            fflush(stdout);
+            continue;
+        }
+
+        IcrEmbed emb;
+        if (icr_encode_run(rt, ids, mask, seq_len, &emb) != 0) {
+            fputs("{\"embed\":null}\n", stdout);
+            fflush(stdout);
+            continue;
+        }
+
+        fputs("{\"embed\":[", stdout);
+        for (int i = 0; i < ICR_EMBED_DIM; i++) {
+            if (i > 0) fputc(',', stdout);
+            fprintf(stdout, "%.6g", (double)emb.embed[i]);
+        }
+        fputs("]}\n", stdout);
+        fflush(stdout);
+    }
+    return 0;
+}
+
 /* ── Entry point ──────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv) {
-    /* Resolve models directory: argv[1] > env > default */
-    const char *models_dir = (argc > 1 && argv[1][0] != '\0') ? argv[1]
-                           : getenv("ICARIUM_MODELS");
+    /* Scan argv for --encode-server flag and positional models directory. */
+    int encode_server = 0;
+    const char *models_dir = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--encode-server") == 0) {
+            encode_server = 1;
+        } else if (argv[i][0] != '-' && !models_dir) {
+            models_dir = argv[i];
+        }
+    }
+    if (!models_dir) models_dir = getenv("ICARIUM_MODELS");
     if (!models_dir || models_dir[0] == '\0') models_dir = "models";
 
     char ner_path[1024], enc_path[1024], voc_path[1024], mrg_path[1024];
@@ -180,16 +229,22 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    char line[4096];
-    while (fgets(line, sizeof line, stdin)) {
-        size_t len = strlen(line);
-        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
-            line[--len] = '\0';
-        if (len == 0) continue;
-        index_file(rt, tok, line);
+    int rc;
+    if (encode_server) {
+        rc = run_encode_server(rt, tok);
+    } else {
+        char line[4096];
+        while (fgets(line, (int)sizeof line, stdin)) {
+            size_t len = strlen(line);
+            while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
+                line[--len] = '\0';
+            if (len == 0) continue;
+            index_file(rt, tok, line);
+        }
+        rc = 0;
     }
 
     icr_runtime_free(rt);
     icr_tok_free(tok);
-    return 0;
+    return rc;
 }
