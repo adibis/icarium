@@ -2,9 +2,12 @@
 // Tiers 3 (embedding) and 4 (LLM) are stubs returning .embedding_needed /
 // .llm_needed until those phases are built.
 
-const std = @import("std");
+const std    = @import("std");
 const gear_mod = @import("gear.zig");
 const gears    = @import("gear_registry.zig");
+const embedr   = @import("embed_runner.zig");
+
+const EMBED_THRESHOLD: f32 = 0.70; // minimum cosine similarity for tier-3 match
 
 pub const StructuralKind = enum {
     entities,
@@ -30,12 +33,48 @@ pub const RouteDecision = union(enum) {
 };
 
 // classify returns the routing decision for a natural-language query.
-// Call order: structural → trigger match → embedding stub.
+// Call order: structural → trigger match → embedding similarity → stub.
 // Never allocates; safe to call from the single-threaded IPC loop.
 pub fn classify(query: []const u8) RouteDecision {
     if (isStructural(query)) |kind| return .{ .structural = kind };
     if (gears.findGear(query)) |g|  return .{ .gear = g };
+    if (embedr.isRunning() and gears.g_trigger_embeds.len > 0) {
+        var qembed: [768]f32 = undefined;
+        embedr.encode(query, &qembed) catch return .embedding_needed;
+        if (bestGear(&qembed)) |g| return .{ .gear = g };
+    }
     return .embedding_needed;
+}
+
+// ── Tier 3: embedding similarity ─────────────────────────────────────────────
+
+fn bestGear(qembed: *const [768]f32) ?*const gear_mod.Gear {
+    var best_score: f32 = EMBED_THRESHOLD;
+    var best_gear_idx: ?usize = null;
+
+    for (gears.g_trigger_embeds) |*te| {
+        const score = cosine(qembed, &te.embed);
+        if (score > best_score) {
+            best_score    = score;
+            best_gear_idx = te.gear_idx;
+        }
+    }
+
+    if (best_gear_idx) |i| return &gears.g_gears.items[i];
+    return null;
+}
+
+fn cosine(a: *const [768]f32, b: *const [768]f32) f32 {
+    var dot: f32 = 0;
+    var na:  f32 = 0;
+    var nb:  f32 = 0;
+    for (0..768) |i| {
+        dot += a[i] * b[i];
+        na  += a[i] * a[i];
+        nb  += b[i] * b[i];
+    }
+    const denom = @sqrt(na) * @sqrt(nb);
+    return if (denom < 1e-9) 0 else dot / denom;
 }
 
 // ── Tier 1: structural pattern matching ──────────────────────────────────────

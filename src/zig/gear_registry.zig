@@ -1,11 +1,20 @@
 // Gear registry — discovers *.gear files at startup and provides trigger matching.
 
-const std = @import("std");
-const gear = @import("gear.zig");
+const std    = @import("std");
+const gear   = @import("gear.zig");
+const embedr = @import("embed_runner.zig");
 
 const log = std.log.scoped(.gears);
 
 pub var g_gears: std.ArrayListUnmanaged(gear.Gear) = .empty;
+
+// One entry per (gear, trigger) pair — pre-computed at startup.
+pub const TriggerEmbed = struct {
+    gear_idx: usize,
+    embed:    [768]f32,
+};
+pub var g_trigger_embeds: []TriggerEmbed = &.{};
+var g_embed_slice_ally: ?std.mem.Allocator = null;
 
 // Load all *.gear files from dir_path. Silently skips missing directories.
 pub fn loadDir(ally: std.mem.Allocator, dir_path: []const u8) !void {
@@ -56,6 +65,40 @@ pub fn loadAll(ally: std.mem.Allocator) !void {
     }
 
     log.info("{d} gear(s) loaded", .{g_gears.items.len});
+}
+
+// loadEmbeddings pre-computes trigger embeddings for all loaded gears using the
+// running encode-server subprocess.  Must be called after loadAll() and after
+// embed_runner.start().  Silently skips if the encoder is not running.
+pub fn loadEmbeddings(ally: std.mem.Allocator) !void {
+    if (!embedr.isRunning()) return;
+
+    // Count total triggers.
+    var total: usize = 0;
+    for (g_gears.items) |*g| total += g.triggers.len;
+    if (total == 0) return;
+
+    const embeds = try ally.alloc(TriggerEmbed, total);
+    errdefer ally.free(embeds);
+
+    var idx: usize = 0;
+    for (g_gears.items, 0..) |*g, gi| {
+        for (g.triggers) |trigger| {
+            var e: [768]f32 = undefined;
+            embedr.encode(trigger, &e) catch |err| {
+                log.warn("embed failed for trigger '{s}': {}", .{ trigger, err });
+                // Fill with zeros so this entry is never selected (cosine = 0).
+                @memset(&e, 0);
+            };
+            embeds[idx] = .{ .gear_idx = gi, .embed = e };
+            idx += 1;
+        }
+    }
+
+    g_trigger_embeds    = embeds;
+    g_embed_slice_ally  = ally;
+    log.info("cached {d} trigger embedding(s) for {d} gear(s)",
+             .{ total, g_gears.items.len });
 }
 
 // Return the first gear whose trigger appears in query (case-insensitive).

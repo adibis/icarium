@@ -6,8 +6,9 @@ const q = @import("queue.zig");
 const ipc = @import("ipc.zig");
 const llm = @import("llm.zig");
 const config = @import("config.zig");
-const gear_registry = @import("gear_registry.zig");
+const gear_registry   = @import("gear_registry.zig");
 const plugin_registry = @import("plugin_registry.zig");
+const embedr          = @import("embed_runner.zig");
 
 const log = std.log.scoped(.icariumd);
 
@@ -39,14 +40,22 @@ pub fn cmd_start(io: std.Io) !void {
         log.warn("postgresql unavailable — task queue is in-memory only", .{});
     }
 
+    // Load config first — embed server and LLM both need it.
+    var cfg_buf: [4096]u8 = undefined;
+    const cfg = config.load(&cfg_buf, "icarium.toml") catch config.Config{};
+    llm.init(io, cfg.llm_endpoint, cfg.llm_model, cfg.llm_api_key_env);
+
     gear_registry.loadAll(q.g_ally) catch |e|
         log.warn("gear loading failed: {}", .{e});
     plugin_registry.loadAll(q.g_ally) catch |e|
         log.warn("plugin loading failed: {}", .{e});
 
-    var cfg_buf: [4096]u8 = undefined;
-    const cfg = config.load(&cfg_buf, "icarium.toml") catch config.Config{};
-    llm.init(io, cfg.llm_endpoint, cfg.llm_model, cfg.llm_api_key_env);
+    // Start encoder server and pre-compute trigger embeddings.
+    // Failures are non-fatal — tier-3 routing simply stays disabled.
+    embedr.start(cfg.indexer_plugin, cfg.indexer_models_dir) catch |e|
+        log.warn("encode-server not started: {}", .{e});
+    gear_registry.loadEmbeddings(q.g_ally) catch |e|
+        log.warn("trigger embedding failed: {}", .{e});
 
     log.info("icariumd started (pid={})", .{std.c.getpid()});
 
