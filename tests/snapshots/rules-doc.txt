@@ -31,6 +31,14 @@ fan out after, or prove the skew harmless.
 honors:
 fixtures: fixtures/CDC-005
 
+CDC-006 [err] Glitchy combinational source on a control crossing
+A synchronizer first stage traces back through logic alone to
+top-level ports, with no registering flop: the chain can sample
+a transient no stable input ever held. Register the source in
+its own domain before synchronizing it.
+honors: cdc_sync
+fixtures: fixtures/CDC-006
+
 CDC-008 [err] Clock signal used as data
 A bit that drives a flop clock (or an SDC clock port) also feeds
 a non-clock input: clocks ride low-skew networks and sampling
@@ -38,6 +46,14 @@ them as data breaks STA. Clock-distribution cells, clock pins,
 and off-chip forwarding are exempt; the rest is a wiring bug.
 honors:
 fixtures: fixtures/CDC-008
+
+CDC-010 [err] Glitch on the clock network from a wrong-domain control signal
+A clock mux select or gate enable is driven from a domain
+async to every clock the cell gates: the transition chops the
+output clock into runt pulses no sink synchronizer can heal.
+Synchronize the control into one of the gated-clock domains.
+honors:
+fixtures: fixtures/CDC-010
 
 CDC-011 [warn] Unconstrained primary input captured by clocked logic
 A top input with no set_input_delay clock typing reaches a

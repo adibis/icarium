@@ -44,9 +44,14 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         try std.fmt.allocPrint(ctx.alloc, "flop {s}", .{ctx.mod.cells[sc].name})
     else
         try std.fmt.allocPrint(ctx.alloc, "port {s}", .{x.src.port});
-    const message = try std.fmt.allocPrint(ctx.alloc,
-        "unsynchronized control crossing {s} -> {s} (src: {s}): destination flop {s} has no second-stage synchronizer (chain depth = {d})",
-        .{ x.src_clk, x.dst_clk, src_desc, dst_name, depth.depth });
+    const message = if (std.mem.eql(u8, x.dst_clk, "unknown"))
+        try std.fmt.allocPrint(ctx.alloc,
+            "unsynchronized control crossing {s} -> {s} (src: {s}): destination flop {s} has no second-stage synchronizer (chain depth = {d}; destination clock unresolved)",
+            .{ x.src_clk, x.dst_clk, src_desc, dst_name, depth.depth })
+    else
+        try std.fmt.allocPrint(ctx.alloc,
+            "unsynchronized control crossing {s} -> {s} (src: {s}): destination flop {s} has no second-stage synchronizer (chain depth = {d})",
+            .{ x.src_clk, x.dst_clk, src_desc, dst_name, depth.depth });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

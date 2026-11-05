@@ -50,7 +50,7 @@ pub const Model = struct {
         if (self.shareExclusiveSet(a, b)) return true;
         const ra = self.rootOf(a);
         const rb = self.rootOf(b);
-        if (ra != null and rb != null and std.mem.eql(u8, ra.?, rb.?)) return false;
+        if (std.mem.eql(u8, ra, rb)) return false;
         // Undeclared relations default async: doubt must fire, not pass.
         return true;
     }
@@ -85,7 +85,9 @@ pub const Model = struct {
         return false;
     }
 
-    fn rootOf(self: *const Model, name: []const u8) ?[]const u8 {
+    // Master-chain root for generated clocks; unknown names
+    // resolve to themselves, so callers never see null.
+    pub fn rootOf(self: *const Model, name: []const u8) []const u8 {
         var cur = name;
         var hops: usize = 0;
         while (hops < 32) : (hops += 1) {
@@ -134,8 +136,6 @@ fn memberHit(g: Group, name: []const u8) bool {
     return false;
 }
 
-// Linear scan per call: resolve each pattern once and reuse
-// it — never call this per bit inside a design-size loop.
 // Linear scan per call: resolve each pattern once and reuse
 // it — never call this per bit inside a design-size loop.
 fn globLookup(map: *const std.StringHashMapUnmanaged([]const u8), port: []const u8) ?[]const u8 {

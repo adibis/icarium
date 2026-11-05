@@ -15,7 +15,7 @@ pub const Table = struct {
     // the frame that built them, so a stored pointer would dangle.
     alloc: std.mem.Allocator,
     backing: *std.heap.ArenaAllocator,
-    domains: std.AutoHashMapUnmanaged(usize, []const u8),
+    domains: std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
     d_bit_to_flop: std.AutoHashMapUnmanaged(u32, usize),
     srst_data_bit_to_flop: std.AutoHashMapUnmanaged(u32, usize),
     memo: std.AutoHashMapUnmanaged(usize, Entry),
@@ -26,7 +26,7 @@ pub const Table = struct {
         parent.destroy(self.backing);
     }
 
-    pub fn domainOf(self: *const Table, cell: usize) ?[]const u8 {
+    pub fn domainOf(self: *const Table, cell: usize) ?clock.trace.Domain {
         return self.domains.get(cell);
     }
 
@@ -66,7 +66,7 @@ pub const Table = struct {
                 t.srst_data_bit_to_flop.get(cq.sig) orelse break;
             if (visited.contains(nxt)) break;
             const dom = t.domains.get(nxt) orelse break;
-            if (!std.mem.eql(u8, dom, head_clock)) break;
+            if (!std.mem.eql(u8, dom.name, head_clock)) break;
             try stages.append(t.alloc, nxt);
             try visited.put(t.alloc, nxt, {});
             cur = nxt;
@@ -83,7 +83,7 @@ pub const Table = struct {
         const c = mod.cells[head];
         const q = portBits(c, "Q") orelse return null;
         if (q.len != 1 or q[0] != .sig) return null;
-        const head_clock = t.domains.get(head) orelse return null;
+        const head_clock = (t.domains.get(head) orelse return null).name;
         const loads = mod.loads_of.get(q[0].sig) orelse return null;
         for (loads.items) |loc| {
             const ci = loc.cell orelse continue;
@@ -95,7 +95,7 @@ pub const Table = struct {
                 const nxt = t.d_bit_to_flop.get(yb.sig) orelse continue;
                 if (nxt == head) continue;
                 const dom = t.domains.get(nxt) orelse continue;
-                if (!std.mem.eql(u8, dom, head_clock)) continue;
+                if (!std.mem.eql(u8, dom.name, head_clock)) continue;
                 if (t.srst_data_bit_to_flop.get(q[0].sig)) |behind| {
                     if (behind == nxt) continue;
                 }
@@ -202,8 +202,8 @@ pub fn build(
     errdefer backing.deinit();
     const alloc = backing.allocator();
 
-    var domains = std.AutoHashMapUnmanaged(usize, []const u8).empty;
-    for (asg.flops) |f| try domains.put(alloc, f.cell, f.domain.name);
+    var domains = std.AutoHashMapUnmanaged(usize, clock.trace.Domain).empty;
+    for (asg.flops) |f| try domains.put(alloc, f.cell, f.domain);
 
     var d_bit_to_flop = std.AutoHashMapUnmanaged(u32, usize).empty;
     for (mod.cells, 0..) |c, ci| {

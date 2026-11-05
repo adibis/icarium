@@ -84,6 +84,7 @@ fn usage(w: anytype) !void {
         \\      --skip IDS          comma-separated rule blocklist
         \\      --format FMT        text (default) or ids
         \\      --sync-depth N      required chain depth (default 2)
+        \\      --cdc-010-no-heuristic  disable library pin-name guessing
         \\  rules             list rules (--list) or show docs (--doc)
         \\
     );

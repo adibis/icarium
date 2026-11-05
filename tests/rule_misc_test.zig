@@ -296,3 +296,243 @@ test "async resets stay out of CDC-011" {
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
 }
+
+const comb_src =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "p1": {"direction": "input", "bits": [4]},
+    \\        "p2": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "g": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [4], "B": [5], "Y": [10]}
+    \\        },
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [10], "Q": [11]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [11], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const comb_src_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports p1]
+    \\set_input_delay -clock ca 1.0 [get_ports p2]
+;
+
+const comb_src_same =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock cb 1.0 [get_ports p1]
+    \\set_input_delay -clock cb 1.0 [get_ports p2]
+;
+
+test "unregistered foreign ports before a chain fire CDC-006" {
+    var l = try loadAll(comb_src, comb_src_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-006"));
+    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "p1 (clock=ca)") != null);
+
+    var s = try loadAll(comb_src, comb_src_same);
+    defer freeAll(&s);
+    const sfs = try checkAll(&s);
+    try std.testing.expectEqual(@as(usize, 0), sfs.len);
+
+    var u = try loadAll(comb_src, fanout_sdc);
+    defer freeAll(&u);
+    const ufs = try checkAll(&u);
+    try std.testing.expectEqual(@as(usize, 2), ufs.len);
+    for (ufs) |f| try std.testing.expectEqualStrings("CDC-011", f.rule);
+}
+
+const mux_ctl =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "cc": {"direction": "input", "bits": [4]},
+    \\        "en_d": {"direction": "input", "bits": [5]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "enf": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [4], "D": [5], "Q": [10]}
+    \\        },
+    \\        "mx": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [10], "Y": [11]}
+    \\        },
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "Q": [13]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [13], "Q": [12]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [12], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mux_ctl_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\create_clock -name cc -period 11 [get_ports cc]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb} -group {cc}
+    \\set_input_delay -clock cc 1.0 [get_ports en_d]
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+;
+
+test "a select async to every gated clock fires CDC-010" {
+    var l = try loadAll(mux_ctl, mux_ctl_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-010"));
+    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "control pin S") != null);
+}
+
+const mux_shared =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "en_d": {"direction": "input", "bits": [5]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "enf": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [5], "Q": [10]}
+    \\        },
+    \\        "mx": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [10], "Y": [11]}
+    \\        },
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "Q": [13]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [13], "Q": [12]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [12], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mux_shared_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock cb 1.0 [get_ports en_d]
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+;
+
+test "a select sharing a gated clock stays silent" {
+    var l = try loadAll(mux_shared, mux_shared_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
+const mux_portsel =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "sel": {"direction": "input", "bits": [10]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "mx": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [10], "Y": [11]}
+    \\        },
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "Q": [13]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [13], "Q": [12]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [12], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mux_portsel_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports sel]
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+;
+
+test "a port-driven select is not a wrong-domain flop" {
+    var l = try loadAll(mux_portsel, mux_portsel_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}

@@ -143,6 +143,33 @@ pub fn enumerate(
     return .{ .backing = backing, .crossings = try out.toOwnedSlice(alloc) };
 }
 
+// Both cells clocked by the identical bit set: same net,
+// same edge, synchronous by physics rather than by name.
+fn sameClockNet(mod: *const ir.types.Module, a: usize, b: usize) bool {
+    if (samePinBits(mod.cells[a], mod.cells[b], "CLK")) return true;
+    if (samePinBits(mod.cells[a], mod.cells[b], "G")) return true;
+    if (!clock.cells.isLatch(mod.cells[a].type)) return false;
+    if (!clock.cells.isLatch(mod.cells[b].type)) return false;
+    return samePinBits(mod.cells[a], mod.cells[b], "EN");
+}
+
+// Blackbox outputs and async memory reads leave without a
+// clock, so a shared clock net says nothing about them.
+fn opaqueSource(c: ir.types.Cell) bool {
+    if (c.blackbox) return true;
+    return clock.cells.isMemRead(c.type) and !readEnabled(c);
+}
+
+fn samePinBits(a: ir.types.Cell, b: ir.types.Cell, pin: []const u8) bool {
+    const ca = portBits(a, pin) orelse return false;
+    const cb = portBits(b, pin) orelse return false;
+    if (ca.len == 0 or ca.len != cb.len) return false;
+    for (ca, cb) |x, y| {
+        if (x != .sig or y != .sig or x.sig != y.sig) return false;
+    }
+    return true;
+}
+
 fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
     for (c.ports) |p| {
         if (std.mem.eql(u8, p.name, want)) return p.bits;
@@ -489,6 +516,12 @@ const Enumerator = struct {
     // Async when any leg pair is async: a muxed clock is only as
     // synchronous as its least synchronous leg. Unknown forces true.
     fn asyncFor(en: *Enumerator, pr: Pair) bool {
+        // Same clock net beats every doubt, including unknown: one
+        // wire means one edge, whatever the tracer resolved. Opaque
+        // sources stay out: unclocked data proves nothing by net.
+        if (pr.src_cell) |sc| {
+            if (!opaqueSource(en.mod.cells[sc]) and sameClockNet(en.mod, sc, pr.dst_cell)) return false;
+        }
         const dst = en.dstDomain(pr) orelse return true;
         if (std.mem.eql(u8, dst.name, "unknown")) return true;
         if (pr.src_cell != null) {

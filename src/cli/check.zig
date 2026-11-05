@@ -14,6 +14,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var skip_s: ?[]const u8 = null;
     var format: []const u8 = "text";
     var sync_depth: u32 = 2;
+    var heuristic = true;
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const a = argv[i];
@@ -35,6 +36,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         } else if (std.mem.eql(u8, a, "--format") and i + 1 < argv.len) {
             format = argv[i + 1];
             i += 1;
+        } else if (std.mem.eql(u8, a, "--cdc-010-no-heuristic")) {
+            heuristic = false;
         } else if (std.mem.eql(u8, a, "--sync-depth") and i + 1 < argv.len) {
             sync_depth = std.fmt.parseInt(u32, argv[i + 1], 10) catch {
                 err.print("check: bad --sync-depth: {s}\n", .{argv[i + 1]}) catch {};
@@ -117,7 +120,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         .table = &table,
         .marks = &marks,
         .buses = buses,
-        .cfg = .{ .sync_depth = sync_depth },
+        .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic },
         .alloc = scratch,
     };
     const only_arg: ?[]const []const u8 = if (only_s == null) null else only;
