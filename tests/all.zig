@@ -10,4 +10,5 @@ test {
     _ = @import("sdc_tokens_test.zig");
     _ = @import("sdc_commands_test.zig");
     _ = @import("sdc_model_test.zig");
+    _ = @import("sync_table_test.zig");
 }
