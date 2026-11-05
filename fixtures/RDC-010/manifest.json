@@ -1,0 +1,1 @@
+{"bad_chain_clock.sv": ["RDC-001","RDC-010"],"bad_internal_tap.sv": ["RDC-010"],"bad_output_comb.sv": ["RDC-004","RDC-010"],"note_chain.sv": ["RDC-010"],"note_single_flop.sv": ["RDC-010"],"warn_raw_root.sv": ["RDC-010"]}

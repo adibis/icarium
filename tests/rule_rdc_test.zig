@@ -95,6 +95,22 @@ fn onlyRule(fs: []rule.finding.Finding, id: []const u8) bool {
     return std.mem.eql(u8, fs[0].rule, id);
 }
 
+// Chain records ride along: the note fires on every recognized
+// chain by design, so exclusivity tests admit RDC-010 notes
+// while still rejecting any second violation or RDC-010 err.
+fn onlyRulePlusNotes(fs: []rule.finding.Finding, id: []const u8) bool {
+    var main = false;
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, id)) {
+            if (main) return false;
+            main = true;
+        } else if (!std.mem.eql(u8, f.rule, "RDC-010") or f.severity != .note) {
+            return false;
+        }
+    }
+    return main;
+}
+
 const two_sdc =
     \\create_clock -name ca -period 10 [get_ports ca]
     \\create_clock -name cb -period 7 [get_ports cb]
@@ -191,7 +207,7 @@ test "a producer value mismatch fires RDC-002 alone" {
     var l = try loadAll(flop_mismatch, flop_mismatch_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expect(onlyRule(fs, "RDC-002"));
+    try std.testing.expect(onlyRulePlusNotes(fs, "RDC-002"));
 }
 
 const port_mismatch =
@@ -490,7 +506,7 @@ test "a chain loading assertion fires RDC-007 alone" {
     var l = try loadAll(stuck_chain, stuck_chain_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expect(onlyRule(fs, "RDC-007"));
+    try std.testing.expect(onlyRulePlusNotes(fs, "RDC-007"));
 }
 
 const missed_domain =
@@ -555,7 +571,7 @@ test "a missed domain fires RDC-008 alone" {
     var l = try loadAll(missed_domain, missed_domain_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expect(onlyRule(fs, "RDC-008"));
+    try std.testing.expect(onlyRulePlusNotes(fs, "RDC-008"));
 }
 
 const rdc9_split =
@@ -684,4 +700,57 @@ test "ordered release through a derived reset stays silent for RDC-009" {
     for (fs) |f| {
         try std.testing.expect(!std.mem.eql(u8, f.rule, "RDC-009"));
     }
+}
+
+const rdc10_tap =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rst": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [13]}
+    \\      },
+    \\      "cells": {
+    \\        "s1": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": ["0"], "ARST": [3], "Q": [11]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "ARST": [3], "Q": [12]}
+    \\        },
+    \\        "qc": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [11], "Q": [13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "chain tap reports a note plus an err for RDC-010" {
+    var l = try loadAll(rdc10_tap, rdc9_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var notes: usize = 0;
+    var errs: usize = 0;
+    for (fs) |f| {
+        if (!std.mem.eql(u8, f.rule, "RDC-010")) continue;
+        switch (f.severity) {
+            .note => notes += 1,
+            .err => errs += 1,
+            .warn => {},
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 1), notes);
+    try std.testing.expectEqual(@as(usize, 1), errs);
 }

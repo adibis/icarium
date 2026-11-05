@@ -1,1 +1,1 @@
-{"bad_flop_mismatch.sv": ["RDC-002"], "bad_port_declared.sv": ["RDC-002"], "good_polarity_match.sv": [], "good_resetless_producer.sv": []}
+{"bad_flop_mismatch.sv": ["RDC-002","RDC-010"],"bad_port_declared.sv": ["RDC-002"],"good_polarity_match.sv": [],"good_resetless_producer.sv": []}

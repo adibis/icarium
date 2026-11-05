@@ -32,6 +32,7 @@ const rdc006 = @import("rdc006.zig");
 const rdc007 = @import("rdc007.zig");
 const rdc008 = @import("rdc008.zig");
 const rdc009 = @import("rdc009.zig");
+const rdc010 = @import("rdc010.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -85,6 +86,7 @@ pub const rules = [_]Rule{
     rdc007.rule,
     rdc008.rule,
     rdc009.rule,
+    rdc010.rule,
 };
 
 fn knownAttr(name: []const u8) bool {

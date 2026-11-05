@@ -1,1 +1,1 @@
-{"bad_reset_port_missed_domain.sv": ["RDC-008"], "good_reset_port_both_domains.sv": []}
+{"bad_reset_port_missed_domain.sv": ["RDC-008","RDC-010"],"good_reset_port_both_domains.sv": ["RDC-010"]}

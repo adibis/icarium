@@ -1,6 +1,8 @@
 // RDC-009: destination reset derives from the source's own root
 // through a synchronizer chain, so the destination wakes strictly
 // after the source data settles. Ordered release, silent.
+// RDC-010 still notes the chain and warns on the source's raw
+// root: the mix is ordered here, but uniformity gets a review.
 module good_ordered_release (
     input  wire clk,
     input  wire rst,

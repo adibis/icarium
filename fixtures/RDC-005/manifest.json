@@ -1,1 +1,1 @@
-{"bad_multi_source_reset.sv": ["RDC-005"], "good_muxed_reset.sv": []}
+{"bad_multi_source_reset.sv": ["RDC-005"],"good_muxed_reset.sv": ["RDC-010"]}

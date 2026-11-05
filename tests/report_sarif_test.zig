@@ -513,6 +513,19 @@ const golden =
     \\              "defaultConfiguration": {
     \\                "level": "error"
     \\              }
+    \\            },
+    \\            {
+    \\              "id": "RDC-010",
+    \\              "name": "RDC-010",
+    \\              "shortDescription": {
+    \\                "text": "Reset synchronizer chain record and checks"
+    \\              },
+    \\              "fullDescription": {
+    \\                "text": "Every recognized reset synchronizer is recorded for review:\nstages, clock, polarity, head constant, async root. Shape\ndefects report beside the record: a chain on the wrong clock\nfor its consumers, internal taps feeding resets, and gates\nediting the output all break the release contract; consumers\non the raw root in a served domain report at warn."
+    \\              },
+    \\              "defaultConfiguration": {
+    \\                "level": "note"
+    \\              }
     \\            }
     \\          ]
     \\        }

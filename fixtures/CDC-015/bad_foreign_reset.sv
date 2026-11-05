@@ -4,6 +4,8 @@
 // same shape; the reference fires both.)
 // RDC-009 stays silent: the foreign reset still releases after
 // the shared global root, so source data settles first.
+// RDC-010 frames the reset side as a single-flop chain serving
+// a foreign clock: chain-clock errors plus the record note.
 module bad_foreign_reset (
     input  logic src_clk,
     input  logic dst_clk,

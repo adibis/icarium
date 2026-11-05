@@ -1,1 +1,1 @@
-{"bad_chain_deassert_polarity.sv": ["RDC-007"], "good_chain_deassert_polarity.sv": []}
+{"bad_chain_deassert_polarity.sv": ["RDC-007","RDC-010"],"good_chain_deassert_polarity.sv": ["RDC-010"]}

@@ -5,15 +5,72 @@ const ir = @import("../ir.zig");
 const trace = @import("trace.zig");
 
 // Recognised reset-synchroniser chains: the async-assert /
-// sync-deassert idiom, N≥2 same-clock flops sharing one async
+// sync-deassert idiom, same-clock flops sharing one async
 // reset, chained Q→D behind a constant-fed head. Structural
 // matches only; user marks join the member set, never chains.
+// Single-flop syncs count with proof of service: a lone flop
+// is a synchroniser only when its Q reaches an async pin.
 pub const Chain = struct {
     // Tail first, head last: flops[0] faces downstream.
     flops: []usize,
     head_d: ir.bits.Bit,
     polarity: trace.Polarity,
 };
+
+pub const Load = struct { cell: usize, via_comb: bool, comb: usize };
+
+// Async-pin arrivals reachable from a Q through combinational
+// loads: sequential cells end the walk unexpanded, so a flop in
+// the middle starts a new release event this walk must not cross.
+pub fn asyncLoads(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    start: usize,
+) error{OutOfMemory}![]Load {
+    var found = std.ArrayListUnmanaged(Load).empty;
+    var seen = std.AutoHashMapUnmanaged(u32, void).empty;
+    var frontier = std.ArrayListUnmanaged(FrontBit).empty;
+    const q = portBits(mod.cells[start], "Q") orelse return &.{};
+    for (q) |b| {
+        if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = 0, .via_comb = false, .comb = 0 });
+    }
+    var head: usize = 0;
+    while (head < frontier.items.len) : (head += 1) {
+        const fb = frontier.items[head];
+        if (seen.contains(fb.bit)) continue;
+        try seen.put(alloc, fb.bit, {});
+        const loads = mod.loads_of.get(fb.bit) orelse continue;
+        for (loads.items) |loc| {
+            const ci = loc.cell orelse continue;
+            const c = mod.cells[ci];
+            if (clock.cells.isSequential(c.type)) {
+                const ap = cells.canonicalAsyncPin(c) orelse continue;
+                if (!std.mem.eql(u8, loc.port, ap.pin)) continue;
+                try found.append(alloc, .{ .cell = ci, .via_comb = fb.via_comb, .comb = fb.comb });
+                continue;
+            }
+            if (c.blackbox or fb.depth >= 12) continue;
+            // Plain buffers pass silent: slang buffers every net,
+            // so only value-changing gates mark the path edited.
+            var via = fb.via_comb;
+            var first = fb.comb;
+            if (!std.mem.eql(u8, c.type, "$buf") and !via) {
+                via = true;
+                first = ci;
+            }
+            for (c.ports) |p| {
+                if (p.direction != .output) continue;
+                if (!std.mem.eql(u8, p.name, "Y") and !std.mem.eql(u8, p.name, "Q")) continue;
+                for (p.bits) |ob| {
+                    if (ob == .sig) try frontier.append(alloc, .{ .bit = ob.sig, .depth = fb.depth + 1, .via_comb = via, .comb = first });
+                }
+            }
+        }
+    }
+    return found.toOwnedSlice(alloc);
+}
+
+const FrontBit = struct { bit: u32, depth: u8, via_comb: bool, comb: usize };
 
 pub const Syncs = struct {
     backing: *std.heap.ArenaAllocator,
@@ -63,7 +120,12 @@ pub fn find(
         if (std.mem.eql(u8, tail_clk.name, "unknown")) continue;
         const found = try traceChain(alloc, mod, &by_cell, domains, ci, ar);
         const ch = found orelse continue;
-        if (ch.flops.len < 2) continue;
+        if (ch.flops.len < 2) {
+            // A lone constant-fed flop proves synchroniser duty by
+            // serving an async pin; anything else is plain logic.
+            const loads = try asyncLoads(alloc, mod, ci);
+            if (loads.len == 0) continue;
+        }
         const head = ch.flops[ch.flops.len - 1];
         const slot = try best.getOrPut(alloc, head);
         if (!slot.found_existing or ch.flops.len > slot.value_ptr.flops.len) {
@@ -102,7 +164,10 @@ const Sig = struct { origin: trace.Origin, ref: []const u8, flips: u32 };
 
 // Walk Q→D back from the tail; the chain counts only when its
 // head is constant-fed. Anything else (ports, comb, foreign
-// clocks, split resets, multi-bit D) fails the shape.
+// clocks, split resets, multi-bit D) fails the shape. Buffers
+// pass through: slang buffers every net, so direct-Q rigidity
+// would blind the finder on real netlists. Inverters fail it:
+// a flipped inter-stage value voids the head-D contract.
 fn traceChain(
     alloc: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -127,9 +192,15 @@ fn traceChain(
                 .polarity = paramPolarity(mod.cells[tail], tail_ar.pin),
             };
         }
-        const drv = mod.driver_of.get(d[0].sig) orelse return null;
-        const di = drv.cell orelse return null;
-        if (!std.mem.eql(u8, drv.port, "Q")) return null;
+        const src = stepThroughBufs(mod, d[0].sig) orelse return null;
+        if (src.bit) |hb| {
+            return .{
+                .flops = try chain.toOwnedSlice(alloc),
+                .head_d = hb,
+                .polarity = paramPolarity(mod.cells[tail], tail_ar.pin),
+            };
+        }
+        const di = src.cell.?;
         const dc = mod.cells[di];
         if (!clock.cells.isSequential(dc.type) or clock.cells.isLatch(dc.type)) return null;
         const dfr = by_cell.get(di) orelse return null;
@@ -141,6 +212,32 @@ fn traceChain(
         if (dsig.origin != sig.origin or !std.mem.eql(u8, dsig.ref, sig.ref) or dsig.flips != sig.flips) return null;
         try chain.append(alloc, di);
         cur = di;
+    }
+    return null;
+}
+
+// One step carries either a flop Q driver or a constant, never
+// both: exactly one field reads non-null on every return.
+const BufStep = struct { cell: ?usize, bit: ?ir.bits.Bit };
+
+// Back through single-bit buffers to the driving flop Q or the
+// feeding constant. Anything else (ports, gates, inverters, deep
+// buffer runs) fails the step and with it the chain.
+fn stepThroughBufs(mod: *const ir.types.Module, bit: u32) ?BufStep {
+    var cur = bit;
+    for (0..8) |_| {
+        const drv = mod.driver_of.get(cur) orelse return null;
+        const ci = drv.cell orelse return null;
+        const c = mod.cells[ci];
+        if (std.mem.eql(u8, c.type, "$buf")) {
+            const a = portBits(c, "A") orelse return null;
+            if (a.len != 1) return null;
+            if (a[0] != .sig) return .{ .cell = null, .bit = a[0] };
+            cur = a[0].sig;
+            continue;
+        }
+        if (!std.mem.eql(u8, drv.port, "Q")) return null;
+        return .{ .cell = ci, .bit = null };
     }
     return null;
 }

@@ -1,1 +1,1 @@
-{"bad_split_reset.sv": ["RDC-009"], "good_ordered_release.sv": [], "good_shared_reset.sv": []}
+{"bad_split_reset.sv": ["RDC-009"],"good_ordered_release.sv": ["RDC-010"],"good_shared_reset.sv": []}

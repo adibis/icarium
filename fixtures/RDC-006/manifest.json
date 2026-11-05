@@ -1,1 +1,1 @@
-{"bad_muxed_reset_unsync.sv": ["RDC-006"], "good_muxed_reset_synced.sv": []}
+{"bad_muxed_reset_unsync.sv": ["RDC-006"],"good_muxed_reset_synced.sv": ["RDC-010"]}

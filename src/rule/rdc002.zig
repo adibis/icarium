@@ -24,15 +24,16 @@ pub const rule = registry.Rule{
 
 // Two grouped variants: flop-driven ARST pins whose producer
 // value mismatches consumer sense, and port-driven pins whose
-// declaration contradicts it. Recognised reset-sync stages
-// exempt from both; resetless producers have no value to
-// disagree with. Groups sort for determinism.
+// declaration contradicts it. Resetless producers have no value
+// to disagree with. Groups sort for determinism.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var groups = std.AutoHashMapUnmanaged(FGroup, Dsts).empty;
     var port_groups = std.HashMapUnmanaged(PGroup, Dsts, PGroupCtx, std.hash_map.default_max_load_percentage).empty;
     for (ctx.mod.cells) |c| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
+        // Stages exempt as consumers: their ARST is chain-internal.
+        // Sync outputs driving foreign pins still answer below.
         if (ctx.reset_syncs.isMember(c.name)) continue;
         const ap = reset.cells.canonicalAsyncPin(c) orelse continue;
         const arst = bus.portBits(c, ap.pin) orelse continue;
@@ -49,8 +50,6 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             continue;
         };
         if (!std.mem.eql(u8, drv.port, "Q")) continue;
-        const producer = ctx.mod.cells[di].name;
-        if (ctx.reset_syncs.isMember(producer)) continue;
         const prod = producerValue(ctx.mod.cells[di]) orelse continue;
         if (prod == cons) continue;
         const slot = try groups.getOrPut(ctx.alloc, .{ .producer = di, .prod = prod, .cons = cons });

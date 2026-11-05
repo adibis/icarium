@@ -267,3 +267,13 @@ a reset domain stays silent. Clocks do not matter here.
 honors:
 fixtures: fixtures/RDC-009
 
+RDC-010 [note] Reset synchronizer chain record and checks
+Every recognized reset synchronizer is recorded for review:
+stages, clock, polarity, head constant, async root. Shape
+defects report beside the record: a chain on the wrong clock
+for its consumers, internal taps feeding resets, and gates
+editing the output all break the release contract; consumers
+on the raw root in a served domain report at warn.
+honors:
+fixtures: fixtures/RDC-010
+
