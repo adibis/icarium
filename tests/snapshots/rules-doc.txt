@@ -258,3 +258,12 @@ uses the raw port; that simplification is a separate review.
 honors: reset_sync
 fixtures: fixtures/RDC-008
 
+RDC-009 [err] Unqualified data crossing reset domains
+A flop's data input is driven from another reset domain with
+no shared release: the source can come out of reset while the
+receiver samples. Both sides need an async reset to trip it;
+a side with none never releases, so unreset storage fed from
+a reset domain stays silent. Clocks do not matter here.
+honors:
+fixtures: fixtures/RDC-009
+

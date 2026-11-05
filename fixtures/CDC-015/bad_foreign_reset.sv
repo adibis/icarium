@@ -2,6 +2,8 @@
 // registered in src_clk. Depth checks pass; the reset path is
 // where the chain loses steady state. (RDC-001 fires on the
 // same shape; the reference fires both.)
+// RDC-009 stays silent: the foreign reset still releases after
+// the shared global root, so source data settles first.
 module bad_foreign_reset (
     input  logic src_clk,
     input  logic dst_clk,

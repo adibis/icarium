@@ -500,6 +500,19 @@ const golden =
     \\              "defaultConfiguration": {
     \\                "level": "error"
     \\              }
+    \\            },
+    \\            {
+    \\              "id": "RDC-009",
+    \\              "name": "RDC-009",
+    \\              "shortDescription": {
+    \\                "text": "Unqualified data crossing reset domains"
+    \\              },
+    \\              "fullDescription": {
+    \\                "text": "A flop's data input is driven from another reset domain with\nno shared release: the source can come out of reset while the\nreceiver samples. Both sides need an async reset to trip it;\na side with none never releases, so unreset storage fed from\na reset domain stays silent. Clocks do not matter here."
+    \\              },
+    \\              "defaultConfiguration": {
+    \\                "level": "error"
+    \\              }
     \\            }
     \\          ]
     \\        }

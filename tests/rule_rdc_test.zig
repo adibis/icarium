@@ -557,3 +557,131 @@ test "a missed domain fires RDC-008 alone" {
     const fs = try checkAll(&l);
     try std.testing.expect(onlyRule(fs, "RDC-008"));
 }
+
+const rdc9_split =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "ra": {"direction": "input", "bits": [3]},
+    \\        "rb": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [3], "Q": [11]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "ARST": [4], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const rdc9_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\set_input_delay -clock clk 1.0 [get_ports d]
+;
+
+test "data across reset domains fires RDC-009" {
+    var l = try loadAll(rdc9_split, rdc9_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var seen = false;
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, "RDC-009")) seen = true;
+    }
+    try std.testing.expect(seen);
+}
+
+const rdc9_same =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rst": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [3], "Q": [11]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "ARST": [3], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "data inside one reset domain stays silent for RDC-009" {
+    var l = try loadAll(rdc9_same, rdc9_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    for (fs) |f| {
+        try std.testing.expect(!std.mem.eql(u8, f.rule, "RDC-009"));
+    }
+}
+
+const rdc9_ordered =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rst": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [3], "Q": [11]}
+    \\        },
+    \\        "sync": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": ["0"], "ARST": [3], "Q": [13]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "ARST": [13], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "ordered release through a derived reset stays silent for RDC-009" {
+    var l = try loadAll(rdc9_ordered, rdc9_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    for (fs) |f| {
+        try std.testing.expect(!std.mem.eql(u8, f.rule, "RDC-009"));
+    }
+}
