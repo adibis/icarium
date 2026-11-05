@@ -41,6 +41,34 @@ pub fn resolve(
     return .{ .kind = .other, .instance = "", .src = null };
 }
 
+// The leaf below the instance path: flattened Yosys names
+// embed hierarchy, so the FQN takes the last segment, not
+// the whole name (which would repeat the path).
+pub fn leafName(alloc: std.mem.Allocator, name: []const u8) error{OutOfMemory}![]const u8 {
+    var start: usize = 0;
+    var i: usize = 0;
+    while (i < name.len) {
+        if (name[i] == '\\' and i + 1 < name.len and name[i + 1] == '.') {
+            i += 2;
+            continue;
+        }
+        if (name[i] == '.') start = i + 1;
+        i += 1;
+    }
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var j = start;
+    while (j < name.len) {
+        if (name[j] == '\\' and j + 1 < name.len and name[j + 1] == '.') {
+            try out.append(alloc, '.');
+            j += 2;
+        } else {
+            try out.append(alloc, name[j]);
+            j += 1;
+        }
+    }
+    return out.toOwnedSlice(alloc);
+}
+
 // Slash-joined hierarchy: dots collide with escaped Yosys
 // identifiers, while waiver globs already speak slashes.
 pub fn joinPath(alloc: std.mem.Allocator, segs: [][]const u8) error{OutOfMemory}![]const u8 {

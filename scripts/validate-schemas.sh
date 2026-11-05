@@ -18,11 +18,11 @@ trap 'rm -rf "$TMP"' EXIT
 fail=0
 
 check_one() {
-    # check_one <sv> <sdc> <schema> <label>: elaborate, emit, validate.
-    sv="$1"; sdc="$2"; schema="$3"; label="$4"
+    # check_one <sv> <sdc> <format> <schema> <label>: elaborate, emit, validate.
+    sv="$1"; sdc="$2"; fmt="$3"; schema="$4"; label="$5"
     top="$(basename "$sv" .sv)"
     sh scripts/elaborate.sh --top "$top" --out "$TMP/net.json" "$sv" >/dev/null 2>&1
-    "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format json > "$TMP/out.json" 2>/dev/null || true
+    "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format "$fmt" > "$TMP/out.json" 2>/dev/null || true
     if python3 -c "import json,jsonschema,sys; jsonschema.validate(json.load(open('$TMP/out.json')), json.load(open('$schema')))" 2>"$TMP/err.txt"; then
         echo "PASS $label"
     else
@@ -32,8 +32,11 @@ check_one() {
     fi
 }
 
-check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_reset_unsync.sdc schema/findings-1.0.json "findings/warning"
-check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc schema/findings-1.0.json "findings/error-grouped"
-check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc schema/findings-1.0.json "findings/empty"
+check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_reset_unsync.sdc json schema/findings-1.0.json "findings/warning"
+check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc json schema/findings-1.0.json "findings/error-grouped"
+check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc json schema/findings-1.0.json "findings/empty"
+check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_reset_unsync.sdc sarif schema/sarif-2.1.0.json "sarif/warning"
+check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc sarif schema/sarif-2.1.0.json "sarif/error-grouped"
+check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc sarif schema/sarif-2.1.0.json "sarif/empty"
 
 exit "$fail"

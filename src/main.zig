@@ -7,8 +7,7 @@ const domains = @import("cli/domains.zig");
 const resets = @import("cli/resets.zig");
 const rules = @import("cli/rules.zig");
 const stats = @import("cli/stats.zig");
-
-const version = "0.1.0-dev";
+const version = @import("version.zig").version;
 
 pub fn main(init: std.process.Init) !u8 {
     var out_buf: [4096]u8 = undefined;
@@ -82,7 +81,7 @@ fn usage(w: anytype) !void {
         \\      --sdc FILE          constraints file (optional)
         \\      --only IDS          comma-separated rule allowlist
         \\      --skip IDS          comma-separated rule blocklist
-        \\      --format FMT        text (default), ids, or json
+        \\      --format FMT        text (default), ids, json, or sarif
         \\      --minify            minified json (with --format json)
         \\      --sync-depth N      required chain depth (default 2)
         \\      --cdc-010-no-heuristic  disable library pin-name guessing

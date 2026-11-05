@@ -4,6 +4,8 @@ const crossing = @import("../crossing.zig");
 const ir = @import("../ir.zig");
 const findings_json = @import("../report.zig").findings;
 const report_text = @import("../report.zig").text;
+const sarif = @import("../report.zig").sarif;
+const tool_version = @import("../version.zig").version;
 const reset = @import("../reset.zig");
 const rule = @import("../rule.zig");
 const sdc = @import("../sdc.zig");
@@ -74,12 +76,14 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         err.writeAll("check: missing --yosys-json FILE\n") catch {};
         return 2;
     };
-    const fmt: enum { text, ids, json } = if (std.mem.eql(u8, format, "text"))
+    const fmt: enum { text, ids, json, sarif } = if (std.mem.eql(u8, format, "text"))
         .text
     else if (std.mem.eql(u8, format, "ids"))
         .ids
     else if (std.mem.eql(u8, format, "json"))
         .json
+    else if (std.mem.eql(u8, format, "sarif"))
+        .sarif
     else {
         err.print("check: bad --format: {s}\n", .{format}) catch {};
         return 2;
@@ -159,6 +163,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     switch (fmt) {
         .json => findings_json.writeJsonOptions(scratch, out, &mod, findings, .{ .minify = minify }) catch return 3,
         .text => report_text.writeText(scratch, out, &mod, findings) catch return 3,
+        .sarif => sarif.writeSarif(scratch, out, &mod, findings, tool_version) catch return 3,
         .ids => for (findings) |f| {
             rule.finding.renderId(out, f) catch return 3;
         },
