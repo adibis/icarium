@@ -66,8 +66,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         // Commands borrow the file bytes; the arena copy below
         // outlives the conversion.
         const owned = scratch.dupe(u8, bytes) catch return 3;
-        const cmds = suppress.meridian.parseText(scratch, owned) catch {
-            err.print("import-meridian: cannot parse {s}\n", .{path}) catch {};
+        var diag = suppress.meridian.Diagnostic{};
+        const cmds = suppress.meridian.parseText(scratch, owned, &diag) catch {
+            err.print("import-meridian: cannot parse {s}:{d}: {s}\n", .{ path, diag.line, diag.reason }) catch {};
             return 2;
         };
         for (cmds) |c| {

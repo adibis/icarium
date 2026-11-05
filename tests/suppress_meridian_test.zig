@@ -11,7 +11,7 @@ test "meridian parses continuations, braces, and expressions" {
     ;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const cmds = try suppress.meridian.parseText(arena.allocator(), text);
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
     try std.testing.expectEqual(@as(usize, 2), cmds.len);
     const r = cmds[0].record;
     try std.testing.expectEqualStrings("W_MASYNC", r.rules[0]);
@@ -29,15 +29,92 @@ test "meridian rejects unknown surface loudly" {
     const bad = [_][]const u8{
         "set_foo -rule {X}\n",
         "set_rule_status -rule {X} -status {Waived} -bogus {Y}\n",
-        "set_rule_status -rule {X} -status {Waived} -expression {(Clock =~ \"c\")}\n",
         "set_rule_status -rule {X} -status {Waived} -expression {(Driver ~~ \"d\")}\n",
+        "set_rule_status -rule {X} -status {Waived} -expression {(Driver =~ d)}\n",
+        "set_rule_status -rule {X} -status {Waived} -expression {(Driver == \"d\"}\n",
+        "set_rule_status -rule {X} -status {Waived} -expression {(Driver =~ \"d\") &&}\n",
         "set_rule_status -rule {X} -status {Waived} -expression unbraced\n",
         "set_rule_status -rule {} -status {Waived}\n",
         "set_rule_status -rule {X\n",
     };
     for (bad) |t| {
-        try std.testing.expectError(error.BadTcl, suppress.meridian.parseText(arena.allocator(), t));
+        var diag = suppress.meridian.Diagnostic{};
+        const err = suppress.meridian.parseText(arena.allocator(), t, &diag);
+        try std.testing.expectError(error.BadTcl, err);
+        try std.testing.expect(diag.reason.len > 0);
     }
+}
+
+test "meridian reads value fields as context and locators as endpoints" {
+    // Shapes mirror OpenTitan's waiver files (Apache-2.0, lowRISC).
+    const text =
+        "set_rule_status -rule {W_MASYNC} -status {waived} -expression {(ReceivingFlop =~ \"top.u_b.*\") && (MultiClockDomains == \"A::B\")} -comment {reviewed}\n" ++
+        "set_rule_status -rule {RST_SYNC} -status { Waived } -expression {(ReceivingFlop =~ \\\"top.*.u_sync_1.q_o*\\\") && (ResetSignal == \\\"IO*\\\")} -comment {reset source}\n" ++
+        "set_rule_status -rule {W_DATA} -status {Waived} -expression {(Signal=~\"top.u_spi*.q*\") && (ReceivingFlop=~\"top.u_pinmux.dio*\")} -comment {both ends}\n" ++
+        "set_rule_status -rule {S_GENCLK} -status {Waived} -comment {rule-wide}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 4), cmds.len);
+    const first = cmds[0].record;
+    try std.testing.expectEqualStrings("waived", first.status);
+    try std.testing.expect(first.driver == null);
+    try std.testing.expectEqualStrings("top.u_b.*", first.receiver.?);
+    try std.testing.expect(std.mem.indexOf(u8, first.comment, "MultiClockDomains=\"A::B\"") != null);
+    const second = cmds[1].record;
+    try std.testing.expectEqualStrings("top.*.u_sync_1.q_o*", second.receiver.?);
+    try std.testing.expectEqualStrings("IO*", second.driver.?);
+    const third = cmds[2].record;
+    try std.testing.expectEqualStrings("top.u_spi*.q*", third.driver.?);
+    try std.testing.expectEqualStrings("top.u_pinmux.dio*", third.receiver.?);
+    const wide = cmds[3].record;
+    try std.testing.expect(wide.driver == null);
+    try std.testing.expect(wide.receiver == null);
+}
+
+test "meridian distributes disjunctions into sibling records" {
+    const text =
+        "set_rule_status -rule {W_CNTL} -status {Waived} -expression {((Signal=~\"*a*\") || (Signal=~\"*b*\")) && (ReceivingFlop=~\"*sync*\")} -comment {alt}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 2), cmds.len);
+    try std.testing.expectEqualStrings("*a*", cmds[0].record.driver.?);
+    try std.testing.expectEqualStrings("*sync*", cmds[0].record.receiver.?);
+    try std.testing.expectEqualStrings("*b*", cmds[1].record.driver.?);
+    try std.testing.expectEqualStrings("*sync*", cmds[1].record.receiver.?);
+}
+
+test "meridian joins entries across blank lines and skips audit stamps" {
+    const text =
+        "set_rule_status -rule {W_DATA} -status {Waived} -expression \\\n" ++
+        "  {(Signal=~\"a*\") && \\\n" ++
+        "\n" ++
+        "  (ReceivingFlop =~ \"b*\")} -comment {wide} -lastedit_user {root} -lastedit_time {never}\n" ++
+        "set_rule_status -rule {W_FANOUT} -expression {Driver =~ \"*c*\"} -status {Waived} -comment {bare}\n" ++
+        "set_rule_status -rule {W_DATA} -expression {(Signal =~ \"d*\")} -comment {status-less}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 3), cmds.len);
+    try std.testing.expectEqualStrings("a*", cmds[0].record.driver.?);
+    try std.testing.expectEqualStrings("b*", cmds[0].record.receiver.?);
+    try std.testing.expectEqualStrings("*c*", cmds[1].record.driver.?);
+    try std.testing.expectEqualStrings("Waived", cmds[2].record.status);
+    try std.testing.expect(std.mem.indexOf(u8, cmds[2].record.comment, "[no -status given]") != null);
+}
+
+test "meridian splits crowded locator sides per locator" {
+    const text =
+        "set_rule_status -rule {W_MASYNC} -status {Waived} -expression {(ReceivingFlop =~ \"r1\") && (SyncFlop == \"r2\")} -comment {two receivers}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 2), cmds.len);
+    try std.testing.expectEqualStrings("r1", cmds[0].record.receiver.?);
+    try std.testing.expect(cmds[0].record.driver == null);
+    try std.testing.expectEqualStrings("r2", cmds[1].record.receiver.?);
+    try std.testing.expect(cmds[1].record.driver == null);
 }
 
 test "meridian converts mapped rules and collects the rest" {
