@@ -4,7 +4,9 @@
 # (sv + sdc paths, optional third line naming top when it differs
 # from the file stem), optional waivers.json and flags.txt (extra
 # check args, one per line), and expect.json ({exit, kept, waived,
-# unmatched} rule-ID sets). Exit: 0 all pass, 1 mismatch, 3 yosys,
+# unmatched} rule-ID sets). Import cases instead hold import.txt
+# (tcl + map paths) with expect.json ({exit}) and expect-out.json
+# (exact waivers bytes). Exit: 0 all pass, 1 mismatch, 3 yosys,
 # binary, python3, or jsonschema missing.
 set -eu
 
@@ -28,6 +30,30 @@ ran=0
 
 for case in tests/suppress/cases/*/; do
     name="$(basename "$case")"
+    if [ -f "$case/import.txt" ]; then
+        tcl="$(sed -n '1p' "$case/import.txt")"
+        map="$(sed -n '2p' "$case/import.txt")"
+        want_exit="$(python3 -c "import json; print(json.load(open('$case/expect.json'))['exit'])")"
+        set +e
+        "$BIN" import-meridian --in "$tcl" --map "$map" --out "$TMP/w.json" >"$TMP/istdout.txt" 2>"$TMP/stderr.txt"
+        code=$?
+        set -e
+        ran=$((ran + 1))
+        if [ "$code" -ne "$want_exit" ]; then
+            echo "FAIL $name: exit $code, want $want_exit"
+            cat "$TMP/stderr.txt" | sed 's/^/    /'
+            fail=1
+            continue
+        fi
+        if cmp -s "$TMP/w.json" "$case/expect-out.json"; then
+            echo "PASS $name"
+        else
+            echo "FAIL $name: waivers differ"
+            diff "$case/expect-out.json" "$TMP/w.json" | sed 's/^/    /' | head -20
+            fail=1
+        fi
+        continue
+    fi
     sv="$(sed -n '1p' "$case/design.txt")"
     sdc="$(sed -n '2p' "$case/design.txt")"
     top="$(sed -n '3p' "$case/design.txt")"

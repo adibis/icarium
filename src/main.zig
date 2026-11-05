@@ -7,6 +7,7 @@ const domains = @import("cli/domains.zig");
 const resets = @import("cli/resets.zig");
 const rules = @import("cli/rules.zig");
 const stats = @import("cli/stats.zig");
+const import_meridian = @import("cli/import_meridian.zig");
 const version = @import("version.zig").version;
 
 pub fn main(init: std.process.Init) !u8 {
@@ -47,6 +48,7 @@ pub fn main(init: std.process.Init) !u8 {
         .crossings => return crossings.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .check => return check.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .rules => return rules.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
+        .import_meridian => return import_meridian.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
     }
 }
 
@@ -96,6 +98,10 @@ fn usage(w: anytype) !void {
         \\      --cdc-018-depth-threshold N  cascade warn depth (default 4)
         \\      --sync-primitive NAME   site CDC macro (repeatable)
         \\  rules             list rules (--list) or show docs (--doc)
+        \\  import-meridian   convert set_rule_status Tcl to waivers.json
+        \\      --in FILE           input Tcl file
+        \\      --map FILE          JSON Meridian-to-icarium rule map
+        \\      --out FILE          output native waivers file
         \\
     );
 }

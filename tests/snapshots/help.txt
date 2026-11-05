@@ -42,3 +42,7 @@ usage: icarium <command>
       --cdc-018-depth-threshold N  cascade warn depth (default 4)
       --sync-primitive NAME   site CDC macro (repeatable)
   rules             list rules (--list) or show docs (--doc)
+  import-meridian   convert set_rule_status Tcl to waivers.json
+      --in FILE           input Tcl file
+      --map FILE          JSON Meridian-to-icarium rule map
+      --out FILE          output native waivers file

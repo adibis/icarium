@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "waivers": [
+    {
+      "id": "meridian-0001",
+      "rules": [
+        "CDC-001"
+      ],
+      "dst": "u_top.u_b.sync0",
+      "driver": "u_top.u_a.*",
+      "reason": "[W_MASYNC] async path reviewed with the designer",
+      "expires": null
+    }
+  ]
+}

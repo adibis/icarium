@@ -1,0 +1,2 @@
+tests/suppress/cases/meridian-basic/sample.tcl
+tests/suppress/cases/meridian-basic/map.json
