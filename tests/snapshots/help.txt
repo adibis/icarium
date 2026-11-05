@@ -1,0 +1,32 @@
+icarium: open-source structural CDC/RDC checker
+
+usage: icarium <command>
+
+  help              show this text
+  version           show version
+  stats             summarize a Yosys JSON netlist
+      --yosys-json FILE   input from scripts/elaborate.sh
+      --top TOP           top module (default: single module)
+  clocks            show clocks parsed from an SDC file
+      --sdc FILE          constraints file
+  domains           show clock domain per sequential cell
+      --yosys-json FILE   input from scripts/elaborate.sh
+      --top TOP           top module (default: single module)
+      --sdc FILE          constraints file (optional)
+  resets            show reset source per sequential cell
+      --yosys-json FILE   input from scripts/elaborate.sh
+      --top TOP           top module (default: single module)
+      --sdc FILE          constraints file (optional)
+  crossings         enumerate structural crossings
+      --yosys-json FILE   input from scripts/elaborate.sh
+      --top TOP           top module (default: single module)
+      --sdc FILE          constraints file (optional)
+  check             run CDC/RDC rules over a netlist
+      --yosys-json FILE   input from scripts/elaborate.sh
+      --top TOP           top module (default: single module)
+      --sdc FILE          constraints file (optional)
+      --only IDS          comma-separated rule allowlist
+      --skip IDS          comma-separated rule blocklist
+      --format FMT        text (default) or ids
+      --sync-depth N      required chain depth (default 2)
+  rules             list rules (--list) or show docs (--doc)

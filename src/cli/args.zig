@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Command = enum { help, version, stats, clocks, domains, resets, crossings };
+pub const Command = enum { help, version, stats, clocks, domains, resets, crossings, check, rules };
 
 // Fixed vocabulary, resolved once at compile time: adding a
 // command is one table row, and typos fail closed to null.
@@ -16,6 +16,8 @@ const table = std.StaticStringMap(Command).initComptime(.{
     .{ "domains", .domains },
     .{ "resets", .resets },
     .{ "crossings", .crossings },
+    .{ "check", .check },
+    .{ "rules", .rules },
 });
 
 pub fn parse(s: []const u8) ?Command {

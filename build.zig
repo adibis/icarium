@@ -39,6 +39,10 @@ pub fn build(b: *std.Build) void {
     e2e.step.dependOn(b.getInstallStep());
     b.step("e2e", "Run SystemVerilog end-to-end suite (needs yosys)").dependOn(&e2e.step);
 
+    const fixtures = b.addSystemCommand(&.{ "sh", "fixtures/run.sh" });
+    fixtures.step.dependOn(b.getInstallStep());
+    b.step("fixtures", "Run rule fixtures against manifests (needs yosys)").dependOn(&fixtures.step);
+
     if (b.option([]const u8, "test-file", "Run one test file, e.g. tests/ir_path_test.zig")) |file| {
         const one_mod = b.createModule(.{
             .root_source_file = b.path(file),

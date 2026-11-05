@@ -144,6 +144,39 @@ else
     grep -E 'FAIL' /tmp/precommit-e2e.log | sed 's/^/    /'
 fi
 
+# Snapshots pin generated CLI text: help and the rules reference
+# drift only by deliberate regeneration, never by accident.
+set +e
+./zig-out/bin/icarium --help > /tmp/precommit-help.txt 2>&1
+help_code=$?
+./zig-out/bin/icarium rules --doc > /tmp/precommit-rules-doc.txt 2>&1
+doc_code=$?
+set -e
+if [[ $help_code -ne 0 ]] || ! cmp -s /tmp/precommit-help.txt tests/snapshots/help.txt; then
+    fail "help snapshot drift — regenerate tests/snapshots/help.txt"
+else
+    pass "help snapshot"
+fi
+if [[ $doc_code -ne 0 ]] || ! cmp -s /tmp/precommit-rules-doc.txt tests/snapshots/rules-doc.txt; then
+    fail "rules-doc snapshot drift — regenerate tests/snapshots/rules-doc.txt"
+else
+    pass "rules-doc snapshot"
+fi
+
+# Rule fixtures need yosys like e2e; same safe-skip contract.
+set +e
+sh fixtures/run.sh >/tmp/precommit-fixtures.log 2>&1
+fx_code=$?
+set -e
+if [[ $fx_code -eq 0 ]]; then
+    pass "rule fixtures"
+elif [[ $fx_code -eq 3 ]]; then
+    warn "rule fixtures skipped (yosys not on PATH)"
+else
+    fail "rule fixtures — see /tmp/precommit-fixtures.log"
+    grep -E 'FAIL' /tmp/precommit-fixtures.log | sed 's/^/    /'
+fi
+
 # --- Summary ---------------------------------------------------------------
 
 echo

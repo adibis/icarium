@@ -1,0 +1,9 @@
+CDC-001 [err] Unsynchronized control crossing
+The destination flop has no follow-on synchronizer in its own
+clock: a single-bit signal lands and is used directly, with no
+second stage to filter metastability. Add a 2FF chain, or assert
+(* cdc_sync *) on a vetted synchronizer, (* cdc_static *) on a
+source held constant, (* cdc_handshake *) on a capture register.
+honors: cdc_static cdc_sync cdc_handshake
+fixtures: fixtures/CDC-001
+

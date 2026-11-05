@@ -1,9 +1,11 @@
 const std = @import("std");
 const args = @import("cli/args.zig");
+const check = @import("cli/check.zig");
 const clocks = @import("cli/clocks.zig");
 const crossings = @import("cli/crossings.zig");
 const domains = @import("cli/domains.zig");
 const resets = @import("cli/resets.zig");
+const rules = @import("cli/rules.zig");
 const stats = @import("cli/stats.zig");
 
 const version = "0.1.0-dev";
@@ -44,6 +46,8 @@ pub fn main(init: std.process.Init) !u8 {
         .domains => return domains.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .resets => return resets.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .crossings => return crossings.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
+        .check => return check.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
+        .rules => return rules.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
     }
 }
 
@@ -72,6 +76,15 @@ fn usage(w: anytype) !void {
         \\      --yosys-json FILE   input from scripts/elaborate.sh
         \\      --top TOP           top module (default: single module)
         \\      --sdc FILE          constraints file (optional)
+        \\  check             run CDC/RDC rules over a netlist
+        \\      --yosys-json FILE   input from scripts/elaborate.sh
+        \\      --top TOP           top module (default: single module)
+        \\      --sdc FILE          constraints file (optional)
+        \\      --only IDS          comma-separated rule allowlist
+        \\      --skip IDS          comma-separated rule blocklist
+        \\      --format FMT        text (default) or ids
+        \\      --sync-depth N      required chain depth (default 2)
+        \\  rules             list rules (--list) or show docs (--doc)
         \\
     );
 }

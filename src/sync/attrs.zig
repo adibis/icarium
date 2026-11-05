@@ -4,28 +4,28 @@ const ir = @import("../ir.zig");
 // User-vetted synchronizer assertions, read off netname wires:
 // the attribute sits on the signal, membership on the flop whose
 // Q it names. Names match the reference alias sets verbatim.
-const sync_names = std.StaticStringMap(void).initComptime(.{
+pub const sync_names = std.StaticStringMap(void).initComptime(.{
     .{ "cdc_sync", {} },
     .{ "synchronizer", {} },
     .{ "async_reg", {} },
 });
 
-const static_names = std.StaticStringMap(void).initComptime(.{
+pub const static_names = std.StaticStringMap(void).initComptime(.{
     .{ "cdc_static", {} },
     .{ "quasi_static", {} },
 });
 
-const handshake_names = std.StaticStringMap(void).initComptime(.{
+pub const handshake_names = std.StaticStringMap(void).initComptime(.{
     .{ "cdc_handshake", {} },
     .{ "req_ack_handshake", {} },
 });
 
-const gray_names = std.StaticStringMap(void).initComptime(.{
+pub const gray_names = std.StaticStringMap(void).initComptime(.{
     .{ "cdc_gray", {} },
     .{ "gray_code", {} },
 });
 
-const glitchless_names = std.StaticStringMap(void).initComptime(.{
+pub const glitchless_names = std.StaticStringMap(void).initComptime(.{
     .{ "glitchless_clock_mux", {} },
     .{ "glitchless_mux", {} },
     .{ "glitchfree_clock_mux", {} },
