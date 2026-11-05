@@ -38,6 +38,8 @@ pub const Model = struct {
         parent.destroy(self.backing);
     }
 
+    // Quadratic over groups is affordable: groups scale with
+    // clock count (dozens), never with design size.
     pub fn areAsync(self: *const Model, a: []const u8, b: []const u8) bool {
         if (std.mem.eql(u8, a, b)) return false;
         if (self.separatedByAsync(a, b)) return true;
@@ -129,6 +131,8 @@ fn memberHit(g: Group, name: []const u8) bool {
     return false;
 }
 
+// Linear scan per call: resolve each pattern once and reuse
+// it — never call this per bit inside a design-size loop.
 pub fn portClock(self: *const Model, port: []const u8) ?[]const u8 {
     if (self.port_clocks.get(port)) |c| return c;
     var it = self.port_clocks.iterator();
