@@ -314,6 +314,36 @@ const synced =
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
     \\          "connections": {"CLK": [2], "D": [4], "Q": [5]}
     \\        },
+    \\        "xmask": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": ["x"], "B": [4], "S": [3], "Y": [13]}
+    \\        },
+    \\        "f_xmask": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [13], "Q": [5]}
+    \\        },
+    \\        "enmask": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": ["0"], "B": ["1"], "S": [3], "Y": [14]}
+    \\        },
+    \\        "f_enmask": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [14], "Q": [5]}
+    \\        },
+    \\        "staticmux": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": ["0"], "B": [4], "S": ["1"], "Y": [15]}
+    \\        },
+    \\        "f_staticmux": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [15], "Q": [5]}
+    \\        },
     \\        "sr_cell": {
     \\          "type": "$sr",
     \\          "port_directions": {"SET": "input", "CLR": "input", "Q": "output"},
@@ -336,6 +366,14 @@ test "sync pin and sync mux spellings both recognized" {
     try std.testing.expectEqual(reset.trace.SyncKind.mux, mux.kind);
     try std.testing.expectEqualStrings("mux", mux.ref);
     try std.testing.expectEqual(reset.trace.Origin.port, mux.origin);
+}
+
+test "masks and static muxes are not sync resets" {
+    var l = try loadAll(synced, arst_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(reset.trace.SyncKind.none, flopFor(&l, "f_xmask").?.sync.kind);
+    try std.testing.expectEqual(reset.trace.SyncKind.none, flopFor(&l, "f_enmask").?.sync.kind);
+    try std.testing.expectEqual(reset.trace.SyncKind.none, flopFor(&l, "f_staticmux").?.sync.kind);
 }
 
 test "data muxes stay silent, pmuxes stay explicit" {

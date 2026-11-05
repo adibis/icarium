@@ -212,7 +212,7 @@ const Walker = struct {
             const dci = drv.cell orelse continue;
             const m = w.mod.cells[dci];
             if (std.mem.eql(u8, m.type, "$pmux")) saw_pmux = true;
-            if (std.mem.eql(u8, m.type, "$mux") and hasConstantLeg(m)) {
+            if (isSyncMux(m)) {
                 const s = portBits(m, "S") orelse return SyncReset{ .kind = .mux, .ref = try w.alloc.dupe(u8, m.name), .origin = .unknown, .origin_ref = "", .notes = try w.dupeNotes(&.{"reset mux without select"}) };
                 const res = try w.resolveBits(s);
                 return .{
@@ -357,18 +357,27 @@ fn constSel(s: []const ir.bits.Bit) ?bool {
     return val;
 }
 
-// A data mux on D is ordinary logic; a mux with a constant leg is
-// a reset value selecting, which is the sync-reset spelling.
-fn hasConstantLeg(m: ir.types.Cell) bool {
-    for (m.ports) |p| {
-        if (p.direction == .output or std.mem.eql(u8, p.name, "S")) continue;
-        if (p.bits.len == 0) continue;
-        var all_const = true;
-        for (p.bits) |b| if (b == .sig) {
-            all_const = false;
-            break;
-        };
-        if (all_const) return true;
-    }
+// A sync-reset mux switches live data against a 0/1 leg by dynamic
+// select. Enable masks and don't-care muxes are ordinary logic.
+fn isSyncMux(m: ir.types.Cell) bool {
+    if (!std.mem.eql(u8, m.type, "$mux")) return false;
+    const s = portBits(m, "S") orelse return false;
+    if (constSel(s) != null) return false;
+    const a = portBits(m, "A") orelse return false;
+    const b = portBits(m, "B") orelse return false;
+    const a_const = is01Const(a);
+    const b_const = is01Const(b);
+    if (a_const == b_const) return false;
+    const data = if (a_const) b else a;
+    for (data) |bit| if (bit == .sig) return true;
     return false;
+}
+
+fn is01Const(list: []const ir.bits.Bit) bool {
+    if (list.len == 0) return false;
+    for (list) |b| switch (b) {
+        .zero, .one => {},
+        else => return false,
+    };
+    return true;
 }

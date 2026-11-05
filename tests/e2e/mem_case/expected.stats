@@ -1,0 +1,8 @@
+module: mem_case
+cells: 9
+unique bits: 75
+cells with src: 9
+  $dff: 4
+  $memrd: 1
+  $memwr_v2: 1
+  $mux: 3

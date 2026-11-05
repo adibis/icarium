@@ -31,6 +31,9 @@ pub const Assignment = struct {
     backing: *std.heap.ArenaAllocator,
     flops: []FlopDomain,
     controls: []ControlPin,
+    // Every bit resolved while tracing, kept for consumers that
+    // need domains below flop granularity (crossing endpoints).
+    bit_domains: std.AutoHashMapUnmanaged(u32, Domain),
 
     pub fn deinit(self: *Assignment) void {
         const parent = self.backing.child_allocator;
@@ -61,10 +64,19 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
             try w.make("unknown", "", &.{"no clock pin"});
         try flops.append(alloc, .{ .cell = ci, .domain = dom });
     }
+    // Memory clocks resolve into the memo without records: crossing
+    // enumeration reads them for memory endpoint domains.
+    for (mod.cells) |c| {
+        if (!cells.isMemoryClock(c.type)) continue;
+        if (clkBits(c)) |clk| {
+            _ = try w.resolveBits(clk);
+        }
+    }
     return .{
         .backing = backing,
         .flops = try flops.toOwnedSlice(alloc),
         .controls = try controls.toOwnedSlice(alloc),
+        .bit_domains = memo,
     };
 }
 

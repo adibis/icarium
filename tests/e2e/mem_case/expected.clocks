@@ -1,0 +1,2 @@
+clock rd_clk period 7
+clock wr_clk period 10

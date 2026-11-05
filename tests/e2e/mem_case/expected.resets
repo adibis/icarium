@@ -1,0 +1,8 @@
+flop $procdff$20 clock rd_clk
+sync $procdff$20 none
+flop $procdff$21 clock wr_clk
+sync $procdff$21 none
+flop $procdff$22 clock wr_clk
+sync $procdff$22 none
+flop $procdff$23 clock wr_clk
+sync $procdff$23 none

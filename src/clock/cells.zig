@@ -45,3 +45,26 @@ const clock_gate = std.StaticStringMap(void).initComptime(.{
 pub fn isClockGate(cell_type: []const u8) bool {
     return clock_gate.get(cell_type) != null;
 }
+
+// Memory ports with clocks worth resolving: read data leaves in
+// the read clock, write ports sample in the write clock.
+const memory_clock = std.StaticStringMap(void).initComptime(.{
+    .{ "$memrd", {} },
+    .{ "$memwr", {} },
+    .{ "$memrd_v2", {} },
+    .{ "$memwr_v2", {} },
+});
+
+pub fn isMemoryClock(cell_type: []const u8) bool {
+    return memory_clock.get(cell_type) != null;
+}
+
+// Read ports source data crossings; write ports only sink them.
+const mem_read = std.StaticStringMap(void).initComptime(.{
+    .{ "$memrd", {} },
+    .{ "$memrd_v2", {} },
+});
+
+pub fn isMemRead(cell_type: []const u8) bool {
+    return mem_read.get(cell_type) != null;
+}

@@ -1,0 +1,4 @@
+flop $procdff$20 domain rd_clk
+flop $procdff$21 domain wr_clk
+flop $procdff$22 domain wr_clk
+flop $procdff$23 domain wr_clk

@@ -466,4 +466,9 @@ test "cell tables recognize sequential and transparent" {
     try std.testing.expect(!clock.cells.isClockMux("$pmux"));
     try std.testing.expect(clock.cells.isClockGate("$and"));
     try std.testing.expect(!clock.cells.isClockGate("$or"));
+    try std.testing.expect(clock.cells.isMemoryClock("$memrd"));
+    try std.testing.expect(clock.cells.isMemoryClock("$memwr_v2"));
+    try std.testing.expect(!clock.cells.isMemoryClock("$mem"));
+    try std.testing.expect(clock.cells.isMemRead("$memrd"));
+    try std.testing.expect(!clock.cells.isMemRead("$memwr"));
 }

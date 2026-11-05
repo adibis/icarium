@@ -387,3 +387,172 @@ test "union sources go async on any async leg" {
     try std.testing.expectEqualStrings("ca", x.dst_clk);
     try std.testing.expect(x.async_per_sdc);
 }
+
+const lanewise =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "sel": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [20, 21]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [30, 31], "Q": [10, 11]}
+    \\        },
+    \\        "mx": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [10, 11], "B": [10, 11], "S": [4], "Y": [12, 13]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [12, 13], "Q": [20, 21]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "wide muxes propagate lane to lane, never across" {
+    var l = try loadAll(lanewise, sinks_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 5), l.report.crossings.len);
+    try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 12) != null);
+    try std.testing.expect(xFor(&l, .flop_flop_bit, 11, 13) != null);
+    try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 13) == null);
+    try std.testing.expect(xFor(&l, .flop_flop_bit, 11, 12) == null);
+}
+
+test "mux selects record control crossings into the union" {
+    var l = try loadAll(muxed_src, muxed_sdc);
+    defer freeAll(&l);
+    const x = xFor(&l, .clock_control, 4, 4).?;
+    try std.testing.expectEqualStrings("port:sel", x.src_clk);
+    try std.testing.expectEqualStrings("ca+cb", x.dst_clk);
+    try std.testing.expect(x.async_per_sdc);
+}
+
+const ctl_flop =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [4]}
+    \\      },
+    \\      "cells": {
+    \\        "fen": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [10]}
+    \\        },
+    \\        "gate": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [10], "Y": [11]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [3], "Q": [4]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "flopped enables record same-domain control crossings" {
+    var l = try loadAll(ctl_flop, sinks_sdc);
+    defer freeAll(&l);
+    const x = xFor(&l, .clock_control, 10, 10).?;
+    try std.testing.expectEqualStrings("clk", x.src_clk);
+    try std.testing.expectEqualStrings("clk", x.dst_clk);
+    try std.testing.expect(!x.async_per_sdc);
+}
+
+const mems =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "wclk": {"direction": "input", "bits": [2]},
+    \\        "rclk": {"direction": "input", "bits": [3]},
+    \\        "waddr": {"direction": "input", "bits": [4]},
+    \\        "wdata": {"direction": "input", "bits": [5]},
+    \\        "we": {"direction": "input", "bits": [6]},
+    \\        "raddr": {"direction": "input", "bits": [7]},
+    \\        "q": {"direction": "output", "bits": [8]}
+    \\      },
+    \\      "cells": {
+    \\        "wr": {
+    \\          "type": "$memwr",
+    \\          "port_directions": {"CLK": "input", "ADDR": "input", "DATA": "input", "EN": "input"},
+    \\          "connections": {"CLK": [2], "ADDR": [4], "DATA": [5], "EN": [6]}
+    \\        },
+    \\        "rd": {
+    \\          "type": "$memrd",
+    \\          "port_directions": {"CLK": "input", "ADDR": "input", "DATA": "output", "EN": "input"},
+    \\          "connections": {"CLK": [3], "ADDR": [7], "DATA": [10], "EN": ["1"]},
+    \\          "parameters": {"CLK_ENABLE": "1"}
+    \\        },
+    \\        "rda": {
+    \\          "type": "$memrd",
+    \\          "port_directions": {"CLK": "input", "ADDR": "input", "DATA": "output"},
+    \\          "connections": {"CLK": [3], "ADDR": [7], "DATA": [11]},
+    \\          "parameters": {"CLK_ENABLE": "0"}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [10], "Q": [8]}
+    \\        },
+    \\        "fa": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [11], "Q": [12]}
+    \\        },
+    \\        "blob": {
+    \\          "type": "$mem",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [7], "Y": [13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mems_sdc =
+    \\create_clock -name wclk -period 10 [get_ports wclk]
+    \\create_clock -name rclk -period 7 [get_ports rclk]
+    \\set_clock_groups -asynchronous -group {wclk} -group {rclk}
+;
+
+test "memory ports sink and source with memory clocks" {
+    var l = try loadAll(mems, mems_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 12), l.report.crossings.len);
+    const waddr = xFor(&l, .port_flop_untyped, 4, 4).?;
+    try std.testing.expectEqualStrings("port:waddr", waddr.src_clk);
+    try std.testing.expectEqualStrings("wclk", waddr.dst_clk);
+    try std.testing.expect(waddr.async_per_sdc);
+    const sync_rd = xFor(&l, .flop_flop_bit, 10, 10).?;
+    try std.testing.expectEqualStrings("rclk", sync_rd.src_clk);
+    try std.testing.expectEqualStrings("rclk", sync_rd.dst_clk);
+    try std.testing.expect(!sync_rd.async_per_sdc);
+    const async_rd = xFor(&l, .flop_flop_bit, 11, 11).?;
+    try std.testing.expectEqualStrings("unknown", async_rd.src_clk);
+    try std.testing.expect(async_rd.async_per_sdc);
+    for (l.report.crossings) |x| {
+        if (x.src.cell) |ci| try std.testing.expect(!std.mem.eql(u8, l.mod.cells[ci].name, "blob"));
+        try std.testing.expect(!std.mem.eql(u8, l.mod.cells[x.dst.cell.?].name, "blob"));
+    }
+}
