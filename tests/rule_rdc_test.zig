@@ -411,3 +411,149 @@ test "a two-port comb reset fires RDC-005 alone" {
     const fs = try checkAll(&l);
     try std.testing.expect(onlyRule(fs, "RDC-005"));
 }
+
+const muxed_reset =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "ra": {"direction": "input", "bits": [3]},
+    \\        "rb": {"direction": "input", "bits": [4]},
+    \\        "sel": {"direction": "input", "bits": [5]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "rsel": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "B": [4], "S": [5], "Y": [8]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "ARST": [8], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const muxed_reset_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\set_input_delay -clock clk 1.0 [get_ports d]
+;
+
+test "a muxed ARST fires RDC-006 alone" {
+    var l = try loadAll(muxed_reset, muxed_reset_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "RDC-006"));
+}
+
+const stuck_chain =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rst": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "head": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": ["0"], "ARST": [3], "Q": [6]}
+    \\        },
+    \\        "tail": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "ARST": [3], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const stuck_chain_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+;
+
+test "a chain loading assertion fires RDC-007 alone" {
+    var l = try loadAll(stuck_chain, stuck_chain_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "RDC-007"));
+}
+
+const missed_domain =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "rst": {"direction": "input", "bits": [4]},
+    \\        "da": {"direction": "input", "bits": [5]},
+    \\        "db": {"direction": "input", "bits": [6]},
+    \\        "qa": {"direction": "output", "bits": [12]},
+    \\        "qb": {"direction": "output", "bits": [13]}
+    \\      },
+    \\      "cells": {
+    \\        "ahead": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": ["1"], "ARST": [4], "Q": [7]}
+    \\        },
+    \\        "atail": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [7], "ARST": [4], "Q": [8]}
+    \\        },
+    \\        "acons": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [8], "Q": [12]}
+    \\        },
+    \\        "bcon0": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "ARST": [4], "Q": [9]}
+    \\        },
+    \\        "bcon1": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [9], "ARST": [4], "Q": [13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const missed_domain_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports da]
+    \\set_input_delay -clock cb 1.0 [get_ports db]
+;
+
+test "a missed domain fires RDC-008 alone" {
+    var l = try loadAll(missed_domain, missed_domain_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "RDC-008"));
+}

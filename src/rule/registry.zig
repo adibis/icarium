@@ -23,6 +23,12 @@ const cdc022 = @import("cdc022.zig");
 const cdc023 = @import("cdc023.zig");
 const rdc001 = @import("rdc001.zig");
 const rdc002 = @import("rdc002.zig");
+const rdc003 = @import("rdc003.zig");
+const rdc004 = @import("rdc004.zig");
+const rdc005 = @import("rdc005.zig");
+const rdc006 = @import("rdc006.zig");
+const rdc007 = @import("rdc007.zig");
+const rdc008 = @import("rdc008.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -67,6 +73,12 @@ pub const rules = [_]Rule{
     cdc023.rule,
     rdc001.rule,
     rdc002.rule,
+    rdc003.rule,
+    rdc004.rule,
+    rdc005.rule,
+    rdc006.rule,
+    rdc007.rule,
+    rdc008.rule,
 };
 
 fn knownAttr(name: []const u8) bool {

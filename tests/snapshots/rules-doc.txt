@@ -205,11 +205,37 @@ Register the gate on the consumer clock first.
 honors: reset_sync
 fixtures: fixtures/RDC-004
 
-RDC-005 [err] Async reset from multiple independent sources
+RDC-005 [warn] Async reset from multiple independent sources
 A flop's async reset combines two or more top-level ports with
 no flop behind the gate. Independent board sources release at
 independent times; the consumer's release edge is undefined.
 Qualify the sources through one reset tree.
 honors: reset_sync
 fixtures: fixtures/RDC-005
+
+RDC-006 [warn] Muxed async reset without a local synchronizer
+A flop's async reset is driven directly by a mux: selection
+is explicit, but the selected leg still deasserts async to
+the consumer clock. Pipe the mux through a 2FF reset
+synchronizer in the consumer domain. Warning, not error:
+the block may legitimately consume an upstream-synced reset.
+honors: reset_sync
+fixtures: fixtures/RDC-006
+
+RDC-007 [err] Reset synchronizer chain loads the asserted value
+A reset synchronizer chain whose head D ties to the asserted
+value never deasserts: on release it reloads assertion and
+holds every downstream consumer in reset forever. Tie the
+head D to the deasserted value: 1'b1 for active-low resets.
+honors:
+fixtures: fixtures/RDC-007
+
+RDC-008 [err] Primary reset port unsynchronized in one domain
+A top-level reset port fans straight into flops of a domain
+with no reset synchronizer, while another domain syncs the
+same port: the builder knew, then missed a domain. Sync the
+port in every consuming domain. Silent when every domain
+uses the raw port; that simplification is a separate review.
+honors: reset_sync
+fixtures: fixtures/RDC-008
 

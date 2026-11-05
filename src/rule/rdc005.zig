@@ -8,7 +8,7 @@ const reset = @import("../reset.zig");
 
 pub const rule = registry.Rule{
     .id = "RDC-005",
-    .severity = .err,
+    .severity = .warn,
     .title = "Async reset from multiple independent sources",
     .doc =
     \\A flop's async reset combines two or more top-level ports with
@@ -31,6 +31,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const ap = reset.cells.canonicalAsyncPin(c) orelse continue;
         const rst = bus.portBits(c, ap.pin) orelse continue;
         if (rst.len == 0) continue;
+        if (muxDriven(ctx, rst)) continue;
         const flops = try context.backwardFlopFanin(ctx.alloc, ctx.mod, rst);
         if (flops.items.len > 0) continue;
         const ports = try context.backwardPortFanin(ctx.alloc, ctx.mod, rst);
@@ -52,4 +53,17 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         });
     }
     return out.toOwnedSlice(ctx.alloc);
+}
+
+// Explicit selection excuses the crowd: a mux-driven reset is
+// the user's declared intent, RDC-006's territory, not this one.
+fn muxDriven(ctx: *context.Context, rst: []@import("../ir.zig").bits.Bit) bool {
+    for (rst) |b| {
+        if (b != .sig) continue;
+        const drv = ctx.mod.driver_of.get(b.sig) orelse continue;
+        const di = drv.cell orelse continue;
+        const t = ctx.mod.cells[di].type;
+        if (std.mem.eql(u8, t, "$mux") or std.mem.eql(u8, t, "$pmux")) return true;
+    }
+    return false;
 }
