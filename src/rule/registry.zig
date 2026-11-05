@@ -161,11 +161,22 @@ pub fn runChecks(
             try out.appendSlice(alloc, fs);
         } else if (r.check) |one| {
             for (ctx.report.crossings) |x| {
-                if (try one(ctx, x)) |f| try out.append(alloc, f);
+                if (try one(ctx, x)) |got| {
+                    var f = got;
+                    if (f.driver == null) f.driver = srcName(ctx, x);
+                    try out.append(alloc, f);
+                }
             }
         }
     }
     return out.toOwnedSlice(alloc);
+}
+
+// The crossing's own source endpoint: single-crossing rules
+// inherit their driver, and only override when they know better.
+fn srcName(ctx: *context.Context, x: crossing.enumerate.Crossing) []const u8 {
+    if (x.src.cell) |sc| return ctx.mod.cells[sc].name;
+    return x.src.port;
 }
 
 pub fn renderList(out: anytype) !void {

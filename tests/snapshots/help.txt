@@ -27,7 +27,8 @@ usage: icarium <command>
       --sdc FILE          constraints file (optional)
       --only IDS          comma-separated rule allowlist
       --skip IDS          comma-separated rule blocklist
-      --format FMT        text (default) or ids
+      --format FMT        text (default), ids, or json
+      --minify            minified json (with --format json)
       --sync-depth N      required chain depth (default 2)
       --cdc-010-no-heuristic  disable library pin-name guessing
       --cdc-018-depth-threshold N  cascade warn depth (default 4)

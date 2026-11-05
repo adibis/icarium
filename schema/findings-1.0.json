@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.dev/schema/findings-1.0.json",
+  "title": "icarium findings",
+  "description": "Rule-grouped CDC/RDC verdicts. Additive evolution: new keys may appear; existing keys keep their meaning within major version 1.",
+  "type": "object",
+  "required": ["schema_version", "design", "summary", "groups"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "design": {
+      "type": "object",
+      "required": ["top"],
+      "properties": {"top": {"type": "string"}}
+    },
+    "summary": {
+      "type": "object",
+      "required": ["errors", "warnings", "notes"],
+      "properties": {
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "notes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "severity", "title", "items"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {"type": "string"},
+          "severity": {"enum": ["error", "warning", "note"]},
+          "title": {"type": "string"},
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["dst", "driver", "message", "waiver"],
+              "additionalProperties": false,
+              "properties": {
+                "dst": {"$ref": "#/$defs/endpoint"},
+                "driver": {
+                  "anyOf": [{"$ref": "#/$defs/endpoint"}, {"type": "null"}]
+                },
+                "message": {"type": "string"},
+                "waiver": {
+                  "description": "Null until suppression lands; then {waiver_id, reason, location}.",
+                  "anyOf": [
+                    {"type": "null"},
+                    {
+                      "type": "object",
+                      "required": ["waiver_id", "reason"],
+                      "properties": {
+                        "waiver_id": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "location": {"type": ["string", "null"]}
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "required": ["name", "kind", "instance", "src"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"enum": ["cell", "port", "other"]},
+        "instance": {
+          "type": "string",
+          "description": "Slash-joined hierarchy below top; empty for top-level cells and ports."
+        },
+        "src": {
+          "description": "Yosys src location (file:line.col-line.col) or null when absent.",
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

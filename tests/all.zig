@@ -16,4 +16,5 @@ test {
     _ = @import("rule_chain_test.zig");
     _ = @import("rule_misc_test.zig");
     _ = @import("rule_rdc_test.zig");
+    _ = @import("report_findings_test.zig");
 }

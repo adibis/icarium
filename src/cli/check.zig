@@ -2,6 +2,8 @@ const std = @import("std");
 const clock = @import("../clock.zig");
 const crossing = @import("../crossing.zig");
 const ir = @import("../ir.zig");
+const findings_json = @import("../report.zig").findings;
+const reset = @import("../reset.zig");
 const rule = @import("../rule.zig");
 const sdc = @import("../sdc.zig");
 const sync = @import("../sync.zig");
@@ -13,6 +15,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var only_s: ?[]const u8 = null;
     var skip_s: ?[]const u8 = null;
     var format: []const u8 = "text";
+    var minify = false;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
     var heuristic = true;
@@ -40,6 +43,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             i += 1;
         } else if (std.mem.eql(u8, a, "--cdc-010-no-heuristic")) {
             heuristic = false;
+        } else if (std.mem.eql(u8, a, "--minify")) {
+            minify = true;
         } else if (std.mem.eql(u8, a, "--sync-depth") and i + 1 < argv.len) {
             sync_depth = std.fmt.parseInt(u32, argv[i + 1], 10) catch {
                 err.print("check: bad --sync-depth: {s}\n", .{argv[i + 1]}) catch {};
@@ -68,10 +73,12 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         err.writeAll("check: missing --yosys-json FILE\n") catch {};
         return 2;
     };
-    const ids_only = if (std.mem.eql(u8, format, "text"))
-        false
+    const fmt: enum { text, ids, json } = if (std.mem.eql(u8, format, "text"))
+        .text
     else if (std.mem.eql(u8, format, "ids"))
-        true
+        .ids
+    else if (std.mem.eql(u8, format, "json"))
+        .json
     else {
         err.print("check: bad --format: {s}\n", .{format}) catch {};
         return 2;
@@ -148,13 +155,19 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     const skip_arg: ?[]const []const u8 = if (skip_s == null) null else skip;
     const findings = rule.registry.runChecks(scratch, &ctx, only_arg, skip_arg) catch return 3;
 
+    if (fmt == .json) {
+        findings_json.writeJsonOptions(scratch, out, &mod, findings, .{ .minify = minify }) catch return 3;
+    } else {
+        for (findings) |f| {
+            if (fmt == .ids) {
+                rule.finding.renderId(out, f) catch return 3;
+            } else {
+                rule.finding.renderText(out, f) catch return 3;
+            }
+        }
+    }
     var failed = false;
     for (findings) |f| {
-        if (ids_only) {
-            rule.finding.renderId(out, f) catch return 3;
-        } else {
-            rule.finding.renderText(out, f) catch return 3;
-        }
         if (f.severity == .err) failed = true;
     }
     return if (failed) 1 else 0;

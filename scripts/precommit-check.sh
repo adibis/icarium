@@ -177,6 +177,21 @@ else
     grep -E 'FAIL' /tmp/precommit-fixtures.log | sed 's/^/    /'
 fi
 
+# Native JSON artifacts validate against schema/; same safe-skip
+# contract as the yosys-backed suites above.
+set +e
+sh scripts/validate-schemas.sh >/tmp/precommit-schemas.log 2>&1
+sc_code=$?
+set -e
+if [[ $sc_code -eq 0 ]]; then
+    pass "schema validation"
+elif [[ $sc_code -eq 3 ]]; then
+    warn "schema validation skipped (yosys/python3/jsonschema missing)"
+else
+    fail "schema validation — see /tmp/precommit-schemas.log"
+    grep -E 'FAIL' /tmp/precommit-schemas.log | sed 's/^/    /'
+fi
+
 # --- Summary ---------------------------------------------------------------
 
 echo

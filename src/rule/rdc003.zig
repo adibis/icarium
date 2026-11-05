@@ -78,6 +78,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             .rule = rule.id,
             .severity = rule.severity,
             .dst = names.items[0],
+            .driver = ctx.mod.cells[k.src].name,
             .message = message,
         });
     }
