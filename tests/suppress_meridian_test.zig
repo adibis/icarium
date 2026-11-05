@@ -172,3 +172,13 @@ test "meridian map load rejects typos" {
     try std.testing.expectError(error.BadMap, suppress.meridian.loadMap(arena.allocator(), "{\"W_X\": []}"));
     try std.testing.expectError(error.BadMap, suppress.meridian.loadMap(arena.allocator(), "{\"W_X\": [\"CDC-777\"]}"));
 }
+
+test "meridian map load honors _meta and reserved ids" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const bytes = "{\"_meta\": {\"reserved\": [\"CDC-777\"]}, \"W_X\": [\"CDC-777\", \"CDC-001\"]}";
+    var map = try suppress.meridian.loadMap(arena.allocator(), bytes);
+    try std.testing.expectEqual(@as(usize, 1), map.count());
+    try std.testing.expect(map.contains("W_X"));
+    try std.testing.expect(!map.contains("_meta"));
+}

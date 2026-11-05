@@ -613,14 +613,29 @@ pub const MapError = error{ OutOfMemory, BadMap };
 pub fn loadMap(parent: std.mem.Allocator, bytes: []const u8) MapError!std.StringHashMapUnmanaged([][]const u8) {
     const parsed = std.json.parseFromSliceLeaky(std.json.Value, parent, bytes, .{}) catch return error.BadMap;
     if (parsed != .object) return error.BadMap;
+    // Reserved IDs are the map's own forward references: waivers may
+    // name rules not yet implemented, unmatched until they land.
+    var reserved = std.StringHashMapUnmanaged(void).empty;
+    if (parsed.object.get("_meta")) |m| {
+        if (m == .object) {
+            if (m.object.get("reserved")) |r| {
+                if (r == .array) {
+                    for (r.array.items) |v| {
+                        if (v == .string) try reserved.put(parent, v.string, {});
+                    }
+                }
+            }
+        }
+    }
     var map = std.StringHashMapUnmanaged([][]const u8).empty;
     var it = parsed.object.iterator();
     while (it.next()) |e| {
+        if (std.mem.startsWith(u8, e.key_ptr.*, "_")) continue;
         if (e.value_ptr.* != .array or e.value_ptr.array.items.len == 0) return error.BadMap;
         var ids = std.ArrayListUnmanaged([]const u8).empty;
         for (e.value_ptr.array.items) |v| {
             if (v != .string) return error.BadMap;
-            if (rule.registry.find(v.string) == null) return error.BadMap;
+            if (rule.registry.find(v.string) == null and !reserved.contains(v.string)) return error.BadMap;
             try ids.append(parent, v.string);
         }
         try map.put(parent, e.key_ptr.*, try ids.toOwnedSlice(parent));
