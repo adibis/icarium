@@ -103,3 +103,27 @@ gate past the chain's final stage.
 honors: cdc_sync cdc_handshake
 fixtures: fixtures/CDC-014
 
+CDC-015 [err] Synchronizer chain released by a foreign-domain reset
+A synchronizer chain takes its async reset from another clock
+domain: every foreign deassertion races the chain clock, so the
+resolving flops never reach steady state. Reset the chain from
+its own domain, or synchronize the reset into it.
+honors: cdc_sync
+fixtures: fixtures/CDC-015
+
+CDC-016 [err] Opposite-edge stages in a synchronizer chain
+Adjacent chain stages sample on opposite edges of one clock,
+halving the resolution time a same-edge chain would provide.
+The RTL reads as a symmetric 2FF, but MTBF roughly halves.
+Sample every stage on the same edge.
+honors: cdc_sync
+fixtures: fixtures/CDC-016
+
+CDC-017 [err] Transparent latch in a CDC path
+A latch sits between a source flop and a destination flop in
+different clocks: while the enable holds, the foreign signal
+flows transparently to the destination with no resolution
+time. Replace the latch with a 2FF chain on the dst clock.
+honors: cdc_sync
+fixtures: fixtures/CDC-017
+

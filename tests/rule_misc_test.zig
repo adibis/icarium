@@ -966,3 +966,135 @@ test "a gated gray bus clears both CDC-004 and CDC-012" {
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
 }
+
+const foreign_reset =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "rst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [7]}
+    \\        },
+    \\        "s1": {
+    \\          "type": "$adff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "ARST": [7], "Q": [8]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$adff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [8], "ARST": [7], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a chain on a foreign reset fires CDC-015 alone" {
+    var l = try loadAll(foreign_reset, gate_between_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-015"));
+}
+
+const opp_edge =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "Q": [8]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$adff",
+    \\          "parameters": {"CLK_POLARITY": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [8], "ARST": ["1"], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "an opposite-edge chain fires CDC-016 alone" {
+    var l = try loadAll(opp_edge, gate_between_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-016"));
+}
+
+const latch_stage =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "en": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "lat": {
+    \\          "type": "$dlatch",
+    \\          "port_directions": {"D": "input", "EN": "input", "Q": "output"},
+    \\          "connections": {"D": [6], "EN": [5], "Q": [7]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [7], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const latch_stage_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+    \\set_input_delay -clock cb 1.0 [get_ports en]
+;
+
+test "a latch between domains fires CDC-017 alone" {
+    var l = try loadAll(latch_stage, latch_stage_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-017"));
+}
