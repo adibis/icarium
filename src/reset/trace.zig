@@ -167,6 +167,7 @@ const Walker = struct {
         return w.resolved(.comb, c.name, 0, &.{});
     }
 
+    // Buffers pass resets through; only inverters flip polarity.
     fn throughTransparent(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Resolved {
         var inputs: std.ArrayListUnmanaged(ir.bits.Bit) = .empty;
         for (c.ports) |p| {
@@ -174,7 +175,7 @@ const Walker = struct {
             for (p.bits) |b| try inputs.append(w.alloc, b);
         }
         var res = try w.resolveBits(inputs.items);
-        res.flips += 1;
+        if (clock.cells.isInverting(c.type)) res.flips += 1;
         return res;
     }
 

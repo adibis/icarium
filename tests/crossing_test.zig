@@ -100,16 +100,13 @@ const pairs_sdc =
 test "flop and port pairs enumerate with async verdicts" {
     var l = try loadAll(pairs, pairs_sdc);
     defer freeAll(&l);
-    try std.testing.expectEqual(@as(usize, 8), l.report.crossings.len);
+    try std.testing.expectEqual(@as(usize, 6), l.report.crossings.len);
     const async_pair = xFor(&l, .flop_flop_bit, 10, 10).?;
     try std.testing.expectEqualStrings("clk_a", async_pair.src_clk);
     try std.testing.expectEqualStrings("clk_b", async_pair.dst_clk);
     try std.testing.expect(async_pair.async_per_sdc);
-    const sync_pair = xFor(&l, .flop_flop_bit, 11, 11).?;
-    try std.testing.expect(!sync_pair.async_per_sdc);
-    const typed = xFor(&l, .port_flop, 4, 4).?;
-    try std.testing.expectEqualStrings("clk_a", typed.src_clk);
-    try std.testing.expect(!typed.async_per_sdc);
+    try std.testing.expect(xFor(&l, .flop_flop_bit, 11, 11) == null);
+    try std.testing.expect(xFor(&l, .port_flop, 4, 4) == null);
     const untyped = xFor(&l, .port_flop_untyped, 5, 5).?;
     try std.testing.expectEqualStrings("port:raw", untyped.src_clk);
     try std.testing.expect(untyped.async_per_sdc);
@@ -266,6 +263,7 @@ const latched =
     \\    "top": {
     \\      "ports": {
     \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "clk_b": {"direction": "input", "bits": [5]},
     \\        "d": {"direction": "input", "bits": [3]},
     \\        "q": {"direction": "output", "bits": [4]}
     \\      },
@@ -278,7 +276,7 @@ const latched =
     \\        "dst": {
     \\          "type": "$dff",
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
-    \\          "connections": {"CLK": [2], "D": [10], "Q": [4]}
+    \\          "connections": {"CLK": [5], "D": [10], "Q": [4]}
     \\        }
     \\      }
     \\    }
@@ -286,8 +284,14 @@ const latched =
     \\}
 ;
 
+const latched_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\create_clock -name clk_b -period 7 [get_ports clk_b]
+    \\set_clock_groups -asynchronous -group {clk} -group {clk_b}
+;
+
 test "latch enables sink like clocks and source like flops" {
-    var l = try loadAll(latched, sinks_sdc);
+    var l = try loadAll(latched, latched_sdc);
     defer freeAll(&l);
     try std.testing.expectEqual(@as(usize, 4), l.report.crossings.len);
     var en_seen = false;
@@ -301,7 +305,8 @@ test "latch enables sink like clocks and source like flops" {
     try std.testing.expect(en_seen);
     const q = xFor(&l, .flop_flop_bit, 10, 10).?;
     try std.testing.expectEqualStrings("clk", q.src_clk);
-    try std.testing.expect(!q.async_per_sdc);
+    try std.testing.expectEqualStrings("clk_b", q.dst_clk);
+    try std.testing.expect(q.async_per_sdc);
 }
 
 const sliced =
@@ -310,6 +315,7 @@ const sliced =
     \\    "top": {
     \\      "ports": {
     \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "clk_b": {"direction": "input", "bits": [5]},
     \\        "q": {"direction": "output", "bits": [20, 21]}
     \\      },
     \\      "cells": {
@@ -321,7 +327,7 @@ const sliced =
     \\        "dst": {
     \\          "type": "$dff",
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
-    \\          "connections": {"CLK": [2], "D": [11, 10], "Q": [20, 21]}
+    \\          "connections": {"CLK": [5], "D": [11, 10], "Q": [20, 21]}
     \\        }
     \\      }
     \\    }
@@ -329,8 +335,14 @@ const sliced =
     \\}
 ;
 
+const sliced_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\create_clock -name clk_b -period 7 [get_ports clk_b]
+    \\set_clock_groups -asynchronous -group {clk} -group {clk_b}
+;
+
 test "sliced buses group with exact lane maps" {
-    var l = try loadAll(sliced, sinks_sdc);
+    var l = try loadAll(sliced, sliced_sdc);
     defer freeAll(&l);
     try std.testing.expectEqual(@as(usize, 5), l.report.crossings.len);
     var bus_seen = false;
@@ -352,6 +364,7 @@ const clock_en =
     \\    "top": {
     \\      "ports": {
     \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "clk_b": {"direction": "input", "bits": [5]},
     \\        "en": {"direction": "input", "bits": [3]},
     \\        "d": {"direction": "input", "bits": [4]},
     \\        "q": {"direction": "output", "bits": [20]}
@@ -365,7 +378,7 @@ const clock_en =
     \\        "dst": {
     \\          "type": "$dff",
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
-    \\          "connections": {"CLK": [2], "D": [10], "Q": [20]}
+    \\          "connections": {"CLK": [5], "D": [10], "Q": [20]}
     \\        }
     \\      }
     \\    }
@@ -373,14 +386,22 @@ const clock_en =
     \\}
 ;
 
+const clock_en_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\create_clock -name clk_b -period 7 [get_ports clk_b]
+    \\set_clock_groups -asynchronous -group {clk} -group {clk_b}
+;
+
 test "flop clock-enables sink instead of going transparent" {
-    var l = try loadAll(clock_en, sinks_sdc);
+    var l = try loadAll(clock_en, clock_en_sdc);
     defer freeAll(&l);
     try std.testing.expectEqual(@as(usize, 5), l.report.crossings.len);
     const x = xFor(&l, .port_flop_untyped, 3, 3).?;
     try std.testing.expectEqualStrings("EN", x.dst.port);
     try std.testing.expectEqualStrings("clk", x.dst_clk);
     try std.testing.expect(x.async_per_sdc);
+    const q = xFor(&l, .flop_flop_bit, 10, 10).?;
+    try std.testing.expect(q.async_per_sdc);
 }
 
 fn checkComplete(json: []const u8, sdc_text: ?[]const u8, want_tied: usize, want_undriven: usize) !void {
@@ -423,10 +444,10 @@ test "every sink bit lands in a record or is tied or undriven" {
     try checkComplete(muxed_src, muxed_sdc, 0, 0);
     try checkComplete(ctl_flop, sinks_sdc, 0, 0);
     try checkComplete(mems, mems_sdc, 1, 0);
-    try checkComplete(lanewise, sinks_sdc, 0, 2);
-    try checkComplete(latched, sinks_sdc, 0, 0);
-    try checkComplete(sliced, sinks_sdc, 0, 4);
-    try checkComplete(clock_en, sinks_sdc, 0, 0);
+    try checkComplete(lanewise, lanewise_sdc, 0, 2);
+    try checkComplete(latched, latched_sdc, 0, 0);
+    try checkComplete(sliced, sliced_sdc, 0, 4);
+    try checkComplete(clock_en, clock_en_sdc, 0, 0);
 }
 
 test "IDs survive cell reordering" {
@@ -531,6 +552,7 @@ const lanewise =
     \\    "top": {
     \\      "ports": {
     \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "clk_b": {"direction": "input", "bits": [5]},
     \\        "sel": {"direction": "input", "bits": [4]},
     \\        "q": {"direction": "output", "bits": [20, 21]}
     \\      },
@@ -548,7 +570,7 @@ const lanewise =
     \\        "dst": {
     \\          "type": "$dff",
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
-    \\          "connections": {"CLK": [2], "D": [12, 13], "Q": [20, 21]}
+    \\          "connections": {"CLK": [5], "D": [12, 13], "Q": [20, 21]}
     \\        }
     \\      }
     \\    }
@@ -556,8 +578,14 @@ const lanewise =
     \\}
 ;
 
+const lanewise_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\create_clock -name clk_b -period 7 [get_ports clk_b]
+    \\set_clock_groups -asynchronous -group {clk} -group {clk_b}
+;
+
 test "wide muxes propagate lane to lane, never across" {
-    var l = try loadAll(lanewise, sinks_sdc);
+    var l = try loadAll(lanewise, lanewise_sdc);
     defer freeAll(&l);
     try std.testing.expectEqual(@as(usize, 8), l.report.crossings.len);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 12) != null);
@@ -655,7 +683,7 @@ const mems =
     \\        "f": {
     \\          "type": "$dff",
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
-    \\          "connections": {"CLK": [3], "D": [10], "Q": [8]}
+    \\          "connections": {"CLK": [2], "D": [10], "Q": [8]}
     \\        },
     \\        "fa": {
     \\          "type": "$dff",
@@ -687,10 +715,10 @@ test "memory ports sink and source with memory clocks" {
     try std.testing.expectEqualStrings("port:waddr", waddr.src_clk);
     try std.testing.expectEqualStrings("wclk", waddr.dst_clk);
     try std.testing.expect(waddr.async_per_sdc);
-    const sync_rd = xFor(&l, .flop_flop_bit, 10, 10).?;
-    try std.testing.expectEqualStrings("rclk", sync_rd.src_clk);
-    try std.testing.expectEqualStrings("rclk", sync_rd.dst_clk);
-    try std.testing.expect(!sync_rd.async_per_sdc);
+    const mem_rd = xFor(&l, .flop_flop_bit, 10, 10).?;
+    try std.testing.expectEqualStrings("rclk", mem_rd.src_clk);
+    try std.testing.expectEqualStrings("wclk", mem_rd.dst_clk);
+    try std.testing.expect(mem_rd.async_per_sdc);
     const async_rd = xFor(&l, .flop_flop_bit, 11, 11).?;
     try std.testing.expectEqualStrings("unknown", async_rd.src_clk);
     try std.testing.expect(async_rd.async_per_sdc);

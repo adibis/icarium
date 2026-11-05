@@ -179,6 +179,17 @@ const arst =
     \\          "port_directions": {"CLK": "input", "ARST": "input", "D": "input", "Q": "output"},
     \\          "connections": {"CLK": [2], "ARST": [15], "D": [5], "Q": [6]},
     \\          "parameters": {"ARST_POLARITY": "1"}
+    \\        },
+    \\        "rbuf": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "Y": [16]}
+    \\        },
+    \\        "f_rbuf": {
+    \\          "type": "$aldff",
+    \\          "port_directions": {"CLK": "input", "ALOAD": "input", "AD": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "ALOAD": [16], "AD": ["0"], "D": [5], "Q": [6]},
+    \\          "parameters": {"ALOAD_POLARITY": "1"}
     \\        }
     \\      }
     \\    }
@@ -227,6 +238,10 @@ test "polarity prefers attribute, then param, then unknown" {
     try std.testing.expectEqualStrings("polarity attribute overrides param", attr.notes[0]);
     try std.testing.expectEqual(reset.trace.Polarity.high, asyncPin(flopFor(&l, "f_attr_only").?, "ARST").?.polarity);
     try std.testing.expectEqual(reset.trace.Polarity.high, asyncPin(flopFor(&l, "f_flip").?, "ARST").?.polarity);
+    const rbuf = asyncPin(flopFor(&l, "f_rbuf").?, "ALOAD").?;
+    try std.testing.expectEqual(reset.trace.Origin.port, rbuf.origin);
+    try std.testing.expectEqualStrings("rst", rbuf.ref);
+    try std.testing.expectEqual(reset.trace.Polarity.low, rbuf.polarity);
     try std.testing.expectEqual(reset.trace.Polarity.low, asyncPin(flopFor(&l, "f_tied").?, "ARST").?.polarity);
     try std.testing.expectEqual(reset.trace.Polarity.unknown, asyncPin(flopFor(&l, "f_noparam").?, "ARST").?.polarity);
     try std.testing.expectEqualStrings("polarity unknown", asyncPin(flopFor(&l, "f_noparam").?, "ARST").?.notes[0]);

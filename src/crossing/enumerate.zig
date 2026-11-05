@@ -134,7 +134,10 @@ pub fn enumerate(
     }
 
     var out: std.ArrayListUnmanaged(Crossing) = .empty;
-    for (pairs.items) |pr| try out.append(alloc, try en.buildCrossing(pr, null));
+    for (pairs.items) |pr| {
+        if (!en.keepPair(pr)) continue;
+        try out.append(alloc, try en.buildCrossing(pr, null));
+    }
     try en.appendBusGroups(&pairs, &out);
     std.mem.sort(Crossing, out.items, {}, struct {
         fn less(_: void, a: Crossing, b: Crossing) bool {
@@ -354,6 +357,13 @@ const Enumerator = struct {
         return rev.toOwnedSlice(en.alloc);
     }
 
+    // Synchronous data pairs are not crossings: no rule consumes
+    // them, and real cones emit millions. Controls and unknowns stay.
+    fn keepPair(en: *Enumerator, pr: Pair) bool {
+        if (pr.dst_control or pr.dst_class == .clk) return true;
+        return en.asyncFor(pr);
+    }
+
     fn buildCrossing(en: *Enumerator, pr: Pair, kind_override: ?Kind) error{OutOfMemory}!Crossing {
         const kind: Kind = kind_override orelse if (pr.dst_control)
             .clock_control
@@ -413,6 +423,7 @@ const Enumerator = struct {
                 if (en.mod.cells[sc].blackbox) continue;
             }
             if (pr.dst_control or pr.dst_class == .clk) continue;
+            if (!en.asyncFor(pr)) continue;
             try cand.append(en.alloc, i);
         }
         std.mem.sort(usize, cand.items, pairs, struct {

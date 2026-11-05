@@ -214,8 +214,8 @@ const Walker = struct {
         return w.make("unknown", "", &.{why});
     }
 
-    // Transparent cells pass the domain through; the inversion note
-    // stays so polarity-sensitive rules need no re-walk.
+    // Transparent cells pass the domain through; only inverters
+    // earn the note, so buffers stay silent on clock paths.
     fn throughTransparent(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
         var inputs: std.ArrayListUnmanaged(ir.bits.Bit) = .empty;
         for (c.ports) |p| {
@@ -224,6 +224,7 @@ const Walker = struct {
         }
         const dom = try w.resolveBits(inputs.items);
         if (std.mem.eql(u8, dom.name, "unknown")) return dom;
+        if (!cells.isInverting(c.type)) return dom;
         return w.withNote(dom, "inverted clock");
     }
 

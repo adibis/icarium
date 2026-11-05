@@ -67,6 +67,16 @@ const direct_inv =
     \\          "type": "$dff",
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
     \\          "connections": {"CLK": [6], "D": [3], "Q": [5]}
+    \\        },
+    \\        "buf": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "Y": [7]}
+    \\        },
+    \\        "f_buf": {
+    \\          "type": "$aldff",
+    \\          "port_directions": {"CLK": "input", "ALOAD": "input", "AD": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [7], "ALOAD": ["0"], "AD": ["0"], "D": [3], "Q": [4]}
     \\        }
     \\      }
     \\    }
@@ -85,6 +95,9 @@ test "direct and inverted clocks resolve" {
     try std.testing.expectEqualStrings("clk", inv.name);
     try std.testing.expectEqual(@as(usize, 1), inv.notes.len);
     try std.testing.expectEqualStrings("inverted clock", inv.notes[0]);
+    const buf = domFor(&l, "f_buf").?;
+    try std.testing.expectEqualStrings("clk", buf.name);
+    try std.testing.expectEqual(@as(usize, 0), buf.notes.len);
 }
 
 test "undeclared roots get synthetic domains" {
@@ -456,12 +469,19 @@ test "cell tables recognize sequential and transparent" {
     try std.testing.expect(clock.cells.isSequential("$adff"));
     try std.testing.expect(clock.cells.isSequential("$dlatch"));
     try std.testing.expect(clock.cells.isSequential("$adffe"));
+    try std.testing.expect(clock.cells.isSequential("$aldff"));
+    try std.testing.expect(clock.cells.isSequential("$aldffe"));
     try std.testing.expect(clock.cells.isSequential("$dlatchsr"));
     try std.testing.expect(clock.cells.isSequential("$sr"));
     try std.testing.expect(!clock.cells.isSequential("$mux"));
     try std.testing.expect(!clock.cells.isSequential("$memrd"));
     try std.testing.expect(clock.cells.isTransparent("$not"));
+    try std.testing.expect(clock.cells.isTransparent("$buf"));
+    try std.testing.expect(clock.cells.isTransparent("$logic_not"));
     try std.testing.expect(!clock.cells.isTransparent("$mux"));
+    try std.testing.expect(clock.cells.isInverting("$not"));
+    try std.testing.expect(clock.cells.isInverting("$logic_not"));
+    try std.testing.expect(!clock.cells.isInverting("$buf"));
     try std.testing.expect(clock.cells.isClockMux("$mux"));
     try std.testing.expect(!clock.cells.isClockMux("$pmux"));
     try std.testing.expect(clock.cells.isClockGate("$and"));

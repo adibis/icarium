@@ -9,6 +9,8 @@ const sequential = std.StaticStringMap(void).initComptime(.{
     .{ "$sdffe", {} },
     .{ "$adff", {} },
     .{ "$adffe", {} },
+    .{ "$aldff", {} },
+    .{ "$aldffe", {} },
     .{ "$dffsr", {} },
     .{ "$dlatch", {} },
     .{ "$dlatchsr", {} },
@@ -29,13 +31,25 @@ pub fn isLatch(cell_type: []const u8) bool {
     return latch.get(cell_type) != null;
 }
 
-// Transparent on clock paths: the domain passes through unchanged.
+// Transparent on clock paths: slang buffers every net, so
+// $buf dominates real netlists; polarity stays a separate map.
 const transparent = std.StaticStringMap(void).initComptime(.{
     .{ "$not", {} },
+    .{ "$buf", {} },
+    .{ "$logic_not", {} },
 });
 
 pub fn isTransparent(cell_type: []const u8) bool {
     return transparent.get(cell_type) != null;
+}
+
+const inverting = std.StaticStringMap(void).initComptime(.{
+    .{ "$not", {} },
+    .{ "$logic_not", {} },
+});
+
+pub fn isInverting(cell_type: []const u8) bool {
+    return inverting.get(cell_type) != null;
 }
 
 // Clock-path structure with dedicated handling: muxes select
