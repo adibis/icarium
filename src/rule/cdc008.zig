@@ -42,7 +42,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }
     }
     if (clock_bits.count() == 0) return &.{};
-    const net_cells = try clockNetworkCells(ctx);
+    const net_cells = try context.clockNetworkCells(ctx.alloc, ctx.mod);
 
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var seen = std.AutoHashMapUnmanaged(Triple, void).empty;
@@ -75,41 +75,6 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
 }
 
 const Triple = struct { bit: u32, cell: usize, pin: usize };
-
-// Cells whose output transitively drives a flop clock. Reading
-// a clock on their inputs is distribution, never a bug.
-fn clockNetworkCells(ctx: *context.Context) error{OutOfMemory}!std.AutoHashMapUnmanaged(usize, void) {
-    const mod = ctx.mod;
-    var cells = std.AutoHashMapUnmanaged(usize, void).empty;
-    var seen = std.AutoHashMapUnmanaged(u32, void).empty;
-    var frontier = std.ArrayListUnmanaged(u32).empty;
-    for (mod.cells) |c| {
-        if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
-        for ([_][]const u8{ "CLK", "G" }) |pin| {
-            const bits = portBits(c, pin) orelse continue;
-            for (bits) |b| {
-                if (b == .sig) try frontier.append(ctx.alloc, b.sig);
-            }
-        }
-    }
-    var head: usize = 0;
-    while (head < frontier.items.len) : (head += 1) {
-        const bit = frontier.items[head];
-        if (seen.contains(bit)) continue;
-        try seen.put(ctx.alloc, bit, {});
-        const drv = mod.driver_of.get(bit) orelse continue;
-        const ci = drv.cell orelse continue;
-        if (cells.contains(ci)) continue;
-        try cells.put(ctx.alloc, ci, {});
-        for (mod.cells[ci].ports) |p| {
-            if (p.direction == .output) continue;
-            for (p.bits) |b| {
-                if (b == .sig) try frontier.append(ctx.alloc, b.sig);
-            }
-        }
-    }
-    return cells;
-}
 
 fn bitLabel(alloc: std.mem.Allocator, mod: *const ir.types.Module, bit: u32) error{OutOfMemory}![]const u8 {
     for (mod.ports) |p| {
