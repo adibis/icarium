@@ -1,0 +1,3 @@
+tests/suppress/cases/pragma-scoped/design.sv
+tests/suppress/cases/pragma-scoped/design.sdc
+pragma_scoped

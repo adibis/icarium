@@ -1,7 +1,8 @@
 #!/bin/sh
 # Suppression suite: waiver/pragma/baseline/hints/scan behavior at
 # the CLI level. Each tests/suppress/cases/<name>/ holds design.txt
-# (sv + sdc paths), optional waivers.json and flags.txt (extra
+# (sv + sdc paths, optional third line naming top when it differs
+# from the file stem), optional waivers.json and flags.txt (extra
 # check args, one per line), and expect.json ({exit, kept, waived,
 # unmatched} rule-ID sets). Exit: 0 all pass, 1 mismatch, 3 yosys,
 # binary, python3, or jsonschema missing.
@@ -29,7 +30,8 @@ for case in tests/suppress/cases/*/; do
     name="$(basename "$case")"
     sv="$(sed -n '1p' "$case/design.txt")"
     sdc="$(sed -n '2p' "$case/design.txt")"
-    top="$(basename "$sv" .sv)"
+    top="$(sed -n '3p' "$case/design.txt")"
+    [ -n "$top" ] || top="$(basename "$sv" .sv)"
     sh scripts/elaborate.sh --top "$top" --out "$TMP/net.json" "$sv" >/dev/null 2>&1
     flags=""
     [ -f "$case/flags.txt" ] && flags="$(tr '\n' ' ' < "$case/flags.txt")"

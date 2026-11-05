@@ -105,6 +105,10 @@ fn writeItem(
         if (drv.src) |s| writer.print(" @ {s}", .{s}) catch return error.WriteFailed;
     }
     writer.print(": {s}", .{f.message}) catch return error.WriteFailed;
-    if (f.waiver) |w| writer.print(" [waived {s}: {s}]", .{ w.id, w.reason }) catch return error.WriteFailed;
+    if (f.waiver) |w| {
+        writer.print(" [waived {s}: {s}", .{ w.id, w.reason }) catch return error.WriteFailed;
+        if (w.location) |l| writer.print(" @ {s}", .{l}) catch return error.WriteFailed;
+        writer.writeByte(']') catch return error.WriteFailed;
+    }
     writer.writeByte('\n') catch return error.WriteFailed;
 }

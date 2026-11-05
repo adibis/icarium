@@ -210,6 +210,15 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     } else if (strict_waivers) {
         err.writeAll("check: --strict-waivers without --waivers has no waivers to check\n") catch {};
     }
+    if (!no_findings and findings.len > 0) {
+        const paths = suppress.pragmas.pragmaFiles(scratch, &mod, findings) catch return 3;
+        if (paths.len > 0) {
+            const scanned = suppress.pragmas.scanFiles(scratch, init.io, init.gpa, paths) catch return 3;
+            for (scanned.missing) |p| err.print("check: cannot read pragma source {s}: pragmas there ignored\n", .{p}) catch {};
+            for (scanned.unknown_rules) |u| err.print("check: {s}:{d}: unknown rule {s} in pragma: ignored\n", .{ u.origin, u.line, u.rule }) catch {};
+            suppress.pragmas.apply(scratch, &mod, findings, &scanned) catch return 3;
+        }
+    }
 
     if (domain_map_path) |mp| {
         var aw = std.Io.Writer.Allocating.init(scratch);

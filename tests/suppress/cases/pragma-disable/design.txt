@@ -1,0 +1,3 @@
+tests/suppress/cases/pragma-disable/design.sv
+tests/suppress/cases/pragma-disable/design.sdc
+pragma_disable
