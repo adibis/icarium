@@ -328,9 +328,9 @@ const Slot = enum { driver, receiver, context };
 // Locator fields name waiver endpoints; value fields (clocks,
 // depths, classes) ride the comment so nothing silently narrows.
 fn slotFor(field: []const u8) Slot {
-    const receivers = [_][]const u8{ "receivingflop", "resetsyncflop", "syncflop" };
+    const receivers = [_][]const u8{ "receivingflop", "resetsyncflop", "syncflop", "glitchoutput", "drivenflop", "samplerxsignal" };
     for (receivers) |r| if (std.ascii.eqlIgnoreCase(field, r)) return .receiver;
-    const drivers = [_][]const u8{ "driver", "resetsignal", "signal", "gatedclock" };
+    const drivers = [_][]const u8{ "driver", "resetsignal", "signal", "gatedclock", "glitchinput", "sampletxsignal" };
     for (drivers) |d| if (std.ascii.eqlIgnoreCase(field, d)) return .driver;
     return .context;
 }

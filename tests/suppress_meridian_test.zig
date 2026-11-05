@@ -104,6 +104,20 @@ test "meridian joins entries across blank lines and skips audit stamps" {
     try std.testing.expect(std.mem.indexOf(u8, cmds[2].record.comment, "[no -status given]") != null);
 }
 
+test "meridian promotes sample and glitch endpoints to slots" {
+    const text =
+        "set_rule_status -rule {MULTCLK_CROSSINGS} -status {Waived} -expression {(SampleTxSignal == \"tx\") && (SampleRxSignal == \"rx\")} -comment {s}\n" ++
+        "set_rule_status -rule {W_GLITCH} -status {Waived} -expression {(GlitchInput =~ \"gi\") && (GlitchOutput =~ \"go\")} -comment {g}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 2), cmds.len);
+    try std.testing.expectEqualStrings("tx", cmds[0].record.driver.?);
+    try std.testing.expectEqualStrings("rx", cmds[0].record.receiver.?);
+    try std.testing.expectEqualStrings("gi", cmds[1].record.driver.?);
+    try std.testing.expectEqualStrings("go", cmds[1].record.receiver.?);
+}
+
 test "meridian splits crowded locator sides per locator" {
     const text =
         "set_rule_status -rule {W_MASYNC} -status {Waived} -expression {(ReceivingFlop =~ \"r1\") && (SyncFlop == \"r2\")} -comment {two receivers}\n";

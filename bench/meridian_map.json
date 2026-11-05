@@ -1,0 +1,16 @@
+{
+  "W_DATA": ["CDC-001", "CDC-004"],
+  "DATA": ["CDC-001", "CDC-004"],
+  "W_MASYNC": ["CDC-001", "CDC-002", "CDC-004"],
+  "W_INTERFACE": ["CDC-001", "CDC-011"],
+  "W_RECON_GROUPS": ["CDC-005", "CDC-020"],
+  "MULTCLK_CROSSINGS": ["CDC-001", "CDC-004"],
+  "W_CNTL": ["CDC-001", "CDC-009"],
+  "CNTL": ["CDC-001", "CDC-009"],
+  "W_G_CLK_GLITCH": ["CDC-010"],
+  "W_FANOUT": ["CDC-005"],
+  "W_ASYNC_RST_FLOPS": ["RDC-001", "RDC-008"],
+  "RST_SYNC": ["CDC-001", "RDC-001"],
+  "SYNCH_RST_CROSSING": ["CDC-015", "RDC-001"],
+  "W_GLITCH": ["CDC-006", "CDC-010"]
+}
