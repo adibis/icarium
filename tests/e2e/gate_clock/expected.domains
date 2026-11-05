@@ -1,2 +1,4 @@
 flop $procdff$3 domain clk
 note $procdff$3 clock gate enable: port en
+control $and$tests/e2e/gate_clock/design.sv:8$1 B domain port:en
+note $and$tests/e2e/gate_clock/design.sv:8$1 B undeclared clock root

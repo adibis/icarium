@@ -81,5 +81,26 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         out.print("flop {s} domain {s}\n", .{ name, f.domain.name }) catch return 3;
         for (f.domain.notes) |n| out.print("note {s} {s}\n", .{ name, n }) catch return 3;
     }
+    // Controls sorted by cell, then pin, so output diffs cleanly.
+    const c_order = scratch.alloc(usize, asg.controls.len) catch return 3;
+    for (c_order, 0..) |*o, k| o.* = k;
+    const CCtx = struct {
+        controls: []clock.trace.ControlPin,
+        mod: *const ir.types.Module,
+    };
+    std.mem.sort(usize, c_order, CCtx{ .controls = asg.controls, .mod = &mod }, struct {
+        fn less(ctx: CCtx, a: usize, b: usize) bool {
+            const na = ctx.mod.cells[ctx.controls[a].cell].name;
+            const nb = ctx.mod.cells[ctx.controls[b].cell].name;
+            if (!std.mem.eql(u8, na, nb)) return std.mem.lessThan(u8, na, nb);
+            return std.mem.lessThan(u8, ctx.controls[a].pin, ctx.controls[b].pin);
+        }
+    }.less);
+    for (c_order) |k| {
+        const cp = asg.controls[k];
+        const name = mod.cells[cp.cell].name;
+        out.print("control {s} {s} domain {s}\n", .{ name, cp.pin, cp.domain.name }) catch return 3;
+        for (cp.domain.notes) |n| out.print("note {s} {s} {s}\n", .{ name, cp.pin, n }) catch return 3;
+    }
     return 0;
 }

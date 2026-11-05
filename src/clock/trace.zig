@@ -17,11 +17,20 @@ pub const FlopDomain = struct {
     domain: Domain,
 };
 
+// A clock-network control pin and the domain feeding it: CDC-010
+// compares this against the clock legs it switches or gates.
+pub const ControlPin = struct {
+    cell: usize,
+    pin: []const u8,
+    domain: Domain,
+};
+
 pub const Assignment = struct {
     // Heap-owned, matching Module: copying a live arena orphans
     // later allocations from deinit (see ir/types.zig).
     backing: *std.heap.ArenaAllocator,
     flops: []FlopDomain,
+    controls: []ControlPin,
 
     pub fn deinit(self: *Assignment) void {
         const parent = self.backing.child_allocator;
@@ -42,7 +51,8 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
     var memo = std.AutoHashMapUnmanaged(u32, Domain){};
     var active = std.AutoHashMapUnmanaged(u32, void){};
     var flops: std.ArrayListUnmanaged(FlopDomain) = .empty;
-    var w = Walker{ .mod = mod, .model = model, .alloc = alloc, .memo = &memo, .active = &active };
+    var controls: std.ArrayListUnmanaged(ControlPin) = .empty;
+    var w = Walker{ .mod = mod, .model = model, .alloc = alloc, .memo = &memo, .active = &active, .controls = &controls };
     for (mod.cells, 0..) |c, ci| {
         if (!cells.isSequential(c.type)) continue;
         const dom = if (clkBits(c)) |clk|
@@ -51,7 +61,11 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
             try w.make("unknown", "", &.{"no clock pin"});
         try flops.append(alloc, .{ .cell = ci, .domain = dom });
     }
-    return .{ .backing = backing, .flops = try flops.toOwnedSlice(alloc) };
+    return .{
+        .backing = backing,
+        .flops = try flops.toOwnedSlice(alloc),
+        .controls = try controls.toOwnedSlice(alloc),
+    };
 }
 
 fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
@@ -81,6 +95,7 @@ const Walker = struct {
     alloc: std.mem.Allocator,
     memo: *std.AutoHashMapUnmanaged(u32, Domain),
     active: *std.AutoHashMapUnmanaged(u32, void),
+    controls: *std.ArrayListUnmanaged(ControlPin),
 
     // A clock bus must agree with itself; disagreement is broken
     // input, reported as unknown rather than picked arbitrarily.
@@ -130,8 +145,8 @@ const Walker = struct {
     fn throughCell(w: *Walker, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         if (cells.isTransparent(c.type)) return w.throughTransparent(c);
-        if (cells.isClockMux(c.type)) return w.throughMux(c);
-        if (cells.isClockGate(c.type)) return w.throughGate(c);
+        if (cells.isClockMux(c.type)) return w.throughMux(ci);
+        if (cells.isClockGate(c.type)) return w.throughGate(ci);
         if (cells.isSequential(c.type)) return w.throughSequential(ci);
         if (c.blackbox) return w.make("unknown", "", &.{"blackbox-driven clock"});
         const why = try std.fmt.allocPrint(w.alloc, "unhandled {s} on clock path", .{c.type});
@@ -152,7 +167,8 @@ const Walker = struct {
         return w.withNote(dom, "inverted clock");
     }
 
-    fn throughMux(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
+    fn throughMux(w: *Walker, ci: usize) error{OutOfMemory}!Domain {
+        const c = w.mod.cells[ci];
         const a = portBits(c, "A") orelse return w.make("unknown", "", &.{"malformed clock mux"});
         const b = portBits(c, "B") orelse return w.make("unknown", "", &.{"malformed clock mux"});
         const s = portBits(c, "S") orelse return w.make("unknown", "", &.{"malformed clock mux"});
@@ -162,6 +178,9 @@ const Walker = struct {
                 return w.make("unknown", "", &.{"clock mux static leg unresolved"});
             return w.withNote(dom, if (sel) "clock mux static select B" else "clock mux static select A");
         }
+        // Dynamic selects are recorded before legs resolve: the
+        // select domain stands even when a leg does not.
+        try w.recordControl(ci, "S", try w.resolveBits(s));
         const da = try w.resolveBits(a);
         const db = try w.resolveBits(b);
         if (std.mem.eql(u8, da.name, "unknown") or std.mem.eql(u8, db.name, "unknown"))
@@ -193,7 +212,8 @@ const Walker = struct {
 
     // A clock gate passes its clock leg and notes the rest as
     // enables; ambiguous legs stay unknown rather than guessed.
-    fn throughGate(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
+    fn throughGate(w: *Walker, ci: usize) error{OutOfMemory}!Domain {
+        const c = w.mod.cells[ci];
         var clock_dom: ?Domain = null;
         var enables: std.ArrayListUnmanaged([]const u8) = .empty;
         for (c.ports) |p| {
@@ -224,6 +244,18 @@ const Walker = struct {
             }
         }
         var dom = clock_dom orelse return w.make("unknown", "", &.{"clock gate without clock leg"});
+        // Every non-clock leg is a recorded enable; flop-driven
+        // legs join them even on agreement (see drivenByFlop).
+        for (c.ports) |p| {
+            if (p.direction == .output) continue;
+            for (p.bits) |b| {
+                if (b != .sig) continue;
+                const d = try w.resolveBit(b.sig);
+                if (!std.mem.eql(u8, d.name, dom.name) or w.drivenByFlop(b.sig)) {
+                    try w.recordControl(ci, p.name, d);
+                }
+            }
+        }
         if (enables.items.len == 0) return w.withNote(dom, "clock gate");
         for (enables.items) |e| {
             const note = try std.fmt.allocPrint(w.alloc, "clock gate enable: {s}", .{e});
@@ -296,6 +328,24 @@ const Walker = struct {
     fn describeSelect(w: *Walker, s: []const ir.bits.Bit) error{OutOfMemory}![]u8 {
         if (s.len == 0) return w.alloc.dupe(u8, "missing");
         return w.describeBit(s[0]);
+    }
+
+    // One record per pin: muxes and gates recur through the memo,
+    // so without this one select would repeat per downstream flop.
+    fn recordControl(w: *Walker, ci: usize, pin: []const u8, dom: Domain) error{OutOfMemory}!void {
+        for (w.controls.items) |cp| {
+            if (cp.cell == ci and std.mem.eql(u8, cp.pin, pin)) return;
+        }
+        try w.controls.append(w.alloc, .{ .cell = ci, .pin = try w.alloc.dupe(u8, pin), .domain = dom });
+    }
+
+    // Flop-Q legs are enables even when their master matches the
+    // clock: enables are almost always flopped, and the domain
+    // alone cannot tell them from clock legs.
+    fn drivenByFlop(w: *Walker, bit: u32) bool {
+        const drv = w.mod.driver_of.get(bit) orelse return false;
+        const dci = drv.cell orelse return false;
+        return cells.isSequential(w.mod.cells[dci].type) and std.mem.eql(u8, drv.port, "Q");
     }
 
     fn describeBit(w: *Walker, b: ir.bits.Bit) error{OutOfMemory}![]u8 {

@@ -426,6 +426,31 @@ test "latches trace their gate pin" {
     try std.testing.expectEqualStrings("clk", domFor(&l, "lat").?.name);
 }
 
+fn controlFor(l: *const Loaded, cell_name: []const u8, pin: []const u8) ?clock.trace.ControlPin {
+    for (l.asg.controls) |cp| {
+        if (std.mem.eql(u8, l.mod.cells[cp.cell].name, cell_name) and std.mem.eql(u8, cp.pin, pin))
+            return cp;
+    }
+    return null;
+}
+
+test "dynamic mux select is recorded, static is not" {
+    var l = try loadAll(muxed, mux_sdc);
+    defer freeAll(&l);
+    const sel = controlFor(&l, "mux_dyn", "S").?;
+    try std.testing.expectEqualStrings("port:sel", sel.domain.name);
+    try std.testing.expect(controlFor(&l, "mux_static", "S") == null);
+    try std.testing.expect(controlFor(&l, "mux_same", "S") != null);
+}
+
+test "gate enables are recorded with their domains" {
+    var l = try loadAll(gated, "create_clock -name clk -period 10 [get_ports clk]\n");
+    defer freeAll(&l);
+    try std.testing.expectEqualStrings("port:en", controlFor(&l, "gate", "B").?.domain.name);
+    try std.testing.expectEqualStrings("clk", controlFor(&l, "gate2", "B").?.domain.name);
+    try std.testing.expect(controlFor(&l, "gate", "A") == null);
+}
+
 test "cell tables recognize sequential and transparent" {
     try std.testing.expect(clock.cells.isSequential("$dff"));
     try std.testing.expect(clock.cells.isSequential("$adff"));

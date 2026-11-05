@@ -1,2 +1,4 @@
 flop $procdff$3 domain clk_a+clk_b
 note $procdff$3 clock mux select: port sel
+control $ternary$tests/e2e/mux_clock/design.sv:9$1 S domain port:sel
+note $ternary$tests/e2e/mux_clock/design.sv:9$1 S undeclared clock root

@@ -13,6 +13,16 @@ BIN="${ICARIUM_BIN:-$ROOT/zig-out/bin/icarium}"
 [ -x "$BIN" ] || { echo "e2e: build first (zig build): $BIN missing" >&2; exit 3; }
 command -v yosys >/dev/null 2>&1 || { echo "e2e: SKIP, yosys not on PATH" >&2; exit 3; }
 
+# Elaborate with repo-relative paths: Yosys embeds the file argument
+# in generated cell names, and absolute paths would make goldens
+# machine-specific. BIN is resolved first so a relative override
+# survives the cd.
+case "$BIN" in
+    /*) ;;
+    *) BIN="$(pwd)/$BIN" ;;
+esac
+cd "$ROOT" || exit 3
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail=0
@@ -29,9 +39,10 @@ check() {
     fi
 }
 
-for case in "$ROOT"/tests/e2e/*/; do
+for casedir in tests/e2e/*/; do
+    name="$(basename "$casedir")"
+    case="tests/e2e/$name"
     [ -f "$case/design.sv" ] || continue
-    name="$(basename "$case")"
     ran=$((ran + 1))
     if ! sh "$ROOT/scripts/elaborate.sh" --top "$name" --out "$TMP/$name.json" \
         "$case/design.sv" >"$TMP/$name.elab.log" 2>&1; then
