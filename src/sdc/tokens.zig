@@ -165,9 +165,9 @@ fn spliceSubstitution(
     seg: []const u8,
     start: usize,
 ) !usize {
-    const end = std.mem.indexOfScalarPos(u8, seg, start + 1, ']') orelse return error.UnbalancedBracket;
+    const end = findClose(seg, start, '[', ']') orelse return error.UnbalancedBracket;
     const inner = seg[start + 1 .. end];
-    if (std.mem.indexOfScalar(u8, inner, '[') != null) return error.NestedSubstitution;
+    if (hasNestedSubstitution(inner)) return error.NestedSubstitution;
     var it = std.mem.tokenizeScalar(u8, inner, ' ');
     const cmd = it.next() orelse return error.EmptySubstitution;
     const allowed = std.mem.eql(u8, cmd, "get_ports") or
@@ -175,8 +175,24 @@ fn spliceSubstitution(
         std.mem.eql(u8, cmd, "get_cells") or
         std.mem.eql(u8, cmd, "get_pins");
     if (!allowed) return error.ForbiddenSubstitution;
-    while (it.next()) |w| try words.append(alloc, try alloc.dupe(u8, w));
+    while (it.next()) |w| try words.append(alloc, try alloc.dupe(u8, busStem(w)));
     return end + 1;
+}
+
+// A bracket starting a word is a nested command; glued to a
+// name it is a bit-select, which real constraints use freely.
+fn hasNestedSubstitution(inner: []const u8) bool {
+    for (inner, 0..) |c, i| {
+        if (c == '[' and (i == 0 or inner[i - 1] == ' ' or inner[i - 1] == '\t')) return true;
+    }
+    return false;
+}
+
+// `name[*]` selects a whole bus; Yosys reports whole-bus port
+// names, so the pattern collapses to its stem at splice time.
+fn busStem(w: []const u8) []const u8 {
+    if (w.len > 3 and std.mem.eql(u8, w[w.len - 3 ..], "[*]")) return w[0 .. w.len - 3];
+    return w;
 }
 
 fn appendQuoted(

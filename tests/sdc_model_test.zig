@@ -65,6 +65,17 @@ test "port typing resolves exact and glob" {
     try std.testing.expect(sdc.model.portClock(&mod, "other") == null);
 }
 
+test "whole-bus glob types the bus" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var mod = try buildModel(&arena,
+        \\create_clock -name clk -period 10
+        \\set_input_delay -clock clk [get_ports bus[*]]
+    );
+    defer mod.deinit();
+    try std.testing.expectEqualStrings("clk", sdc.model.portClock(&mod, "bus").?);
+}
+
 test "clock roots resolve exact and glob" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

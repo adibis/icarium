@@ -70,6 +70,16 @@ test "forbidden substitution refused" {
     try std.testing.expectError(error.GluedSubstitution, e3);
 }
 
+test "bus bit-selects splice, nested commands still refuse" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const r = try parseWithArena(&arena, "set_input_delay -clock c [get_ports bus[*]]");
+    try std.testing.expectEqualStrings("bus", r.cmds[0].words[3]);
+    var warns: std.ArrayListUnmanaged(tokens.Warning) = .empty;
+    const e = tokens.parseCommands(arena.allocator(), "cmd [get_ports [get_cells x]]", &warns);
+    try std.testing.expectError(error.NestedSubstitution, e);
+}
+
 test "unbalanced grouping fails loud" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
