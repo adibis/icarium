@@ -229,3 +229,185 @@ test "a declared polarity mismatch fires RDC-002 alone" {
     const fs = try checkAll(&l);
     try std.testing.expect(onlyRule(fs, "RDC-002"));
 }
+
+const srst_crossing =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "kill": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$sdff",
+    \\          "parameters": {"SRST_POLARITY": "1", "SRST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "SRST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [5], "SRST": [6], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const srst_crossing_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports kill]
+    \\set_input_delay -clock cb 1.0 [get_ports d]
+;
+
+test "a foreign SRST pin fires RDC-003 alone" {
+    var l = try loadAll(srst_crossing, srst_crossing_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "RDC-003"));
+}
+
+const mux_reset_crossing =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "kill": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "rmux": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": ["0"], "B": [5], "S": [6], "Y": [7]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [7], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a foreign reset mux fires RDC-003 beside CDC-001" {
+    var l = try loadAll(mux_reset_crossing, srst_crossing_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 2), fs.len);
+    try std.testing.expectEqualStrings("CDC-001", fs[0].rule);
+    try std.testing.expectEqualStrings("RDC-003", fs[1].rule);
+}
+
+const comb_reset =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "a": {"direction": "input", "bits": [3]},
+    \\        "b": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "fa": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [6]}
+    \\        },
+    \\        "fb": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [7]}
+    \\        },
+    \\        "g": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "B": [7], "Y": [8]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [8], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const comb_reset_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\set_input_delay -clock clk 1.0 [get_ports a]
+    \\set_input_delay -clock clk 1.0 [get_ports b]
+    \\set_input_delay -clock clk 1.0 [get_ports d]
+;
+
+test "a flopped comb reset fires RDC-004 alone" {
+    var l = try loadAll(comb_reset, comb_reset_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "RDC-004"));
+}
+
+const multi_port_reset =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rsta": {"direction": "input", "bits": [3]},
+    \\        "rstb": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "g": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "B": [4], "Y": [8]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "0", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [8], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const multi_port_reset_sdc =
+    \\create_clock -name clk -period 10 [get_ports clk]
+    \\set_input_delay -clock clk 1.0 [get_ports d]
+    \\set_input_delay -clock clk 1.0 [get_ports rsta]
+    \\set_input_delay -clock clk 1.0 [get_ports rstb]
+;
+
+test "a two-port comb reset fires RDC-005 alone" {
+    var l = try loadAll(multi_port_reset, multi_port_reset_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "RDC-005"));
+}

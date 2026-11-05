@@ -189,3 +189,27 @@ the edge to match the declaration.
 honors: reset_sync
 fixtures: fixtures/RDC-002
 
+RDC-003 [err] Sync reset driven from a foreign async domain
+A flop's synchronous reset fans in from a register in another
+clock domain. The sync reset samples on the destination edge,
+so a foreign source turns deassertion into a metastability
+lottery. Synchronize the reset into the consumer domain.
+honors:
+fixtures: fixtures/RDC-003
+
+RDC-004 [err] Async reset driven by combinational logic
+A flop's async reset pin is a comb gate's output fed by flops.
+Gate outputs glitch on near-simultaneous input changes, and on
+an async reset pin the transient reads as a real assertion.
+Register the gate on the consumer clock first.
+honors: reset_sync
+fixtures: fixtures/RDC-004
+
+RDC-005 [err] Async reset from multiple independent sources
+A flop's async reset combines two or more top-level ports with
+no flop behind the gate. Independent board sources release at
+independent times; the consumer's release edge is undefined.
+Qualify the sources through one reset tree.
+honors: reset_sync
+fixtures: fixtures/RDC-005
+

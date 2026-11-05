@@ -1,6 +1,7 @@
 // RDC-002: the producer has no reset of its own, so it holds
 // no reset value to disagree with the consumer's sense. The
-// rule skips resetless producers; RDC-004 owns this shape.
+// rule skips resetless producers; direct flop drive without
+// comb stays silent across the reset rules in one domain.
 module good_resetless_producer (
     input  logic clk,
     input  logic raw_rst,

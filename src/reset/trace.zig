@@ -26,6 +26,8 @@ pub const SyncReset = struct {
     ref: []const u8,
     origin: Origin,
     origin_ref: []const u8,
+    // The $mux cell for .mux, for rules walking the select bits.
+    mux: ?usize = null,
     notes: [][]const u8,
 };
 
@@ -218,13 +220,14 @@ const Walker = struct {
             const m = w.mod.cells[dci];
             if (std.mem.eql(u8, m.type, "$pmux")) saw_pmux = true;
             if (isSyncMux(m)) {
-                const s = portBits(m, "S") orelse return SyncReset{ .kind = .mux, .ref = try w.alloc.dupe(u8, m.name), .origin = .unknown, .origin_ref = "", .notes = try w.dupeNotes(&.{"reset mux without select"}) };
+                const s = portBits(m, "S") orelse return SyncReset{ .kind = .mux, .ref = try w.alloc.dupe(u8, m.name), .origin = .unknown, .origin_ref = "", .mux = dci, .notes = try w.dupeNotes(&.{"reset mux without select"}) };
                 const res = try w.resolveBits(s);
                 return .{
                     .kind = .mux,
                     .ref = try w.alloc.dupe(u8, m.name),
                     .origin = res.origin,
                     .origin_ref = try w.alloc.dupe(u8, res.ref),
+                    .mux = dci,
                     .notes = try w.dupeNotes(res.notes),
                 };
             }
