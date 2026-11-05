@@ -25,4 +25,20 @@ pub fn isTransparent(cell_type: []const u8) bool {
     return transparent.get(cell_type) != null;
 }
 
-pub const clk_pin = "CLK";
+// Clock-path structure with dedicated handling: muxes select
+// between clock legs, gates AND enables onto one clock leg.
+const clock_mux = std.StaticStringMap(void).initComptime(.{
+    .{ "$mux", {} },
+});
+
+pub fn isClockMux(cell_type: []const u8) bool {
+    return clock_mux.get(cell_type) != null;
+}
+
+const clock_gate = std.StaticStringMap(void).initComptime(.{
+    .{ "$and", {} },
+});
+
+pub fn isClockGate(cell_type: []const u8) bool {
+    return clock_gate.get(cell_type) != null;
+}

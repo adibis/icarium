@@ -1,5 +1,5 @@
-flop $procdff$4 domain unknown
-note $procdff$4 sequential clock driver
-flop $procdff$5 domain unknown
-note $procdff$5 sequential clock driver
+flop $procdff$4 domain clk
+note $procdff$4 divide-by-2, master kept
+flop $procdff$5 domain clk
+note $procdff$5 divide-by-2, master kept
 flop $procdff$6 domain clk

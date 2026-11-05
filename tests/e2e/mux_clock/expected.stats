@@ -1,0 +1,6 @@
+module: mux_clock
+cells: 2
+unique bits: 6
+cells with src: 2
+  $dff: 1
+  $mux: 1

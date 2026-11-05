@@ -1,0 +1,2 @@
+flop $procdff$3 domain clk
+note $procdff$3 clock gate enable: port en

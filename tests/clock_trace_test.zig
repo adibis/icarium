@@ -152,19 +152,19 @@ const exotic =
     \\}
 ;
 
-test "blackbox, hanging, divider, mux, and pinless clocks stay explicit" {
+test "exotic drivers resolve where possible, stay explicit otherwise" {
     var l = try loadAll(exotic, "create_clock -name clk -period 10 [get_ports clk]\n");
     defer freeAll(&l);
     try std.testing.expectEqualStrings("unknown", domFor(&l, "f_bb").?.name);
     try std.testing.expectEqualStrings("blackbox-driven clock", domFor(&l, "f_bb").?.notes[0]);
     try std.testing.expectEqualStrings("unknown", domFor(&l, "f_hang").?.name);
     try std.testing.expectEqualStrings("undriven clock", domFor(&l, "f_hang").?.notes[0]);
-    try std.testing.expectEqualStrings("unknown", domFor(&l, "f_div").?.name);
-    try std.testing.expectEqualStrings("sequential clock driver", domFor(&l, "f_div").?.notes[0]);
-    try std.testing.expectEqualStrings("unknown", domFor(&l, "f_mux").?.name);
-    try std.testing.expectEqualStrings("unhandled $mux on clock path", domFor(&l, "f_mux").?.notes[0]);
+    try std.testing.expectEqualStrings("clk", domFor(&l, "f_div").?.name);
+    try std.testing.expectEqualStrings("unrecognized divider, master kept", domFor(&l, "f_div").?.notes[0]);
+    try std.testing.expectEqualStrings("clk", domFor(&l, "f_mux").?.name);
+    try std.testing.expectEqualStrings("clock mux static select A", domFor(&l, "f_mux").?.notes[0]);
     try std.testing.expectEqualStrings("unknown", domFor(&l, "f_noclk").?.name);
-    try std.testing.expectEqualStrings("no CLK pin", domFor(&l, "f_noclk").?.notes[0]);
+    try std.testing.expectEqualStrings("no clock pin", domFor(&l, "f_noclk").?.notes[0]);
     try std.testing.expectEqualStrings("clk", domFor(&l, "f_src").?.name);
 }
 
@@ -241,6 +241,191 @@ test "roots resolve by objects first, name second" {
     try std.testing.expectEqualStrings("bare", domFor(&l, "f_bare").?.name);
 }
 
+const muxed =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "sel": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [6]}
+    \\      },
+    \\      "cells": {
+    \\        "mux_dyn": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [4], "Y": [10]}
+    \\        },
+    \\        "f_dyn": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [10], "D": [5], "Q": [6]}
+    \\        },
+    \\        "mux_static": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": ["0"], "Y": [11]}
+    \\        },
+    \\        "f_static": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [5], "Q": [6]}
+    \\        },
+    \\        "mux_same": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [2], "S": [4], "Y": [12]}
+    \\        },
+    \\        "f_same": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [12], "D": [5], "Q": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mux_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+;
+
+test "dynamic mux yields a union with legs" {
+    var l = try loadAll(muxed, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_dyn").?;
+    try std.testing.expectEqualStrings("ca+cb", dom.name);
+    try std.testing.expectEqual(@as(usize, 2), dom.legs.len);
+    try std.testing.expectEqualStrings("ca", dom.legs[0]);
+    try std.testing.expectEqualStrings("cb", dom.legs[1]);
+    try std.testing.expectEqualStrings("mux:mux_dyn", dom.root);
+    try std.testing.expectEqualStrings("clock mux select: port sel", dom.notes[0]);
+}
+
+test "static mux resolves its leg" {
+    var l = try loadAll(muxed, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_static").?;
+    try std.testing.expectEqualStrings("ca", dom.name);
+    try std.testing.expectEqualStrings("clock mux static select A", dom.notes[0]);
+}
+
+test "same-domain mux passes through with a note" {
+    var l = try loadAll(muxed, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_same").?;
+    try std.testing.expectEqualStrings("ca", dom.name);
+    try std.testing.expectEqualStrings("clock mux select: port sel", dom.notes[0]);
+}
+
+const gated =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "en": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "gate": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "Y": [10]}
+    \\        },
+    \\        "f_gated": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [10], "D": [4], "Q": [5]}
+    \\        },
+    \\        "f_en": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [11]}
+    \\        },
+    \\        "gate2": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [11], "Y": [12]}
+    \\        },
+    \\        "f_gated2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [12], "D": [4], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "gated clocks keep the clock leg and name the enable" {
+    var l = try loadAll(gated, "create_clock -name clk -period 10 [get_ports clk]\n");
+    defer freeAll(&l);
+    const port_en = domFor(&l, "f_gated").?;
+    try std.testing.expectEqualStrings("clk", port_en.name);
+    try std.testing.expectEqualStrings("clock gate enable: port en", port_en.notes[0]);
+    const flop_en = domFor(&l, "f_gated2").?;
+    try std.testing.expectEqualStrings("clk", flop_en.name);
+    try std.testing.expectEqualStrings("clock gate", flop_en.notes[0]);
+}
+
+const divided =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [4]},
+    \\        "q2": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "div": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [7], "Q": [6]}
+    \\        },
+    \\        "inv": {
+    \\          "type": "$not",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "Y": [7]}
+    \\        },
+    \\        "f_div2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [6], "D": [3], "Q": [4]}
+    \\        },
+    \\        "lat": {
+    \\          "type": "$dlatch",
+    \\          "port_directions": {"D": "input", "G": "input", "Q": "output"},
+    \\          "connections": {"D": [3], "G": [2], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "toggle divider keeps master with a ratio note" {
+    var l = try loadAll(divided, "create_clock -name clk -period 10 [get_ports clk]\n");
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_div2").?;
+    try std.testing.expectEqualStrings("clk", dom.name);
+    try std.testing.expectEqualStrings("divide-by-2, master kept", dom.notes[0]);
+}
+
+test "latches trace their gate pin" {
+    var l = try loadAll(divided, "create_clock -name clk -period 10 [get_ports clk]\n");
+    defer freeAll(&l);
+    try std.testing.expectEqualStrings("clk", domFor(&l, "lat").?.name);
+}
+
 test "cell tables recognize sequential and transparent" {
     try std.testing.expect(clock.cells.isSequential("$dff"));
     try std.testing.expect(clock.cells.isSequential("$adff"));
@@ -249,4 +434,8 @@ test "cell tables recognize sequential and transparent" {
     try std.testing.expect(!clock.cells.isSequential("$memrd"));
     try std.testing.expect(clock.cells.isTransparent("$not"));
     try std.testing.expect(!clock.cells.isTransparent("$mux"));
+    try std.testing.expect(clock.cells.isClockMux("$mux"));
+    try std.testing.expect(!clock.cells.isClockMux("$pmux"));
+    try std.testing.expect(clock.cells.isClockGate("$and"));
+    try std.testing.expect(!clock.cells.isClockGate("$or"));
 }

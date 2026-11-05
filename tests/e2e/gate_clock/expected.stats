@@ -1,0 +1,6 @@
+module: gate_clock
+cells: 2
+unique bits: 5
+cells with src: 2
+  $and: 1
+  $dff: 1

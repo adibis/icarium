@@ -1,0 +1,2 @@
+clock clk_a period 10
+clock clk_b period 7

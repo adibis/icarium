@@ -1,0 +1,2 @@
+flop $procdff$3 domain clk_a+clk_b
+note $procdff$3 clock mux select: port sel
