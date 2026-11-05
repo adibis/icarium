@@ -23,6 +23,7 @@ const cdc022 = @import("cdc022.zig");
 const cdc023 = @import("cdc023.zig");
 const cdc024 = @import("cdc024.zig");
 const cdc025 = @import("cdc025.zig");
+const cdc026 = @import("cdc026.zig");
 const rdc001 = @import("rdc001.zig");
 const rdc002 = @import("rdc002.zig");
 const rdc003 = @import("rdc003.zig");
@@ -77,6 +78,7 @@ pub const rules = [_]Rule{
     cdc023.rule,
     cdc024.rule,
     cdc025.rule,
+    cdc026.rule,
     rdc001.rule,
     rdc002.rule,
     rdc003.rule,

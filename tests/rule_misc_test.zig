@@ -99,6 +99,31 @@ fn onlyRule(fs: []rule.finding.Finding, id: []const u8) bool {
     return std.mem.eql(u8, fs[0].rule, id);
 }
 
+// The multiclock record rides along: it fires on every union
+// crossing by design, so exclusivity tests admit CDC-026 notes
+// while still rejecting any second violation or CDC-026 err.
+fn onlyRulePlusNotes(fs: []rule.finding.Finding, id: []const u8) bool {
+    var main = false;
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, id)) {
+            if (main) return false;
+            main = true;
+        } else if (!std.mem.eql(u8, f.rule, "CDC-026") or f.severity != .note) {
+            return false;
+        }
+    }
+    return main;
+}
+
+// Silence tests admit the record too: every finding must be a
+// CDC-026 note (vacuous when the shape carries no crossing).
+fn onlyNotesFrom(fs: []rule.finding.Finding, id: []const u8) bool {
+    for (fs) |f| {
+        if (!std.mem.eql(u8, f.rule, id) or f.severity != .note) return false;
+    }
+    return true;
+}
+
 const one_sdc = "create_clock -name clk -period 10 [get_ports clk]\n";
 const one_sdc_typed = "create_clock -name clk -period 10 [get_ports clk]\nset_input_delay -clock clk 1.0 [get_ports d]\n";
 
@@ -517,8 +542,12 @@ test "a select async to every gated clock fires CDC-010" {
     var l = try loadAll(mux_ctl, mux_ctl_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expect(onlyRule(fs, "CDC-010"));
-    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "control pin S") != null);
+    try std.testing.expect(onlyRulePlusNotes(fs, "CDC-010"));
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, "CDC-010")) {
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "control pin S") != null);
+        }
+    }
 }
 
 const mux_shared =
@@ -576,7 +605,7 @@ test "a select sharing a gated clock stays silent" {
     var l = try loadAll(mux_shared, mux_shared_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expectEqual(@as(usize, 0), fs.len);
+    try std.testing.expect(onlyNotesFrom(fs, "CDC-026"));
 }
 
 const mux_portsel =
@@ -629,7 +658,7 @@ test "a port-driven select is not a wrong-domain flop" {
     var l = try loadAll(mux_portsel, mux_portsel_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expectEqual(@as(usize, 0), fs.len);
+    try std.testing.expect(onlyNotesFrom(fs, "CDC-026"));
 }
 
 const fast_pulse =
@@ -1638,4 +1667,204 @@ test "one source into one sync stays silent" {
     defer freeAll(&l);
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
+const mc_or =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "ena": {"direction": "input", "bits": [4]},
+    \\        "enb": {"direction": "input", "bits": [5]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "Q": [9]}
+    \\        },
+    \\        "and0": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [4], "Y": [10]}
+    \\        },
+    \\        "and1": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "B": [5], "Y": [11]}
+    \\        },
+    \\        "ormux": {
+    \\          "type": "$or",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [11], "Y": [12]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [12], "D": [9], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mc_or_sdc = "create_clock -name ca -period 10 [get_ports ca]\ncreate_clock -name cb -period 7 [get_ports cb]\nset_clock_groups -asynchronous -group {ca} -group {cb}\nset_input_delay -clock ca 1.0 [get_ports d]\nset_input_delay -clock ca 1.0 [get_ports ena]\nset_input_delay -clock ca 1.0 [get_ports enb]\n";
+
+test "or-muxed crossing reports sets, pairs, and enables" {
+    var l = try loadAll(mc_or, mc_or_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var n: usize = 0;
+    for (fs) |f| {
+        if (!std.mem.eql(u8, f.rule, "CDC-026")) continue;
+        n += 1;
+        try std.testing.expectEqual(rule.registry.Severity.note, f.severity);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "receiver {ca, cb}") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "or-mux ormux") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "caxca sync") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "caxcb async") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "gated by port ena") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "chain depth 1") != null);
+    }
+    try std.testing.expectEqual(@as(usize, 1), n);
+}
+
+const mc_shared =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "sel": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [6]}
+    \\      },
+    \\      "cells": {
+    \\        "muxS": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [4], "Y": [10]}
+    \\        },
+    \\        "muxD": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [4], "Y": [11]}
+    \\        },
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [10], "D": [5], "Q": [12]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [12], "Q": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mc_shared_sdc = "create_clock -name ca -period 10 [get_ports ca]\ncreate_clock -name cb -period 7 [get_ports cb]\nset_clock_groups -asynchronous -group {ca} -group {cb}\nset_input_delay -clock ca 1.0 [get_ports d]\nset_input_delay -clock ca 1.0 [get_ports sel]\n";
+
+test "shared select marks cross pairs exclusive" {
+    var l = try loadAll(mc_shared, mc_shared_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var n: usize = 0;
+    for (fs) |f| {
+        if (!std.mem.eql(u8, f.rule, "CDC-026")) continue;
+        n += 1;
+        try std.testing.expectEqual(rule.registry.Severity.note, f.severity);
+        if (std.mem.eql(u8, f.dst, "dst")) {
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "caxca sync") != null);
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "caxcb exclusive") != null);
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "cbxca exclusive") != null);
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "cbxcb sync") != null);
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "$mux muxD") != null);
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), n);
+}
+
+const mc_merge =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "sel": {"direction": "input", "bits": [4]},
+    \\        "sel2": {"direction": "input", "bits": [5]},
+    \\        "dA": {"direction": "input", "bits": [6]},
+    \\        "dB": {"direction": "input", "bits": [7]},
+    \\        "q": {"direction": "output", "bits": [8]}
+    \\      },
+    \\      "cells": {
+    \\        "muxD": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [4], "Y": [11]}
+    \\        },
+    \\        "muxS": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [4], "Y": [10]}
+    \\        },
+    \\        "muxT": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [5], "Y": [13]}
+    \\        },
+    \\        "srcA": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [10], "D": [6], "Q": [14]}
+    \\        },
+    \\        "srcB": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [13], "D": [7], "Q": [15]}
+    \\        },
+    \\        "orb": {
+    \\          "type": "$or",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [14], "B": [15], "Y": [16]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [16], "Q": [8]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mc_merge_sdc = "create_clock -name ca -period 10 [get_ports ca]\ncreate_clock -name cb -period 7 [get_ports cb]\nset_clock_groups -asynchronous -group {ca} -group {cb}\nset_input_delay -clock ca 1.0 [get_ports dA]\nset_input_delay -clock ca 1.0 [get_ports dB]\nset_input_delay -clock ca 1.0 [get_ports sel]\nset_input_delay -clock ca 1.0 [get_ports sel2]\n";
+
+test "same leg-pair down two paths merges to one row" {
+    var l = try loadAll(mc_merge, mc_merge_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var n: usize = 0;
+    for (fs) |f| {
+        if (!std.mem.eql(u8, f.rule, "CDC-026")) continue;
+        if (!std.mem.eql(u8, f.dst, "dst")) continue;
+        n += 1;
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "2 source crossings") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "muxT") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "4 leg-pairs") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "caxcb async") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "exclusive") == null);
+    }
+    try std.testing.expectEqual(@as(usize, 1), n);
 }

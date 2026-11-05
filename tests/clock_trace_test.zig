@@ -317,6 +317,16 @@ test "dynamic mux yields a union with legs" {
     try std.testing.expectEqualStrings("cb", dom.legs[1]);
     try std.testing.expectEqualStrings("mux:mux_dyn", dom.root);
     try std.testing.expectEqualStrings("clock mux select: port sel", dom.notes[0]);
+    try std.testing.expectEqual(@as(usize, 2), dom.sels.len);
+    try std.testing.expectEqualStrings("mux_dyn", l.mod.cells[dom.sels[0].mux].name);
+    try std.testing.expectEqual(@as(u8, 0), dom.sels[0].side);
+    try std.testing.expectEqualStrings("mux_dyn", l.mod.cells[dom.sels[1].mux].name);
+    try std.testing.expectEqual(@as(u8, 1), dom.sels[1].side);
+    try std.testing.expectEqual(@as(usize, 1), dom.muxes.len);
+    try std.testing.expectEqualStrings("mux_dyn", l.mod.cells[dom.muxes[0]].name);
+    try std.testing.expect(dom.sels[0].gate == null);
+    try std.testing.expectEqualStrings("port:sel", dom.sels[0].sel_dom);
+    try std.testing.expectEqualStrings("port:sel", dom.sels[1].sel_dom);
 }
 
 test "static mux resolves its leg" {
@@ -333,6 +343,8 @@ test "same-domain mux passes through with a note" {
     const dom = domFor(&l, "f_same").?;
     try std.testing.expectEqualStrings("ca", dom.name);
     try std.testing.expectEqualStrings("clock mux select: port sel", dom.notes[0]);
+    try std.testing.expectEqual(@as(usize, 0), dom.sels.len);
+    try std.testing.expectEqual(@as(usize, 0), dom.muxes.len);
 }
 
 const gated =
@@ -553,6 +565,21 @@ test "or of gated clocks yields a union with legs" {
     try std.testing.expectEqualStrings("cb", dom.legs[1]);
     try std.testing.expectEqualStrings("ormux:ormux", dom.root);
     try std.testing.expectEqualStrings("or-built clock mux", dom.notes[0]);
+    try std.testing.expectEqual(@as(usize, 2), dom.sels.len);
+    try std.testing.expectEqualStrings("ormux", l.mod.cells[dom.sels[0].mux].name);
+    try std.testing.expectEqual(@as(u8, 0), dom.sels[0].side);
+    try std.testing.expectEqualStrings("ormux", l.mod.cells[dom.sels[1].mux].name);
+    try std.testing.expectEqual(@as(u8, 1), dom.sels[1].side);
+    try std.testing.expectEqual(@as(usize, 1), dom.muxes.len);
+    try std.testing.expectEqualStrings("ormux", l.mod.cells[dom.muxes[0]].name);
+    const g0 = dom.sels[0].gate.?;
+    try std.testing.expectEqualStrings("and0", l.mod.cells[g0.cell].name);
+    try std.testing.expectEqualStrings("A", g0.pin);
+    try std.testing.expectEqual(@as(u32, 2), g0.bit);
+    const g1 = dom.sels[1].gate.?;
+    try std.testing.expectEqualStrings("and1", l.mod.cells[g1.cell].name);
+    try std.testing.expectEqual(@as(u32, 3), g1.bit);
+    try std.testing.expectEqual(@as(usize, 0), dom.sels[0].sel_dom.len);
 }
 
 test "naked or of clocks stays unhandled" {

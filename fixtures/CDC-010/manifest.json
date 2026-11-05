@@ -1,1 +1,1 @@
-{"bad_async_mux_select.sv": ["CDC-010"], "good_port_select.sv": [], "good_shared_clock.sv": []}
+{"bad_async_mux_select.sv":["CDC-010","CDC-026"],"good_port_select.sv":["CDC-026"],"good_shared_clock.sv":["CDC-026"]}

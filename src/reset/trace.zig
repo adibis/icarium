@@ -281,12 +281,29 @@ const Walker = struct {
             .root = try w.alloc.dupe(u8, ""),
             .notes = try w.dupeNotes(&.{"flop missing from clock assignment"}),
             .legs = try w.dupeNotes(&.{"unknown"}),
+            .sels = &.{},
+            .muxes = &.{},
         };
+        const sels = try w.alloc.alloc(clock.trace.LegSel, d.sels.len);
+        for (d.sels, 0..) |s, i| {
+            sels[i] = .{
+                .mux = s.mux,
+                .side = s.side,
+                .gate = if (s.gate) |g| .{
+                    .cell = g.cell,
+                    .pin = try w.alloc.dupe(u8, g.pin),
+                    .bit = g.bit,
+                } else null,
+                .sel_dom = try w.alloc.dupe(u8, s.sel_dom),
+            };
+        }
         return .{
             .name = try w.alloc.dupe(u8, d.name),
             .root = try w.alloc.dupe(u8, d.root),
             .notes = try w.dupeNotes(d.notes),
             .legs = try w.dupeNotes(d.legs),
+            .sels = sels,
+            .muxes = try w.alloc.dupe(usize, d.muxes),
         };
     }
 

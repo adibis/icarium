@@ -398,6 +398,19 @@ const golden =
     \\              }
     \\            },
     \\            {
+    \\              "id": "CDC-026",
+    \\              "name": "CDC-026",
+    \\              "shortDescription": {
+    \\                "text": "Multiclock crossing leg-pair report"
+    \\              },
+    \\              "fullDescription": {
+    \\                "text": "A crossing whose source or receiver runs on a muxed clock:\neach side may arrive on several legs, and one leg pair can be\nsafe while another is not. One finding per endpoint lists the\nclock sets, the mux selections behind them, every leg pair with\nits relationship, and the destination chain depth. Multiple\nclocks alone prove nothing; review the pairs, then waive or fix."
+    \\              },
+    \\              "defaultConfiguration": {
+    \\                "level": "note"
+    \\              }
+    \\            },
+    \\            {
     \\              "id": "RDC-001",
     \\              "name": "RDC-001",
     \\              "shortDescription": {

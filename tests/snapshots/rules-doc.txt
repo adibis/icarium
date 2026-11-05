@@ -191,6 +191,16 @@ source, model the macro, or waive after review.
 honors:
 fixtures: fixtures/CDC-025
 
+CDC-026 [note] Multiclock crossing leg-pair report
+A crossing whose source or receiver runs on a muxed clock:
+each side may arrive on several legs, and one leg pair can be
+safe while another is not. One finding per endpoint lists the
+clock sets, the mux selections behind them, every leg pair with
+its relationship, and the destination chain depth. Multiple
+clocks alone prove nothing; review the pairs, then waive or fix.
+honors:
+fixtures: fixtures/CDC-026
+
 RDC-001 [err] Async reset released from a foreign clock domain
 A flop's async reset fans in from a register in another clock
 domain: every foreign deassertion races the local clock, so

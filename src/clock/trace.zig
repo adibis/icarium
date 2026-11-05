@@ -10,7 +10,44 @@ pub const Domain = struct {
     // Member clocks: one for plain domains, several for muxed
     // unions. Rules iterate legs instead of parsing names.
     legs: [][]const u8,
+    // Top-mux side per leg, parallel to legs; side 255 reads
+    // unconditional (the leg arrives under every top side).
+    // Empty exactly when the domain is plain.
+    sels: []LegSel,
+    // Every mux cell outward, top first, deduplicated. Longer
+    // than one means nested unions whose deeper sides merged
+    // away: conditions below the top stay unrecorded.
+    muxes: []usize,
 };
+
+// One leg's top-mux condition: which mux, and which side takes
+// it ($mux A/B as 0/1, OR-mux AND position). Two legs sharing
+// a $mux with sides 0 and 1 never co-occur; anything else may.
+// The role fields split by mux kind: $mux legs carry the select
+// domain, OR-mux legs the AND gate with its clock bit (the rest
+// are enables); the tracer knows both, and rules cannot re-derive
+// the AND's clock leg soundly after the fact.
+pub const LegSel = struct {
+    mux: usize,
+    side: u8,
+    gate: ?GateRef,
+    sel_dom: []const u8,
+};
+
+// OR-mux AND cell plus the clock input bit it was validated
+// with: every other input bit is one of the leg's enables.
+pub const GateRef = struct {
+    cell: usize,
+    pin: []const u8,
+    bit: u32,
+};
+
+pub const both_sides: u8 = 255;
+
+// Sort key while a union assembles: one leg, one top side,
+// one gate. Runs keep the first gate: a leg under several
+// ANDs is redundant muxing, and the first enables stand in.
+const LegSide = struct { leg: []const u8, side: u8, gate: ?GateRef };
 
 pub const FlopDomain = struct {
     cell: usize,
@@ -230,6 +267,8 @@ const Walker = struct {
             .root = try w.alloc.dupe(u8, port),
             .notes = try w.dupeNotes(&.{"undeclared clock root"}),
             .legs = legs,
+            .sels = &.{},
+            .muxes = &.{},
         };
     }
 
@@ -271,34 +310,76 @@ const Walker = struct {
         }
         // Dynamic selects are recorded before legs resolve: the
         // select domain stands even when a leg does not.
-        try w.recordControl(ci, "S", try w.resolveBits(s));
+        const sel = try w.resolveBits(s);
+        try w.recordControl(ci, "S", sel);
         const da = try w.resolveBits(a);
         const db = try w.resolveBits(b);
         if (std.mem.eql(u8, da.name, "unknown") or std.mem.eql(u8, db.name, "unknown"))
             return w.make("unknown", "", &.{"clock mux unresolved leg"});
-        var all: std.ArrayListUnmanaged([]const u8) = .empty;
-        for (da.legs) |l| try all.append(w.alloc, l);
-        for (db.legs) |l| try all.append(w.alloc, l);
-        std.mem.sort([]const u8, all.items, {}, struct {
-            fn less(_: void, x: []const u8, y: []const u8) bool {
-                return std.mem.lessThan(u8, x, y);
-            }
-        }.less);
-        var n: usize = 0;
-        for (all.items) |l| {
-            if (n == 0 or !std.mem.eql(u8, all.items[n - 1], l)) {
-                all.items[n] = l;
-                n += 1;
-            }
-        }
+        var all: std.ArrayListUnmanaged(LegSide) = .empty;
+        for (da.legs) |l| try all.append(w.alloc, .{ .leg = l, .side = 0, .gate = null });
+        for (db.legs) |l| try all.append(w.alloc, .{ .leg = l, .side = 1, .gate = null });
+        const n = dedupeLegs(all.items);
         const sel_desc = try w.describeSelect(s);
         defer w.alloc.free(sel_desc);
         const note = try std.fmt.allocPrint(w.alloc, "clock mux select: {s}", .{sel_desc});
         defer w.alloc.free(note);
         if (n == 1) return w.withNote(da, note);
+        const legs = try w.alloc.alloc([]const u8, n);
+        const sels = try w.alloc.alloc(LegSel, n);
+        const sel_dom = try w.alloc.dupe(u8, sel.name);
+        for (all.items[0..n], 0..) |ls, i| {
+            legs[i] = ls.leg;
+            sels[i] = .{ .mux = ci, .side = ls.side, .gate = ls.gate, .sel_dom = sel_dom };
+        }
+        const muxes = try w.joinMuxes(ci, &.{ da.muxes, db.muxes });
         const root = try std.fmt.allocPrint(w.alloc, "mux:{s}", .{c.name});
         defer w.alloc.free(root);
-        return w.makeUnion(all.items[0..n], root, note);
+        return w.makeUnion(legs, sels, muxes, root, note);
+    }
+
+    // Sort by leg, collapse runs: a leg under several sides reads
+    // unconditional (255); single-side legs keep their side.
+    // Returns the distinct count; the head holds the result.
+    fn dedupeLegs(items: []LegSide) usize {
+        std.mem.sort(LegSide, items, {}, struct {
+            fn less(_: void, x: LegSide, y: LegSide) bool {
+                return std.mem.lessThan(u8, x.leg, y.leg);
+            }
+        }.less);
+        var n: usize = 0;
+        var i: usize = 0;
+        while (i < items.len) {
+            var side = items[i].side;
+            var j = i + 1;
+            while (j < items.len and std.mem.eql(u8, items[j].leg, items[i].leg)) : (j += 1) {
+                if (items[j].side != side) side = both_sides;
+            }
+            items[n] = .{ .leg = items[i].leg, .side = side, .gate = items[i].gate };
+            n += 1;
+            i = j;
+        }
+        return n;
+    }
+
+    // Top mux first, then each nested path in order, duplicates
+    // dropped: short lists, so the scan stays trivial.
+    fn joinMuxes(w: *Walker, ci: usize, rest: []const []const usize) error{OutOfMemory}![]usize {
+        var out = std.ArrayListUnmanaged(usize).empty;
+        try out.append(w.alloc, ci);
+        for (rest) |r| {
+            for (r) |m| {
+                var seen = false;
+                for (out.items) |o| {
+                    if (o == m) {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (!seen) try out.append(w.alloc, m);
+            }
+        }
+        return out.toOwnedSlice(w.alloc);
     }
 
     // Gate-built clock muxes (a glitch-free mux's output stage
@@ -310,7 +391,9 @@ const Walker = struct {
         const c = w.mod.cells[ci];
         const idx = outBitIndex(c, bit) orelse return w.unhandled(c);
         var first: ?Domain = null;
-        var all: std.ArrayListUnmanaged([]const u8) = .empty;
+        var all: std.ArrayListUnmanaged(LegSide) = .empty;
+        var nests: std.ArrayListUnmanaged([]const usize) = .empty;
+        var side: usize = 0;
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             if (idx >= p.bits.len) return w.unhandled(c);
@@ -321,31 +404,51 @@ const Walker = struct {
             const d = try w.resolveBit(b.sig);
             if (!isClockDomain(d.name)) return w.unhandled(c);
             if (first == null) first = d;
-            for (d.legs) |l| try all.append(w.alloc, l);
+            std.debug.assert(side < both_sides);
+            const gate = try w.clockInput(and_ci);
+            for (d.legs) |l| try all.append(w.alloc, .{ .leg = l, .side = @intCast(side), .gate = gate });
+            try nests.append(w.alloc, d.muxes);
+            side += 1;
         }
         if (first == null) return w.unhandled(c);
-        std.mem.sort([]const u8, all.items, {}, struct {
-            fn less(_: void, x: []const u8, y: []const u8) bool {
-                return std.mem.lessThan(u8, x, y);
-            }
-        }.less);
-        var n: usize = 0;
-        for (all.items) |l| {
-            if (n == 0 or !std.mem.eql(u8, all.items[n - 1], l)) {
-                all.items[n] = l;
-                n += 1;
-            }
-        }
+        const n = dedupeLegs(all.items);
         if (n == 1) return w.withNote(first.?, "or-built clock mux");
+        const legs = try w.alloc.alloc([]const u8, n);
+        const sels = try w.alloc.alloc(LegSel, n);
+        for (all.items[0..n], 0..) |ls, i| {
+            legs[i] = ls.leg;
+            sels[i] = .{ .mux = ci, .side = ls.side, .gate = ls.gate, .sel_dom = &.{} };
+        }
+        const muxes = try w.joinMuxes(ci, nests.items);
         const root = try std.fmt.allocPrint(w.alloc, "ormux:{s}", .{c.name});
         defer w.alloc.free(root);
-        return w.makeUnion(all.items[0..n], root, "or-built clock mux");
+        return w.makeUnion(legs, sels, muxes, root, "or-built clock mux");
     }
 
     fn unhandled(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
         const why = try std.fmt.allocPrint(w.alloc, "unhandled {s} on clock path", .{c.type});
         defer w.alloc.free(why);
         return w.make("unknown", "", &.{why});
+    }
+
+    // The clock input of a validated single-clock gate: pin and
+    // bit, so the union records which input carries the leg and
+    // rules read the rest as enables. Exactly one exists.
+    fn clockInput(w: *Walker, ci: usize) error{OutOfMemory}!?GateRef {
+        const c = w.mod.cells[ci];
+        for (c.ports) |p| {
+            if (p.direction == .output) continue;
+            for (p.bits) |b| {
+                if (b != .sig) continue;
+                const d = try w.resolveBit(b.sig);
+                if (isClockDomain(d.name)) return .{
+                    .cell = ci,
+                    .pin = try w.alloc.dupe(u8, p.name),
+                    .bit = b.sig,
+                };
+            }
+        }
+        return null;
     }
 
     // Clock-domain inputs on a gate's legs. Unknown legs read as
@@ -525,13 +628,16 @@ const Walker = struct {
             .root = try w.alloc.dupe(u8, root),
             .notes = try w.dupeNotes(notes),
             .legs = legs,
+            .sels = &.{},
+            .muxes = &.{},
         };
     }
 
     // Muxed clocks keep every leg: the joined name is display,
     // legs are what rules reason over. Sorted, so output diffs.
-    fn makeUnion(w: *Walker, legs: []const []const u8, root: []const u8, note: []const u8) error{OutOfMemory}!Domain {
+    fn makeUnion(w: *Walker, legs: []const []const u8, sels: []const LegSel, muxes: []const usize, root: []const u8, note: []const u8) error{OutOfMemory}!Domain {
         std.debug.assert(legs.len > 1);
+        std.debug.assert(legs.len == sels.len);
         var total: usize = legs.len - 1;
         for (legs) |l| total += l.len;
         const name = try w.alloc.alloc(u8, total);
@@ -551,6 +657,8 @@ const Walker = struct {
             .root = try w.alloc.dupe(u8, root),
             .notes = try w.dupeNotes(&.{note}),
             .legs = owned,
+            .sels = try w.alloc.dupe(LegSel, sels),
+            .muxes = try w.alloc.dupe(usize, muxes),
         };
     }
 
@@ -565,6 +673,6 @@ const Walker = struct {
         const out = try w.alloc.alloc([]const u8, dom.notes.len + 1);
         @memcpy(out[0..dom.notes.len], dom.notes);
         out[dom.notes.len] = try w.alloc.dupe(u8, text);
-        return .{ .name = dom.name, .root = dom.root, .notes = out, .legs = dom.legs };
+        return .{ .name = dom.name, .root = dom.root, .notes = out, .legs = dom.legs, .sels = dom.sels, .muxes = dom.muxes };
     }
 };
