@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.dev/schema/reset-map-1.0.json",
+  "title": "icarium reset-domain map",
+  "description": "Reset sources, synchronizer chains, per-flop reset assignments, and structural reset crossings. Additive evolution within major version 1.",
+  "type": "object",
+  "required": ["schema_version", "generator", "design", "reset_sources", "reset_synchronizers", "flop_resets", "reset_crossings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "design": {
+      "type": "object",
+      "required": ["top", "frontend"],
+      "properties": {
+        "top": {"type": "string"},
+        "frontend": {"type": "string"}
+      }
+    },
+    "reset_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "source", "polarity", "declared_polarity", "type", "clock", "via_synchronizer", "location"],
+        "properties": {
+          "name": {"type": "string"},
+          "source": {"enum": ["port", "flop", "constant", "mux", "comb", "unknown"]},
+          "polarity": {"enum": ["high", "low", "unknown"]},
+          "declared_polarity": {
+            "description": "Port-level (* reset_polarity *) declaration, or null when undeclared.",
+            "enum": ["high", "low", "unknown", null]
+          },
+          "type": {"enum": ["async", "sync"]},
+          "clock": {
+            "description": "Producer clock for flop sources, else null.",
+            "type": ["string", "null"]
+          },
+          "via_synchronizer": {
+            "description": "True when the source is a recognized synchronizer chain tail.",
+            "type": "boolean"
+          },
+          "location": {
+            "anyOf": [{"$ref": "#/$defs/location"}, {"type": "null"}]
+          }
+        }
+      }
+    },
+    "reset_synchronizers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tail", "stages", "clock", "polarity", "head_d"],
+        "properties": {
+          "tail": {"type": "string"},
+          "stages": {"type": "array", "items": {"type": "string"}},
+          "clock": {"type": ["string", "null"]},
+          "polarity": {"enum": ["high", "low", "unknown"]},
+          "head_d": {
+            "description": "Head D constant, or null when not a binary tie.",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "flop_resets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cell", "instance", "clock", "reset", "reset_kind", "polarity", "type", "location"],
+        "properties": {
+          "cell": {"type": "string"},
+          "instance": {"type": "string"},
+          "clock": {"type": "string"},
+          "reset": {"type": "string"},
+          "reset_kind": {"enum": ["port", "flop", "constant", "mux", "comb", "unknown"]},
+          "polarity": {"enum": ["high", "low", "unknown"]},
+          "type": {"enum": ["async", "sync"]},
+          "location": {
+            "anyOf": [{"$ref": "#/$defs/location"}, {"type": "null"}]
+          }
+        }
+      }
+    },
+    "reset_crossings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cell", "instance", "kind", "flop_clock", "reset", "reset_kind", "polarity", "type", "location"],
+        "properties": {
+          "cell": {"type": "string"},
+          "instance": {"type": "string"},
+          "kind": {"enum": ["async-deassert", "polarity-mismatch", "sync-crossing", "comb-driven"]},
+          "flop_clock": {"type": "string"},
+          "reset": {"type": "string"},
+          "reset_kind": {"enum": ["port", "flop", "constant", "mux", "comb", "unknown"]},
+          "polarity": {"enum": ["high", "low", "unknown"]},
+          "type": {"enum": ["async", "sync"]},
+          "location": {
+            "anyOf": [{"$ref": "#/$defs/location"}, {"type": "null"}]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "object",
+      "required": ["file", "start_line", "start_column", "end_line", "end_column"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string"},
+        "start_line": {"type": "integer", "minimum": 1},
+        "start_column": {"type": ["integer", "null"]},
+        "end_line": {"type": ["integer", "null"]},
+        "end_column": {"type": ["integer", "null"]}
+      }
+    }
+  }
+}

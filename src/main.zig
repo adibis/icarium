@@ -84,6 +84,7 @@ fn usage(w: anytype) !void {
         \\      --format FMT        text (default), ids, json, or sarif
         \\      --minify            minified json (with --format json)
         \\      --emit-domain-map FILE  write clock-domain map alongside
+        \\      --emit-reset-domain-map FILE  write reset-domain map alongside
         \\      --no-findings       skip rules; maps only (exit 0)
         \\      --sync-depth N      required chain depth (default 2)
         \\      --cdc-010-no-heuristic  disable library pin-name guessing

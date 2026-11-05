@@ -56,5 +56,7 @@ check_map() {
 
 check_map fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc --emit-domain-map schema/clock-map-1.0.json "clock-map/two-clock"
 check_map fixtures/RDC-006/good_muxed_reset_synced.sv fixtures/RDC-006/good_muxed_reset_synced.sdc --emit-domain-map schema/clock-map-1.0.json "clock-map/synced-mux"
+check_map fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc --emit-reset-domain-map schema/reset-map-1.0.json "reset-map/missed-domain"
+check_map fixtures/RDC-004/bad_comb_driven_reset.sv fixtures/RDC-004/bad_comb_driven_reset.sdc --emit-reset-domain-map schema/reset-map-1.0.json "reset-map/comb-driven"
 
 exit "$fail"

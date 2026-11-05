@@ -5,6 +5,7 @@ const ir = @import("../ir.zig");
 const clockmap = @import("../report.zig").clockmap;
 const findings_json = @import("../report.zig").findings;
 const report_text = @import("../report.zig").text;
+const resetmap = @import("../report.zig").resetmap;
 const sarif = @import("../report.zig").sarif;
 const tool_version = @import("../version.zig").version;
 const reset = @import("../reset.zig");
@@ -21,6 +22,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var format: []const u8 = "text";
     var minify = false;
     var domain_map_path: ?[]const u8 = null;
+    var reset_map_path: ?[]const u8 = null;
     var no_findings = false;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
@@ -53,6 +55,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             minify = true;
         } else if (std.mem.eql(u8, a, "--emit-domain-map") and i + 1 < argv.len) {
             domain_map_path = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--emit-reset-domain-map") and i + 1 < argv.len) {
+            reset_map_path = argv[i + 1];
             i += 1;
         } else if (std.mem.eql(u8, a, "--no-findings")) {
             no_findings = true;
@@ -179,8 +184,16 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             return 3;
         };
     }
+    if (reset_map_path) |mp| {
+        var aw = std.Io.Writer.Allocating.init(scratch);
+        resetmap.writeResetMap(scratch, &aw.writer, &mod, &reset_view, &reset_syncs, &table, &marks, tool_version) catch return 3;
+        std.Io.Dir.cwd().writeFile(init.io, .{ .sub_path = mp, .data = aw.written() }) catch {
+            err.print("check: cannot write {s}\n", .{mp}) catch {};
+            return 3;
+        };
+    }
     if (no_findings) {
-        if (domain_map_path == null) err.writeAll("check: --no-findings without a map flag produces no output\n") catch {};
+        if (domain_map_path == null and reset_map_path == null) err.writeAll("check: --no-findings without a map flag produces no output\n") catch {};
         return 0;
     }
 
