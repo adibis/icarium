@@ -105,6 +105,16 @@ pub const Table = struct {
         return null;
     }
 
+    // True when dst D is a reset mux whose data leg carries
+    // src_bit: the crossing enters through the flop's own reset.
+    pub fn resetMuxEntry(t: *const Table, mod: *const ir.types.Module, dst: usize, src_bit: u32) bool {
+        const leg = t.resetMuxDataLeg(mod, dst) orelse return false;
+        for (leg) |b| {
+            if (b == .sig and b.sig == src_bit) return true;
+        }
+        return false;
+    }
+
     // Data leg of a sync-reset $mux on D, or null when D is not that
     // shape: Y must equal D lane for lane, exactly one leg all
     // constant, every Y bit single-reader. Enable muxes, live legs,

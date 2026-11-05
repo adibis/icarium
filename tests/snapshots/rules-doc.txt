@@ -7,3 +7,27 @@ source held constant, (* cdc_handshake *) on a capture register.
 honors: cdc_static cdc_sync cdc_handshake
 fixtures: fixtures/CDC-001
 
+CDC-002 [warn] Insufficient synchronizer depth
+A synchronizer chain exists but is shorter than the site minimum
+(--sync-depth, default 2): raise the depth or lower the bar.
+Silent at the default unless a project explicitly requires more.
+honors: cdc_static cdc_sync
+fixtures: fixtures/CDC-002
+
+CDC-003 [err] Combinational logic on the way to a synchronizer
+Source-domain signals combine through a gate before the
+synchronizer: the gate can glitch across source cycles and a
+2FF cannot filter the transient. Synchronize each source bit
+first, then combine in the destination domain.
+honors: cdc_static cdc_sync
+fixtures: fixtures/CDC-003
+
+CDC-005 [warn] Reconvergent synchronizers
+One source flop fans out to independent synchronizer chains
+whose outputs recombine downstream: each chain resolves
+metastability on its own cycle, so the recombination can see
+a value pair never true at the source. Synchronize once and
+fan out after, or prove the skew harmless.
+honors:
+fixtures: fixtures/CDC-005
+

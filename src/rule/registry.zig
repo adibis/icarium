@@ -1,5 +1,8 @@
 const std = @import("std");
 const cdc001 = @import("cdc001.zig");
+const cdc002 = @import("cdc002.zig");
+const cdc003 = @import("cdc003.zig");
+const cdc005 = @import("cdc005.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -20,6 +23,9 @@ pub const Rule = struct {
 
 pub const rules = [_]Rule{
     cdc001.rule,
+    cdc002.rule,
+    cdc003.rule,
+    cdc005.rule,
 };
 
 fn knownAttr(name: []const u8) bool {

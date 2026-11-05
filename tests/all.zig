@@ -12,4 +12,5 @@ test {
     _ = @import("sdc_model_test.zig");
     _ = @import("sync_table_test.zig");
     _ = @import("rule_cdc001_test.zig");
+    _ = @import("rule_chain_test.zig");
 }

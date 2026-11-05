@@ -1,0 +1,1 @@
+{"bad_depth_short.sv": {"rules": ["CDC-002"], "sync-depth": 3}, "good_default_silent.sv": [], "good_depth_ok.sv": {"rules": [], "sync-depth": 3}}

@@ -25,7 +25,13 @@ ran=0
 
 expect_ids() {
     # expect_ids <manifest> <file>: sorted rule-ID set, one per line.
-    python3 -c 'import json,sys; ids=sorted(json.load(open(sys.argv[1]))[sys.argv[2]]); sys.stdout.write("\n".join(ids) + ("\n" if ids else ""))' "$1" "$2"
+    # Values are lists, or {"rules": [...], "sync-depth": N} maps.
+    python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))[sys.argv[2]]; ids=sorted(v if isinstance(v,list) else v["rules"]); sys.stdout.write("\n".join(ids) + ("\n" if ids else ""))' "$1" "$2"
+}
+
+file_flags() {
+    # file_flags <manifest> <file>: extra check flags for the entry.
+    python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))[sys.argv[2]]; print(("--sync-depth %d" % v["sync-depth"]) if isinstance(v,dict) and "sync-depth" in v else "")' "$1" "$2"
 }
 
 for rule in $("$BIN" rules --list); do
@@ -51,13 +57,14 @@ for rule in $("$BIN" rules --list); do
         fi
         sdc=""
         [ -f "$dir/$top.sdc" ] && sdc="--sdc $dir/$top.sdc"
+        flags="$(file_flags "$dir/manifest.json" "$base")"
         set +e
         # shellcheck disable=SC2086
-        "$BIN" check --yosys-json "$TMP/$rule-$top.json" $sdc --format ids \
+        "$BIN" check --yosys-json "$TMP/$rule-$top.json" $sdc $flags --format ids \
             >"$TMP/$rule-$top.ids1" 2>"$TMP/$rule-$top.err"
         code=$?
         # shellcheck disable=SC2086
-        "$BIN" check --yosys-json "$TMP/$rule-$top.json" $sdc --format ids \
+        "$BIN" check --yosys-json "$TMP/$rule-$top.json" $sdc $flags --format ids \
             >"$TMP/$rule-$top.ids2" 2>/dev/null
         code2=$?
         set -e
@@ -80,13 +87,19 @@ for rule in $("$BIN" rules --list); do
             fail=1
         fi
     done
-    python3 - "$dir/manifest.json" "$dir" <<'EOF'
+    python3 - "$dir/manifest.json" "$dir" "$("$BIN" rules --list | tr '\n' ' ')" <<'EOF'
 import json, os, sys
-man, d = sys.argv[1], sys.argv[2]
+man, d, known = sys.argv[1], sys.argv[2], set(sys.argv[3].split())
 have = {f for f in os.listdir(d) if f.endswith(".sv")}
-for f in sorted(set(json.load(open(man))) - have):
+entries = json.load(open(man))
+for f in sorted(set(entries) - have):
     print(f"FAIL {d}/{f}: manifest entry without a file")
     sys.exit(1)
+for f, v in entries.items():
+    ids = v if isinstance(v, list) else v["rules"]
+    for i in sorted(set(ids) - known):
+        print(f"FAIL {d}/{f}: manifest names unknown rule {i}")
+        sys.exit(1)
 EOF
     [ $? -eq 0 ] || fail=1
 done
