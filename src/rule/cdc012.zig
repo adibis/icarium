@@ -30,6 +30,10 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     for (ctx.report.crossings) |x| {
         if (x.kind != .flop_flop_bus) continue;
         if (std.mem.eql(u8, x.src_clk, "unknown")) continue;
+        // Unresolved destinations belong to CDC-025: gating and
+        // feedback verdicts need two real clocks, and the fanin
+        // walks below retain per pair, which buried spi at 15GB.
+        if (std.mem.eql(u8, x.dst_clk, "unknown")) continue;
         if (std.mem.eql(u8, x.src_clk, x.dst_clk)) continue;
         const sc = x.src.cell orelse continue;
         const dc = x.dst.cell orelse continue;

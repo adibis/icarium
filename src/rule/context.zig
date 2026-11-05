@@ -27,18 +27,23 @@ pub const Context = struct {
     cfg: Config,
     alloc: std.mem.Allocator,
 
+    // Binary search over the sorted bus index: the linear scan
+    // this replaced cost O(buses) per crossing per rule, which is
+    // the Verilator-#8100 shape that buried full-chip runs.
     pub fn isBusMember(ctx: *const Context, x: crossing.enumerate.Crossing) bool {
         if (x.kind != .flop_flop_bit and x.kind != .port_flop and x.kind != .port_flop_untyped) return false;
-        for (ctx.buses) |b| {
-            if ((x.src.cell == null) != (b.src.cell == null)) continue;
-            if (x.src.cell) |sc| {
-                if (sc != b.src.cell.?) continue;
-            }
-            const bdc = b.dst.cell orelse continue;
-            const xdc = x.dst.cell orelse continue;
-            if (std.mem.eql(u8, b.src.port, x.src.port) and
-                bdc == xdc and std.mem.eql(u8, b.dst.port, x.dst.port))
-            {
+        const xdc = x.dst.cell orelse return false;
+        var lo: usize = 0;
+        var hi: usize = ctx.buses.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            const b = ctx.buses[mid];
+            const ord = busOrder(x.src.cell, x.src.port, xdc, x.dst.port, b);
+            if (ord == .lt) {
+                hi = mid;
+            } else if (ord == .gt) {
+                lo = mid + 1;
+            } else {
                 return true;
             }
         }
@@ -46,14 +51,35 @@ pub const Context = struct {
     }
 };
 
+fn busOrder(scell: ?usize, sport: []const u8, dcell: usize, dport: []const u8, b: crossing.enumerate.Crossing) std.math.Order {
+    const snull = scell == null;
+    const bnull = b.src.cell == null;
+    if (snull != bnull) return if (snull) .lt else .gt;
+    if (scell) |sc| {
+        if (sc != b.src.cell.?) return std.math.order(sc, b.src.cell.?);
+    }
+    const sp = std.mem.order(u8, sport, b.src.port);
+    if (sp != .eq) return sp;
+    if (dcell != b.dst.cell.?) return std.math.order(dcell, b.dst.cell.?);
+    return std.mem.order(u8, dport, b.dst.port);
+}
+
+fn busLess(_: void, a: crossing.enumerate.Crossing, b: crossing.enumerate.Crossing) bool {
+    return busOrder(a.src.cell, a.src.port, a.dst.cell.?, a.dst.port, b) == .lt;
+}
+
 pub fn collectBuses(
     alloc: std.mem.Allocator,
     report: *const crossing.enumerate.Report,
 ) error{OutOfMemory}![]crossing.enumerate.Crossing {
     var out = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
     for (report.crossings) |x| {
+        // Null destinations never match a lookup; dropping them
+        // here keeps the index total without a null branch.
+        if (x.dst.cell == null) continue;
         if (x.kind == .flop_flop_bus or x.kind == .port_flop_bus) try out.append(alloc, x);
     }
+    std.mem.sort(crossing.enumerate.Crossing, out.items, {}, busLess);
     return out.toOwnedSlice(alloc);
 }
 
@@ -108,6 +134,7 @@ const FaninBit = struct { bit: u32, depth: u8 };
 // Backward BFS through combinational cells, collecting the
 // top-level input ports reached. Flop Q stops the walk: a
 // flopped source belongs to RDC-004's case, never this one.
+// Cost: O(12-hop cone), visited-guarded; callers pay per call.
 pub fn backwardPortFanin(
     alloc: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -144,6 +171,7 @@ pub fn backwardPortFanin(
     return out.toOwnedSlice(alloc);
 }
 
+// Cost: O(12-hop cone), visited-guarded; callers pay per call.
 pub fn backwardFlopFanin(
     alloc: std.mem.Allocator,
     mod: *const ir.types.Module,

@@ -172,6 +172,16 @@ domainless. Gate one clock, or mux instead of mixing.
 honors:
 fixtures: fixtures/CDC-023
 
+CDC-025 [warn] Unresolved clock association
+A crossing endpoint has no clock association: undriven flop
+clock, macro or memory output, unhandled primitive, or an
+untyped input the other port rules do not own. One finding
+per endpoint names the reason and the fanout; per-pair sync
+verdicts on unclocked endpoints would be noise. Type the
+source, model the macro, or waive after review.
+honors:
+fixtures: fixtures/CDC-025
+
 RDC-001 [err] Async reset released from a foreign clock domain
 A flop's async reset fans in from a register in another clock
 domain: every foreign deassertion races the local clock, so

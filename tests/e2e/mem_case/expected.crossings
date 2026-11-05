@@ -1,5 +1,4 @@
 crossing 000919da82212ab8baab3420cc954291 port_flop_untyped p:wdata:18 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:39 port:wdata wr_clk async true
-hop 000919da82212ab8baab3420cc954291 $procmux$15
 crossing 008a033c673ab3dcbf25a6e5191abbcb flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:52 c:$procdff$20:D:52 unknown rd_clk async true
 crossing 03cdc75649d188a0709e07decc05e112 flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:55 c:$procdff$20:D:55 unknown rd_clk async true
 crossing 03d05b74b31fbef010975203bb698680 port_flop_bus p:wdata:12 c:$procdff$22:D:33 port:wdata wr_clk async true
@@ -11,13 +10,9 @@ lane 03d05b74b31fbef010975203bb698680 4 4
 lane 03d05b74b31fbef010975203bb698680 5 5
 lane 03d05b74b31fbef010975203bb698680 6 6
 lane 03d05b74b31fbef010975203bb698680 7 7
-hop 03d05b74b31fbef010975203bb698680 $procmux$15
 crossing 048a7ce321901ce57661da288d03b28b port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:45 port:we wr_clk async true
-hop 048a7ce321901ce57661da288d03b28b $procmux$12
 crossing 05925e2574374be9cf45e64a9ae8acf7 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:36 port:we wr_clk async true
-hop 05925e2574374be9cf45e64a9ae8acf7 $procmux$15
 crossing 05a706e4dab141ec70a15d4457e4f0b9 port_flop_untyped p:wdata:15 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:36 port:wdata wr_clk async true
-hop 05a706e4dab141ec70a15d4457e4f0b9 $procmux$15
 crossing 07b00807257d18984ee0a724df77564e port_flop_bus p:we:20 c:$procdff$23:D:41 port:we wr_clk async true
 lane 07b00807257d18984ee0a724df77564e 0 0
 lane 07b00807257d18984ee0a724df77564e 0 1
@@ -27,7 +22,6 @@ lane 07b00807257d18984ee0a724df77564e 0 4
 lane 07b00807257d18984ee0a724df77564e 0 5
 lane 07b00807257d18984ee0a724df77564e 0 6
 lane 07b00807257d18984ee0a724df77564e 0 7
-hop 07b00807257d18984ee0a724df77564e $procmux$12
 crossing 0801aebe81d26b1bf4be1be21adb8b82 flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:53 c:$procdff$20:D:53 unknown rd_clk async true
 crossing 09778ed221869d69dd4c7a728cc9064b port_flop_bus p:we:20 c:$procdff$22:D:33 port:we wr_clk async true
 lane 09778ed221869d69dd4c7a728cc9064b 0 0
@@ -38,10 +32,8 @@ lane 09778ed221869d69dd4c7a728cc9064b 0 4
 lane 09778ed221869d69dd4c7a728cc9064b 0 5
 lane 09778ed221869d69dd4c7a728cc9064b 0 6
 lane 09778ed221869d69dd4c7a728cc9064b 0 7
-hop 09778ed221869d69dd4c7a728cc9064b $procmux$15
 crossing 10050d0001038d57a0dc3d89a762b03c port_flop_untyped p:raddr:11 c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:ADDR:11 port:raddr unknown async true
 crossing 104806e9beaee0eb329e05de5cdae9f5 port_flop_untyped p:waddr:7 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:32 port:waddr wr_clk async true
-hop 104806e9beaee0eb329e05de5cdae9f5 $procmux$18
 crossing 11abb4b24e0658b1eaa6ab687bc452f0 port_flop_bus p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:41 port:we wr_clk async true
 lane 11abb4b24e0658b1eaa6ab687bc452f0 0 0
 lane 11abb4b24e0658b1eaa6ab687bc452f0 0 1
@@ -51,64 +43,40 @@ lane 11abb4b24e0658b1eaa6ab687bc452f0 0 4
 lane 11abb4b24e0658b1eaa6ab687bc452f0 0 5
 lane 11abb4b24e0658b1eaa6ab687bc452f0 0 6
 lane 11abb4b24e0658b1eaa6ab687bc452f0 0 7
-hop 11abb4b24e0658b1eaa6ab687bc452f0 $procmux$12
 crossing 11d451850454d0655e1e95dc48cc7721 port_flop_untyped p:we:20 c:$procdff$23:D:42 port:we wr_clk async true
-hop 11d451850454d0655e1e95dc48cc7721 $procmux$12
 crossing 157f2220d69a187337938b0cc71d2403 port_flop_untyped p:we:20 c:$procdff$22:D:37 port:we wr_clk async true
-hop 157f2220d69a187337938b0cc71d2403 $procmux$15
 crossing 15ab2d5915746f5be6038b1f7026e03d port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:29 port:we wr_clk async true
-hop 15ab2d5915746f5be6038b1f7026e03d $procmux$18
 crossing 16ecd05da381d00dc4928fb0fcd3cf50 port_flop_untyped p:waddr:7 c:$procdff$21:D:32 port:waddr wr_clk async true
-hop 16ecd05da381d00dc4928fb0fcd3cf50 $procmux$18
 crossing 18f0e312f1c0520f3e69180a42680d14 port_flop_untyped p:we:20 c:$procdff$21:D:32 port:we wr_clk async true
-hop 18f0e312f1c0520f3e69180a42680d14 $procmux$18
 crossing 1a137253b380634d837e91ad70f27c4f port_flop_bus p:we:20 c:$procdff$21:D:29 port:we wr_clk async true
 lane 1a137253b380634d837e91ad70f27c4f 0 0
 lane 1a137253b380634d837e91ad70f27c4f 0 1
 lane 1a137253b380634d837e91ad70f27c4f 0 2
 lane 1a137253b380634d837e91ad70f27c4f 0 3
-hop 1a137253b380634d837e91ad70f27c4f $procmux$18
 crossing 1aa673a22e2d7f2bc6f915d8ebc8cb91 port_flop_untyped p:waddr:4 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:29 port:waddr wr_clk async true
-hop 1aa673a22e2d7f2bc6f915d8ebc8cb91 $procmux$18
 crossing 1b3fdff8bdc9fd4b1d1438c9cca83c03 flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:51 c:$procdff$20:D:51 unknown rd_clk async true
 crossing 1dddac2cf0435495e7f94cd5bbc7a56a flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:49 c:$procdff$20:D:49 unknown rd_clk async true
 crossing 1f8459135cf6334cdc0c8171f53a5c9f port_flop_untyped p:waddr:4 c:$procdff$21:D:29 port:waddr wr_clk async true
-hop 1f8459135cf6334cdc0c8171f53a5c9f $procmux$18
 crossing 1fede969115a3febc72f2e1f13bb73e4 port_flop_untyped p:wdata:16 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:37 port:wdata wr_clk async true
-hop 1fede969115a3febc72f2e1f13bb73e4 $procmux$15
 crossing 2118e39b036319119624a9610eeeae28 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:33 port:we wr_clk async true
-hop 2118e39b036319119624a9610eeeae28 $procmux$15
 crossing 22249b0404eea23e67ce9d1180257e16 port_flop_untyped p:we:20 c:$procdff$22:D:38 port:we wr_clk async true
-hop 22249b0404eea23e67ce9d1180257e16 $procmux$15
 crossing 23aee277a12658f623b8d160ebefcaa9 clock_sink p:wr_clk:2 c:$auto$proc_memwr.cc:45:proc_memwr$24:CLK:2 wr_clk wr_clk async false
 crossing 36c8475d435acb3dd97b89be93cd785a port_flop_untyped p:we:20 c:$procdff$21:D:30 port:we wr_clk async true
-hop 36c8475d435acb3dd97b89be93cd785a $procmux$18
 crossing 37718f1cbf9af0a92452357b0a7a589a port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:42 port:we wr_clk async true
-hop 37718f1cbf9af0a92452357b0a7a589a $procmux$12
 crossing 38f00ea33a3096f0f3bb8f2f5ac9873a port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:40 port:we wr_clk async true
-hop 38f00ea33a3096f0f3bb8f2f5ac9873a $procmux$15
 crossing 3a26229f6613595575dc78200083c562 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:48 port:we wr_clk async true
-hop 3a26229f6613595575dc78200083c562 $procmux$12
 crossing 3db587dae037fa2194d3401834006054 port_flop_untyped p:we:20 c:$procdff$23:D:48 port:we wr_clk async true
-hop 3db587dae037fa2194d3401834006054 $procmux$12
 crossing 3e0c5cfc231a5095e3a5feb080de883a port_flop_untyped p:we:20 c:$procdff$22:D:40 port:we wr_clk async true
-hop 3e0c5cfc231a5095e3a5feb080de883a $procmux$15
 crossing 3ebc5a1db985f9f38f96c8329e5862de port_flop_untyped p:wdata:17 c:$procdff$22:D:38 port:wdata wr_clk async true
-hop 3ebc5a1db985f9f38f96c8329e5862de $procmux$15
 crossing 3efe8e69b23a20a1a6e0d77073e63083 port_flop_untyped p:wdata:12 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:33 port:wdata wr_clk async true
-hop 3efe8e69b23a20a1a6e0d77073e63083 $procmux$15
 crossing 3f9736052a070bee875170729ce6733d port_flop_untyped p:we:20 c:$procdff$21:D:29 port:we wr_clk async true
-hop 3f9736052a070bee875170729ce6733d $procmux$18
 crossing 4877094c9991728350b8d021150cb4be port_flop_untyped p:we:20 c:$procdff$23:D:43 port:we wr_clk async true
-hop 4877094c9991728350b8d021150cb4be $procmux$12
 crossing 4db239dc7fa9c36a18caac3f177c1962 port_flop_bus p:waddr:4 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:29 port:waddr wr_clk async true
 lane 4db239dc7fa9c36a18caac3f177c1962 0 0
 lane 4db239dc7fa9c36a18caac3f177c1962 1 1
 lane 4db239dc7fa9c36a18caac3f177c1962 2 2
 lane 4db239dc7fa9c36a18caac3f177c1962 3 3
-hop 4db239dc7fa9c36a18caac3f177c1962 $procmux$18
 crossing 4ff44e7a928d02e31e4103e94ec4bac0 port_flop_untyped p:wdata:17 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:38 port:wdata wr_clk async true
-hop 4ff44e7a928d02e31e4103e94ec4bac0 $procmux$15
 crossing 50c44695321c81b23786a67cc71c0ddb port_flop_untyped p:raddr:8 c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:ADDR:8 port:raddr unknown async true
 crossing 514a11ef9363ebcbcd2bcbcca185fe17 port_flop_bus p:wdata:12 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:33 port:wdata wr_clk async true
 lane 514a11ef9363ebcbcd2bcbcca185fe17 0 0
@@ -119,57 +87,36 @@ lane 514a11ef9363ebcbcd2bcbcca185fe17 4 4
 lane 514a11ef9363ebcbcd2bcbcca185fe17 5 5
 lane 514a11ef9363ebcbcd2bcbcca185fe17 6 6
 lane 514a11ef9363ebcbcd2bcbcca185fe17 7 7
-hop 514a11ef9363ebcbcd2bcbcca185fe17 $procmux$15
 crossing 520ce15396cad73421966b4abed1d251 flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:56 c:$procdff$20:D:56 unknown rd_clk async true
 crossing 5e6e4d21c2ebb8f8d08670f391f17dcc port_flop_untyped p:wdata:13 c:$procdff$22:D:34 port:wdata wr_clk async true
-hop 5e6e4d21c2ebb8f8d08670f391f17dcc $procmux$15
 crossing 5f3798539028c63b652847e7e97117b1 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:39 port:we wr_clk async true
-hop 5f3798539028c63b652847e7e97117b1 $procmux$15
 crossing 68b91a2887196bf87ff93ca8f2cda7ac port_flop_untyped p:waddr:5 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:30 port:waddr wr_clk async true
-hop 68b91a2887196bf87ff93ca8f2cda7ac $procmux$18
 crossing 692597d910e286bb098bf58eab297e9d port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:32 port:we wr_clk async true
-hop 692597d910e286bb098bf58eab297e9d $procmux$18
 crossing 695fadff52ac09da7040b6ac4123ad73 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:38 port:we wr_clk async true
-hop 695fadff52ac09da7040b6ac4123ad73 $procmux$15
 crossing 6a10190a2ef9dfaea4e6dc26df4fd2eb port_flop_untyped p:we:20 c:$procdff$22:D:36 port:we wr_clk async true
-hop 6a10190a2ef9dfaea4e6dc26df4fd2eb $procmux$15
 crossing 6ac82e5f5ebd4b0265b5f191f7f3b5cd port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:46 port:we wr_clk async true
-hop 6ac82e5f5ebd4b0265b5f191f7f3b5cd $procmux$12
 crossing 6b9d1f78a343ec2440385e9598b88b6c port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:43 port:we wr_clk async true
-hop 6b9d1f78a343ec2440385e9598b88b6c $procmux$12
 crossing 76d22a8d539e4b3c94cff8e9407afff1 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:30 port:we wr_clk async true
-hop 76d22a8d539e4b3c94cff8e9407afff1 $procmux$18
 crossing 7d884f6021109000b631dc57a4bbab2a port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:37 port:we wr_clk async true
-hop 7d884f6021109000b631dc57a4bbab2a $procmux$15
 crossing 7fde80aeb662dc4342c942955757f3fb clock_sink p:wr_clk:2 c:$procdff$21:CLK:2 wr_clk wr_clk async false
 crossing 876b5ffbea9d9231169bd3033c13a928 port_flop_untyped p:wdata:15 c:$procdff$22:D:36 port:wdata wr_clk async true
-hop 876b5ffbea9d9231169bd3033c13a928 $procmux$15
 crossing 89bdf2102f2578bf0e22977f023d887f port_flop_untyped p:we:20 c:$procdff$23:D:44 port:we wr_clk async true
-hop 89bdf2102f2578bf0e22977f023d887f $procmux$12
 crossing 8c6e8712df41141bd911620d5db98d67 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:44 port:we wr_clk async true
-hop 8c6e8712df41141bd911620d5db98d67 $procmux$12
 crossing 8daca2c536fa026cbb102dd09705bc6b flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:50 c:$procdff$20:D:50 unknown rd_clk async true
 crossing 906e8e26939c7e114643f0ad8c35e3f0 port_flop_untyped p:raddr:10 c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:ADDR:10 port:raddr unknown async true
 crossing 974a9613a01f489be135dc114252699d port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:41 port:we wr_clk async true
-hop 974a9613a01f489be135dc114252699d $procmux$12
 crossing 975808e7dd05653809e2025c8b90870f port_flop_untyped p:waddr:6 c:$procdff$21:D:31 port:waddr wr_clk async true
-hop 975808e7dd05653809e2025c8b90870f $procmux$18
 crossing 9b9ecfee07ac4ea44a79869ad3ba0e95 port_flop_untyped p:wdata:19 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:40 port:wdata wr_clk async true
-hop 9b9ecfee07ac4ea44a79869ad3ba0e95 $procmux$15
 crossing 9d00c241e4a65e360e7d854424128b09 port_flop_bus p:raddr:8 c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:ADDR:8 port:raddr unknown async true
 lane 9d00c241e4a65e360e7d854424128b09 0 0
 lane 9d00c241e4a65e360e7d854424128b09 1 1
 lane 9d00c241e4a65e360e7d854424128b09 2 2
 lane 9d00c241e4a65e360e7d854424128b09 3 3
 crossing 9eb6bcffc4c6f5cdde62828d9dedf8a0 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:EN:47 port:we wr_clk async true
-hop 9eb6bcffc4c6f5cdde62828d9dedf8a0 $procmux$12
 crossing 9f63dbaad5bbf4e39b6d8b5f7e3089bb port_flop_untyped p:we:20 c:$procdff$22:D:39 port:we wr_clk async true
-hop 9f63dbaad5bbf4e39b6d8b5f7e3089bb $procmux$15
 crossing a0f6c05835882b9dfd03564b13bd86f2 flop_flop_bit c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:54 c:$procdff$20:D:54 unknown rd_clk async true
 crossing a109c567f5e7bb4ad0953ea75bd66c59 port_flop_untyped p:waddr:6 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:31 port:waddr wr_clk async true
-hop a109c567f5e7bb4ad0953ea75bd66c59 $procmux$18
 crossing a864bc371f3820eacde0430aef3cf368 port_flop_untyped p:we:20 c:$procdff$22:D:33 port:we wr_clk async true
-hop a864bc371f3820eacde0430aef3cf368 $procmux$15
 crossing ab71d320697127b47d3d9370559ddf10 flop_flop_bus c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:DATA:49 c:$procdff$20:D:49 unknown rd_clk async true
 lane ab71d320697127b47d3d9370559ddf10 0 0
 lane ab71d320697127b47d3d9370559ddf10 1 1
@@ -180,40 +127,28 @@ lane ab71d320697127b47d3d9370559ddf10 5 5
 lane ab71d320697127b47d3d9370559ddf10 6 6
 lane ab71d320697127b47d3d9370559ddf10 7 7
 crossing b1b4e4656a4028f1800b8f752bbd8260 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:31 port:we wr_clk async true
-hop b1b4e4656a4028f1800b8f752bbd8260 $procmux$18
 crossing b2eff4a658628afc3cd5fb9a69f773dd port_flop_untyped p:raddr:9 c:$memrd$\mem$tests/e2e/mem_case/design.sv:10$10:ADDR:9 port:raddr unknown async true
 crossing b43b87a337cb160a919dcf8dcd5fb985 port_flop_untyped p:we:20 c:$procdff$23:D:46 port:we wr_clk async true
-hop b43b87a337cb160a919dcf8dcd5fb985 $procmux$12
 crossing bb5c9f270207adfe75b3646daca2e78b port_flop_untyped p:wdata:14 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:35 port:wdata wr_clk async true
-hop bb5c9f270207adfe75b3646daca2e78b $procmux$15
 crossing bcf500f70acf288bb88ebd5e8dee063e port_flop_untyped p:we:20 c:$procdff$21:D:31 port:we wr_clk async true
-hop bcf500f70acf288bb88ebd5e8dee063e $procmux$18
 crossing be576a5afe92a1cbb992670c0106c8f8 port_flop_untyped p:waddr:5 c:$procdff$21:D:30 port:waddr wr_clk async true
-hop be576a5afe92a1cbb992670c0106c8f8 $procmux$18
 crossing c49b6875d058f2521f7b68dbe7628318 port_flop_untyped p:wdata:13 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:34 port:wdata wr_clk async true
-hop c49b6875d058f2521f7b68dbe7628318 $procmux$15
 crossing c62f3744a48e53d5cf38d2dd5a3d565a port_flop_bus p:waddr:4 c:$procdff$21:D:29 port:waddr wr_clk async true
 lane c62f3744a48e53d5cf38d2dd5a3d565a 0 0
 lane c62f3744a48e53d5cf38d2dd5a3d565a 1 1
 lane c62f3744a48e53d5cf38d2dd5a3d565a 2 2
 lane c62f3744a48e53d5cf38d2dd5a3d565a 3 3
-hop c62f3744a48e53d5cf38d2dd5a3d565a $procmux$18
 crossing cc27d61f93b646daf28422bd6f832f92 port_flop_untyped p:wdata:19 c:$procdff$22:D:40 port:wdata wr_clk async true
-hop cc27d61f93b646daf28422bd6f832f92 $procmux$15
 crossing cfa76e810029f95bb83b1efe3c0007d8 clock_sink p:wr_clk:2 c:$procdff$22:CLK:2 wr_clk wr_clk async false
 crossing d5fb49c878a49c7ddf76256d944312dc port_flop_untyped p:we:20 c:$procdff$23:D:41 port:we wr_clk async true
-hop d5fb49c878a49c7ddf76256d944312dc $procmux$12
 crossing d69f3552c95be26feceeea31e2e08c51 clock_sink p:rd_clk:3 c:$procdff$20:CLK:3 rd_clk rd_clk async false
 crossing dc41623cec9ed69b8e9d48d04ce9ce90 port_flop_bus p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:ADDR:29 port:we wr_clk async true
 lane dc41623cec9ed69b8e9d48d04ce9ce90 0 0
 lane dc41623cec9ed69b8e9d48d04ce9ce90 0 1
 lane dc41623cec9ed69b8e9d48d04ce9ce90 0 2
 lane dc41623cec9ed69b8e9d48d04ce9ce90 0 3
-hop dc41623cec9ed69b8e9d48d04ce9ce90 $procmux$18
 crossing e085ade22ebc53511a41e0fd0e1ac9a1 port_flop_untyped p:we:20 c:$procdff$23:D:47 port:we wr_clk async true
-hop e085ade22ebc53511a41e0fd0e1ac9a1 $procmux$12
 crossing e2b08622b19a894e2a1d393ebf871bdc port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:35 port:we wr_clk async true
-hop e2b08622b19a894e2a1d393ebf871bdc $procmux$15
 crossing e55e98f04583f624febc1bfac97e75b5 port_flop_bus p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:33 port:we wr_clk async true
 lane e55e98f04583f624febc1bfac97e75b5 0 0
 lane e55e98f04583f624febc1bfac97e75b5 0 1
@@ -223,21 +158,12 @@ lane e55e98f04583f624febc1bfac97e75b5 0 4
 lane e55e98f04583f624febc1bfac97e75b5 0 5
 lane e55e98f04583f624febc1bfac97e75b5 0 6
 lane e55e98f04583f624febc1bfac97e75b5 0 7
-hop e55e98f04583f624febc1bfac97e75b5 $procmux$15
 crossing e57be79e6e2f8212b6786e2a1258b236 port_flop_untyped p:we:20 c:$procdff$22:D:35 port:we wr_clk async true
-hop e57be79e6e2f8212b6786e2a1258b236 $procmux$15
 crossing e6c212d5f218d979381638f2b3fdaa0b port_flop_untyped p:we:20 c:$procdff$22:D:34 port:we wr_clk async true
-hop e6c212d5f218d979381638f2b3fdaa0b $procmux$15
 crossing eb9c8c4f4fb0e846567ca4bced545e12 clock_sink p:wr_clk:2 c:$procdff$23:CLK:2 wr_clk wr_clk async false
 crossing f3f3b273acc1d2e6eefc4411c33ab595 port_flop_untyped p:wdata:16 c:$procdff$22:D:37 port:wdata wr_clk async true
-hop f3f3b273acc1d2e6eefc4411c33ab595 $procmux$15
 crossing f4d5b802d6cc2622d986a6831613f992 port_flop_untyped p:we:20 c:$auto$proc_memwr.cc:45:proc_memwr$24:DATA:34 port:we wr_clk async true
-hop f4d5b802d6cc2622d986a6831613f992 $procmux$15
 crossing f73c202a1376ec28e4d36ae0c64cecc4 port_flop_untyped p:we:20 c:$procdff$23:D:45 port:we wr_clk async true
-hop f73c202a1376ec28e4d36ae0c64cecc4 $procmux$12
 crossing f92a912c5cff2a8aab013c9e26cfa768 port_flop_untyped p:wdata:12 c:$procdff$22:D:33 port:wdata wr_clk async true
-hop f92a912c5cff2a8aab013c9e26cfa768 $procmux$15
 crossing f9dec1d084f8d66a3a51e9f7bcded8bf port_flop_untyped p:wdata:14 c:$procdff$22:D:35 port:wdata wr_clk async true
-hop f9dec1d084f8d66a3a51e9f7bcded8bf $procmux$15
 crossing fa08058523a615bc973cf9e5c7c70def port_flop_untyped p:wdata:18 c:$procdff$22:D:39 port:wdata wr_clk async true
-hop fa08058523a615bc973cf9e5c7c70def $procmux$15

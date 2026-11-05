@@ -1,6 +1,5 @@
 crossing 051c09aaf3b97093ae4fc697bfc16b77 clock_control p:sel:4 c:$ternary$tests/e2e/mux_clock/design.sv:9$1:S:4 port:sel clk_a+clk_b async true
 crossing 096992b5f45f245764f8be8ee8b0d675 clock_sink p:sel:4 c:$procdff$3:CLK:7 port:sel clk_a+clk_b async true
-hop 096992b5f45f245764f8be8ee8b0d675 $ternary$tests/e2e/mux_clock/design.sv:9$1
 crossing 7d3c2fdce9781bd94019a02c854dd741 clock_sink p:clk_b:3 c:$procdff$3:CLK:7 clk_b clk_a+clk_b async true
 hop 7d3c2fdce9781bd94019a02c854dd741 $ternary$tests/e2e/mux_clock/design.sv:9$1
 crossing 88045ccb06ed7bdf7580b8956e759a2f port_flop_untyped p:d:5 c:$procdff$3:D:5 port:d clk_a+clk_b async true

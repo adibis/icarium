@@ -76,6 +76,8 @@ pub fn sinkClass(cell_type: []const u8, pin: []const u8) ?SinkClass {
     return null;
 }
 
+// Cost: O(sources × cone) walks, each visited-guarded; output
+// pruned to async, unknown, and control arrivals before hashing.
 pub fn enumerate(
     parent: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -93,14 +95,27 @@ pub fn enumerate(
 
     var scratch = std.heap.ArenaAllocator.init(parent);
     defer scratch.deinit();
+    // Raw pairs die after the build: only crossings survive, so
+    // the pair structs must not ride the retained backing arena.
+    var pairs_backing = std.heap.ArenaAllocator.init(parent);
+    defer pairs_backing.deinit();
+    const pair_alloc = pairs_backing.allocator();
+    const controls = try alloc.dupe(clock.trace.ControlPin, clock_asg.controls);
+    std.mem.sort(clock.trace.ControlPin, controls, {}, struct {
+        fn less(_: void, a: clock.trace.ControlPin, b: clock.trace.ControlPin) bool {
+            if (a.cell != b.cell) return a.cell < b.cell;
+            return std.mem.lessThan(u8, a.pin, b.pin);
+        }
+    }.less);
     var en = Enumerator{
         .mod = mod,
         .model = model,
         .alloc = alloc,
+        .pair_alloc = pair_alloc,
         .scratch = &scratch,
         .clock_of = &clock_of,
         .bit_domains = &clock_asg.bit_domains,
-        .controls = clock_asg.controls,
+        .controls = controls,
     };
     var pairs: std.ArrayListUnmanaged(Pair) = .empty;
     for (mod.cells, 0..) |c, ci| {
@@ -137,8 +152,11 @@ pub fn enumerate(
     }
 
     var out: std.ArrayListUnmanaged(Crossing) = .empty;
+    // Presized: millions of pairs double the list into gigabytes
+    // of retained arena slack; enumeration holds one vector.
+    try out.ensureTotalCapacity(alloc, pairs.items.len);
+    // Emit already applied keepPair; every pair here builds.
     for (pairs.items) |pr| {
-        if (!en.keepPair(pr)) continue;
         try out.append(alloc, try en.buildCrossing(pr, null));
     }
     try en.appendBusGroups(&pairs, &out);
@@ -226,10 +244,11 @@ const Enumerator = struct {
     mod: *const ir.types.Module,
     model: *const sdc.model.Model,
     alloc: std.mem.Allocator,
+    pair_alloc: std.mem.Allocator,
     scratch: *std.heap.ArenaAllocator,
     clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
-    controls: []clock.trace.ControlPin,
+    controls: []const clock.trace.ControlPin,
 
     fn walkFrom(
         en: *Enumerator,
@@ -239,8 +258,8 @@ const Enumerator = struct {
         src_lane: usize,
         pairs: *std.ArrayListUnmanaged(Pair),
     ) error{OutOfMemory}!void {
-        // Walk state resets per source: retaining fifty thousand
-        // visited-sets in the report arena OOMs full-chip runs.
+        // Walk state resets per source, bounding transient memory to
+        // one cone; the walk itself costs O(cone) time, visited-guarded.
         _ = en.scratch.reset(.retain_capacity);
         const tmp = en.scratch.allocator();
         var seen = std.AutoHashMapUnmanaged(u32, ParentLink){};
@@ -281,9 +300,21 @@ const Enumerator = struct {
 
     // Control pins are few (clock-path muxes and gates), so a
     // linear scan beats a map build in both code and cycles.
+    // Binary search over the sorted control index: this fires per
+    // arrival, so the linear scan it replaced cost O(controls) each.
     fn isControlSink(en: *Enumerator, ci: usize, pin: []const u8) bool {
-        for (en.controls) |cp| {
-            if (cp.cell == ci and std.mem.eql(u8, cp.pin, pin)) return true;
+        var lo: usize = 0;
+        var hi: usize = en.controls.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            const cp = en.controls[mid];
+            if (cp.cell < ci or (cp.cell == ci and std.mem.lessThan(u8, cp.pin, pin))) {
+                lo = mid + 1;
+            } else if (cp.cell == ci and std.mem.eql(u8, cp.pin, pin)) {
+                return true;
+            } else {
+                hi = mid;
+            }
         }
         return false;
     }
@@ -302,7 +333,12 @@ const Enumerator = struct {
         control: bool,
         seen: *const std.AutoHashMapUnmanaged(u32, ParentLink),
     ) error{OutOfMemory}!void {
-        try pairs.append(en.alloc, .{
+        // Sync data pairs die before hop reconstruction: discovery
+        // emits millions and no rule consumes them. Unknown pairs
+        // keep endpoints but no path: CDC-025 aggregates them per
+        // source, and no path rule may read them. Emit stays
+        // O(path) for kept known pairs, O(1) for the rest.
+        var pr = Pair{
             .src_cell = src_cell,
             .src_port = src_port,
             .src_bit = src_bit,
@@ -313,8 +349,27 @@ const Enumerator = struct {
             .dst_lane = laneOf(en.mod.cells[ci], pin, b),
             .dst_class = cls,
             .dst_control = control,
-            .hops = try en.reconstruct(seen, b),
-        });
+            .hops = &.{},
+        };
+        if (!en.keepPair(pr)) return;
+        if (en.knownPair(pr)) pr.hops = try en.reconstruct(seen, b);
+        try pairs.append(en.pair_alloc, pr);
+    }
+
+    // Both ends resolve to real clocks: the same predicate the
+    // clock labels use, so a stored path always has two anchors.
+    // The dispatcher additionally routes untyped-kind pairs past
+    // per-pair rules; their paths serve the check_all owners.
+    fn knownPair(en: *Enumerator, pr: Pair) bool {
+        const dd = en.dstDomain(pr) orelse return false;
+        if (std.mem.eql(u8, dd.name, "unknown")) return false;
+        if (pr.src_cell) |_| {
+            const sd = en.srcDomain(pr) orelse return false;
+            if (std.mem.eql(u8, sd.name, "unknown")) return false;
+        } else if (en.srcClockName(pr.src_port) == null) {
+            return false;
+        }
+        return true;
     }
 
     // Bitwise cells propagate lane-to-lane; fully connected would
@@ -433,7 +488,7 @@ const Enumerator = struct {
             }
             if (pr.dst_control or pr.dst_class == .clk) continue;
             if (!en.asyncFor(pr)) continue;
-            try cand.append(en.alloc, i);
+            try cand.append(en.pair_alloc, i);
         }
         std.mem.sort(usize, cand.items, pairs, struct {
             fn less(ps: *const std.ArrayListUnmanaged(Pair), a: usize, b: usize) bool {

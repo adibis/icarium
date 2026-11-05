@@ -1498,13 +1498,13 @@ const combine_sdc =
     \\set_input_delay -clock ca 1.0 [get_ports d]
 ;
 
-test "a two-clock gate fires CDC-023 beside the unresolved CDC-001" {
+test "a two-clock gate fires CDC-023 beside the unresolved endpoint" {
     var l = try loadAll(clock_combine, combine_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 2), fs.len);
-    try std.testing.expectEqualStrings("CDC-001", fs[0].rule);
-    try std.testing.expectEqualStrings("CDC-023", fs[1].rule);
+    try std.testing.expectEqualStrings("CDC-023", fs[0].rule);
+    try std.testing.expectEqualStrings("CDC-025", fs[1].rule);
 }
 
 const clock_gate_ok =

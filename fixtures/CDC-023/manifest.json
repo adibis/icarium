@@ -1,1 +1,1 @@
-{"bad_clock_combine.sv": ["CDC-001", "CDC-023"], "bad_generated_combine.sv": ["CDC-001", "CDC-023"], "good_gated_clock.sv": []}
+{"bad_clock_combine.sv": ["CDC-023", "CDC-025"], "bad_generated_combine.sv": ["CDC-023", "CDC-025"], "good_gated_clock.sv": []}

@@ -372,6 +372,19 @@ const golden =
     \\              }
     \\            },
     \\            {
+    \\              "id": "CDC-025",
+    \\              "name": "CDC-025",
+    \\              "shortDescription": {
+    \\                "text": "Unresolved clock association"
+    \\              },
+    \\              "fullDescription": {
+    \\                "text": "A crossing endpoint has no clock association: undriven flop\nclock, macro or memory output, unhandled primitive, or an\nuntyped input the other port rules do not own. One finding\nper endpoint names the reason and the fanout; per-pair sync\nverdicts on unclocked endpoints would be noise. Type the\nsource, model the macro, or waive after review."
+    \\              },
+    \\              "defaultConfiguration": {
+    \\                "level": "warning"
+    \\              }
+    \\            },
+    \\            {
     \\              "id": "RDC-001",
     \\              "name": "RDC-001",
     \\              "shortDescription": {

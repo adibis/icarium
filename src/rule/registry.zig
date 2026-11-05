@@ -21,6 +21,7 @@ const cdc020 = @import("cdc020.zig");
 const cdc021 = @import("cdc021.zig");
 const cdc022 = @import("cdc022.zig");
 const cdc023 = @import("cdc023.zig");
+const cdc025 = @import("cdc025.zig");
 const rdc001 = @import("rdc001.zig");
 const rdc002 = @import("rdc002.zig");
 const rdc003 = @import("rdc003.zig");
@@ -71,6 +72,7 @@ pub const rules = [_]Rule{
     cdc021.rule,
     cdc022.rule,
     cdc023.rule,
+    cdc025.rule,
     rdc001.rule,
     rdc002.rule,
     rdc003.rule,
@@ -147,6 +149,7 @@ fn enabled(id: []const u8, only: ?[]const []const u8, skip: ?[]const []const u8)
 
 // Rules outer, crossings inner: registry order is fixed and
 // crossings arrive sorted, so reruns order identically.
+// Cost: O(rules × crossings); per-crossing work is each rule's own.
 pub fn runChecks(
     alloc: std.mem.Allocator,
     ctx: *context.Context,
@@ -168,6 +171,11 @@ pub fn runChecks(
             }
         } else if (r.check) |one| {
             for (ctx.report.crossings) |x| {
+                // Unknown pairs belong to CDC-025's per-endpoint
+                // ledger, never to per-pair structure rules: a sync
+                // violation on an unclocked endpoint is noise with
+                // a confident tone. Matches knownPair in enumerate.
+                if (unknownSide(x)) continue;
                 if (try one(ctx, x)) |got| {
                     var f = got;
                     if (f.driver == null) f.driver = srcName(ctx, x);
@@ -190,6 +198,16 @@ fn fresh(alloc: std.mem.Allocator, seen: *std.StringHashMapUnmanaged(void), f: f
     }
     slot.key_ptr.* = key;
     return true;
+}
+
+// Either end unclocked: untyped port sources ride a port: clock
+// or the untyped kind, cells ride unknown. A port: DESTINATION
+// is clocked-but-undeclared (CDC-021's shape), never unknown.
+// Mirrors knownPair; CDC-025 owns the pairs skipped here.
+pub fn unknownSide(x: crossing.enumerate.Crossing) bool {
+    if (x.kind == .port_flop_untyped) return true;
+    if (std.mem.startsWith(u8, x.src_clk, "port:")) return true;
+    return std.mem.eql(u8, x.src_clk, "unknown") or std.mem.eql(u8, x.dst_clk, "unknown");
 }
 
 // The crossing's own source endpoint: single-crossing rules

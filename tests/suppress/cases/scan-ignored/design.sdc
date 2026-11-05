@@ -5,3 +5,4 @@ set_clock_groups -asynchronous -group {clk_a} -group {clk_b scan_clk}
 set_input_delay -clock clk_a 1.0 [get_ports d_gated]
 set_input_delay -clock clk_a 1.0 [get_ports d_rmux]
 set_input_delay -clock clk_a 1.0 [get_ports d_clean]
+set_input_delay -clock clk_a 1.0 [get_ports scan_en]

@@ -1,6 +1,5 @@
 crossing 85b13e79c6c4023fa5ba5ab73035e625 port_flop_untyped p:d:4 c:$procdff$3:D:4 port:d clk async true
 crossing a477689215f2237878dce217d482d431 clock_sink p:en:3 c:$procdff$3:CLK:6 port:en clk async true
-hop a477689215f2237878dce217d482d431 $and$tests/e2e/gate_clock/design.sv:8$1
 crossing a5ea886f32df949391f7b36dcb4adfd0 clock_sink p:clk:2 c:$procdff$3:CLK:6 clk clk async false
 hop a5ea886f32df949391f7b36dcb4adfd0 $and$tests/e2e/gate_clock/design.sv:8$1
 crossing e1f8ae80e243d7439313f9d1046f7441 clock_control p:en:3 c:$and$tests/e2e/gate_clock/design.sv:8$1:B:3 port:en clk async true
