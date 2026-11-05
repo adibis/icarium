@@ -89,6 +89,7 @@ fn usage(w: anytype) !void {
         \\      --strict-waivers      unmatched waivers fail the run
         \\      --baseline FILE       carry over matching prior findings
         \\      --ignore-scan-mode    waive scan-tagged clock/reset paths
+        \\      --reset-hints FILE    external reset polarity/sync hints (JSON)
         \\      --no-findings       skip rules; maps only (exit 0)
         \\      --sync-depth N      required chain depth (default 2)
         \\      --cdc-010-no-heuristic  disable library pin-name guessing

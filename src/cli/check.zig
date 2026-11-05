@@ -25,6 +25,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var domain_map_path: ?[]const u8 = null;
     var reset_map_path: ?[]const u8 = null;
     var baseline_path: ?[]const u8 = null;
+    var hints_path: ?[]const u8 = null;
     var waivers_path: ?[]const u8 = null;
     var strict_waivers = false;
     var ignore_scan = false;
@@ -69,6 +70,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             i += 1;
         } else if (std.mem.eql(u8, a, "--baseline") and i + 1 < argv.len) {
             baseline_path = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--reset-hints") and i + 1 < argv.len) {
+            hints_path = argv[i + 1];
             i += 1;
         } else if (std.mem.eql(u8, a, "--strict-waivers")) {
             strict_waivers = true;
@@ -167,7 +171,23 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     defer table.deinit();
     var marks = sync.attrs.collect(init.gpa, &mod) catch return 3;
     defer marks.deinit();
-    var reset_view = reset.trace.assign(init.gpa, &mod, &clock_asg) catch return 3;
+    var hbytes: []u8 = &.{};
+    defer if (hbytes.len > 0) init.gpa.free(hbytes);
+    var hinted: ?sync.hints.Hints = null;
+    defer if (hinted) |*h| h.deinit();
+    if (hints_path) |hp| {
+        hbytes = std.Io.Dir.cwd().readFileAlloc(init.io, hp, init.gpa, .limited(1 << 26)) catch {
+            err.print("check: cannot read {s}\n", .{hp}) catch {};
+            return 3;
+        };
+        hinted = sync.hints.load(init.gpa, hbytes) catch {
+            err.print("check: bad hints file {s}\n", .{hp}) catch {};
+            return 2;
+        };
+        marks.applyHints(&hinted.?) catch return 3;
+    }
+    const hint_pols: ?*const reset.trace.HintPolarities = if (hinted) |*h| &h.polarities else null;
+    var reset_view = reset.trace.assign(init.gpa, &mod, &clock_asg, hint_pols) catch return 3;
     defer reset_view.deinit();
     var reset_syncs = reset.chains.find(init.gpa, &mod, &reset_view, &table.domains, &marks.reset_syncs) catch return 3;
     defer reset_syncs.deinit();

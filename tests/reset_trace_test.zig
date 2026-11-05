@@ -29,7 +29,7 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
     errdefer sdc_mod.deinit();
     var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
     errdefer clock_asg.deinit();
-    const view = try reset.trace.assign(std.testing.allocator, &mod, &clock_asg);
+    const view = try reset.trace.assign(std.testing.allocator, &mod, &clock_asg, null);
     return .{ .mod = mod, .sdc_mod = sdc_mod, .clock_asg = clock_asg, .view = view };
 }
 

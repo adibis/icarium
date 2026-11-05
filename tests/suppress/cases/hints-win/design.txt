@@ -1,0 +1,2 @@
+fixtures/RDC-002/good_polarity_match.sv
+fixtures/RDC-002/good_polarity_match.sdc

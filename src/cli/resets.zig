@@ -59,7 +59,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
 
     var clock_asg = clock.trace.assign(init.gpa, &mod, &sdc_mod) catch return 3;
     defer clock_asg.deinit();
-    var view = reset.trace.assign(init.gpa, &mod, &clock_asg) catch return 3;
+    var view = reset.trace.assign(init.gpa, &mod, &clock_asg, null) catch return 3;
     defer view.deinit();
 
     // Sorted by cell name so repeated runs diff cleanly.

@@ -43,7 +43,7 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
     errdefer table.deinit();
     var marks = try sync.attrs.collect(std.testing.allocator, &mod);
     errdefer marks.deinit();
-    var reset_view = try reset.trace.assign(std.testing.allocator, &mod, &clock_asg);
+    var reset_view = try reset.trace.assign(std.testing.allocator, &mod, &clock_asg, null);
     errdefer reset_view.deinit();
     var reset_syncs = try reset.chains.find(std.testing.allocator, &mod, &reset_view, &table.domains, &marks.reset_syncs);
     errdefer reset_syncs.deinit();

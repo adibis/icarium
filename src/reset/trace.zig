@@ -53,10 +53,13 @@ pub const View = struct {
 
 // One backward walk per reset bit with a shared memo: each bit
 // resolves once, so tracing stays linear in design size.
+pub const HintPolarities = std.StringHashMapUnmanaged(Polarity);
+
 pub fn assign(
     parent: std.mem.Allocator,
     mod: *const ir.types.Module,
     clock_asg: *const clock.trace.Assignment,
+    hint_polarities: ?*const HintPolarities,
 ) error{OutOfMemory}!View {
     const backing = try parent.create(std.heap.ArenaAllocator);
     errdefer parent.destroy(backing);
@@ -70,7 +73,7 @@ pub fn assign(
     var memo = std.AutoHashMapUnmanaged(u32, Resolved){};
     var active = std.AutoHashMapUnmanaged(u32, void){};
     var flops: std.ArrayListUnmanaged(FlopReset) = .empty;
-    var w = Walker{ .mod = mod, .alloc = alloc, .memo = &memo, .active = &active };
+    var w = Walker{ .mod = mod, .alloc = alloc, .memo = &memo, .active = &active, .hints = hint_polarities };
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type)) continue;
         var async: std.ArrayListUnmanaged(AsyncReset) = .empty;
@@ -123,6 +126,7 @@ const Walker = struct {
     alloc: std.mem.Allocator,
     memo: *std.AutoHashMapUnmanaged(u32, Resolved),
     active: *std.AutoHashMapUnmanaged(u32, void),
+    hints: ?*const HintPolarities,
 
     // A reset bus must agree with itself; disagreement is broken
     // input, reported as unknown rather than picked arbitrarily.
@@ -238,11 +242,21 @@ const Walker = struct {
 
     const PinPolarity = struct { value: Polarity, note: ?[]const u8 };
 
-    // Attribute (user promise on the port) beats param (synthesis
-    // truth on the pin); disagreement is noted for RDC-002 and the
-    // attribute wins, matching the reference reconciliation.
+    // Hint (external file) beats attribute (user promise on the
+    // port) beats param (synthesis truth on the pin); each upset
+    // is noted, matching the reference reconciliation.
     fn pinPolarity(w: *Walker, c: ir.types.Cell, ap: cells.AsyncPin, res: Resolved) PinPolarity {
         const param = paramPolarity(c, ap.polarity_param);
+        if (res.origin == .port) {
+            if (w.hints) |h| {
+                if (h.get(res.ref)) |hint| {
+                    if (param) |p| {
+                        if (p != hint) return .{ .value = hint, .note = "polarity hint overrides param" };
+                    }
+                    return .{ .value = hint, .note = null };
+                }
+            }
+        }
         var attr: ?Polarity = null;
         if (res.origin == .port) {
             if (w.mod.netnames.get(res.ref)) |nn| {

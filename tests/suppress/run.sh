@@ -38,10 +38,14 @@ for case in tests/suppress/cases/*/; do
     if [ -f "$case/waivers.json" ]; then
         python3 -c "import json,jsonschema; jsonschema.validate(json.load(open('$case/waivers.json')), json.load(open('schema/waivers-1.0.json')))" 2>"$TMP/serr.txt" || { echo "FAIL $name: waivers.json violates schema"; cat "$TMP/serr.txt"; fail=1; continue; }
     fi
+    if [ -f "$case/hints.json" ]; then
+        python3 -c "import json,jsonschema; jsonschema.validate(json.load(open('$case/hints.json')), json.load(open('schema/reset-hints-1.0.json')))" 2>"$TMP/serr.txt" || { echo "FAIL $name: hints.json violates schema"; cat "$TMP/serr.txt"; fail=1; continue; }
+    fi
     # shellcheck disable=SC2086
     extra=""
     if [ -f "$case/waivers.json" ]; then extra="$extra --waivers $case/waivers.json"; fi
     if [ -f "$case/baseline.json" ]; then extra="$extra --baseline $case/baseline.json"; fi
+    if [ -f "$case/hints.json" ]; then extra="$extra --reset-hints $case/hints.json"; fi
     set +e
     "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format json $flags $extra > "$TMP/out.json" 2>"$TMP/stderr.txt"
     code=$?

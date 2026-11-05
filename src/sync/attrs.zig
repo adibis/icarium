@@ -1,4 +1,5 @@
 const std = @import("std");
+const hints = @import("hints.zig");
 const ir = @import("../ir.zig");
 const reset = @import("../reset.zig");
 
@@ -83,6 +84,17 @@ pub const Marks = struct {
 
     pub fn resetPolarity(self: *const Marks, port: []const u8) ?reset.trace.Polarity {
         return self.reset_polarities.get(port);
+    }
+
+    // External hints merge into the attribute sets they mirror:
+    // polarities overwrite port declarations, syncs join stage
+    // membership. Hints win because they describe RTL the user
+    // cannot annotate in place.
+    pub fn applyHints(self: *Marks, h: *const hints.Hints) error{OutOfMemory}!void {
+        const alloc = self.backing.allocator();
+        var pit = h.polarities.iterator();
+        while (pit.next()) |e| try self.reset_polarities.put(alloc, e.key_ptr.*, e.value_ptr.*);
+        for (h.syncs) |s| try self.reset_syncs.put(alloc, s, {});
     }
 };
 

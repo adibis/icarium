@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.dev/schema/reset-hints-1.0.json",
+  "title": "icarium reset hints",
+  "description": "External reset polarity and synchronizer-stage declarations for untouchable RTL, in the same vocabulary as the in-RTL attributes. Hints win on disagreement with attributes.",
+  "type": "object",
+  "properties": {
+    "polarities": {
+      "description": "Top-level reset port name to declared polarity.",
+      "type": "object",
+      "additionalProperties": {"enum": ["high", "low"]}
+    },
+    "syncs": {
+      "description": "Flop cell names vouched as reset-synchronizer stages.",
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}
