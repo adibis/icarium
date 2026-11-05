@@ -3,11 +3,16 @@ const bits = @import("bits.zig");
 
 pub const Dir = enum { input, output, inout };
 
+// Three spellings, fixed by the Yosys schema: resolve them once
+// at compile time instead of comparing on every port parsed.
+const dirs = std.StaticStringMap(Dir).initComptime(.{
+    .{ "input", .input },
+    .{ "output", .output },
+    .{ "inout", .inout },
+});
+
 pub fn dirFromString(s: []const u8) error{BadDirection}!Dir {
-    if (std.mem.eql(u8, s, "input")) return .input;
-    if (std.mem.eql(u8, s, "output")) return .output;
-    if (std.mem.eql(u8, s, "inout")) return .inout;
-    return error.BadDirection;
+    return dirs.get(s) orelse error.BadDirection;
 }
 
 pub const Port = struct {

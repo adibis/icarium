@@ -1,9 +1,20 @@
 const std = @import("std");
 
-pub fn isHelp(s: []const u8) bool {
-    return std.mem.eql(u8, s, "help") or std.mem.eql(u8, s, "--help") or std.mem.eql(u8, s, "-h");
-}
+pub const Command = enum { help, version, stats, clocks };
 
-pub fn isVersion(s: []const u8) bool {
-    return std.mem.eql(u8, s, "version") or std.mem.eql(u8, s, "--version") or std.mem.eql(u8, s, "-V");
+// Fixed vocabulary, resolved once at compile time: adding a
+// command is one table row, and typos fail closed to null.
+const table = std.StaticStringMap(Command).initComptime(.{
+    .{ "help", .help },
+    .{ "--help", .help },
+    .{ "-h", .help },
+    .{ "version", .version },
+    .{ "--version", .version },
+    .{ "-V", .version },
+    .{ "stats", .stats },
+    .{ "clocks", .clocks },
+});
+
+pub fn parse(s: []const u8) ?Command {
+    return table.get(s);
 }

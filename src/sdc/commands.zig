@@ -44,6 +44,37 @@ pub const Parsed = union(enum) {
     skipped: []const u8,
 };
 
+const Kind = enum {
+    create_clock,
+    create_generated_clock,
+    set_clock_groups,
+    set_false_path,
+    set_input_delay,
+    set_output_delay,
+};
+
+// SDC's verb set is fixed by the standard: resolve it once at
+// compile time so unknown verbs fall through to one warning.
+const verbs = std.StaticStringMap(Kind).initComptime(.{
+    .{ "create_clock", .create_clock },
+    .{ "create_generated_clock", .create_generated_clock },
+    .{ "set_clock_groups", .set_clock_groups },
+    .{ "set_false_path", .set_false_path },
+    .{ "set_input_delay", .set_input_delay },
+    .{ "set_output_delay", .set_output_delay },
+});
+
+// File and process access has no place in constraints; these
+// abort the run instead of warning past them.
+const forbidden = std.StaticStringMap(void).initComptime(.{
+    .{ "source", {} },
+    .{ "exec", {} },
+    .{ "open", {} },
+    .{ "load", {} },
+    .{ "file", {} },
+    .{ "socket", {} },
+});
+
 // Per-line problems warn and skip; only forbidden commands abort,
 // since half-processing dangerous input is worse than stopping.
 pub fn parse(
@@ -52,22 +83,19 @@ pub fn parse(
     warnings: *std.ArrayListUnmanaged(tokens.Warning),
 ) !Parsed {
     const name = cmd.words[0];
-    if (isForbidden(name)) return error.ForbiddenCommand;
-    if (std.mem.eql(u8, name, "create_clock")) return parseCreateClock(alloc, cmd, warnings);
-    if (std.mem.eql(u8, name, "create_generated_clock")) return parseGeneratedClock(alloc, cmd, warnings);
-    if (std.mem.eql(u8, name, "set_clock_groups")) return parseClockGroups(alloc, cmd, warnings);
-    if (std.mem.eql(u8, name, "set_false_path")) return parseFalsePath(alloc, cmd, warnings);
-    if (std.mem.eql(u8, name, "set_input_delay")) return parsePinDelay(alloc, cmd, warnings, true);
-    if (std.mem.eql(u8, name, "set_output_delay")) return parsePinDelay(alloc, cmd, warnings, false);
-    try warn(alloc, warnings, cmd.line, "unsupported command ignored");
-    return .{ .unsupported = name };
-}
-
-fn isForbidden(name: []const u8) bool {
-    for ([_][]const u8{ "source", "exec", "open", "load", "file", "socket" }) |f| {
-        if (std.mem.eql(u8, name, f)) return true;
+    if (forbidden.get(name) != null) return error.ForbiddenCommand;
+    const kind = verbs.get(name) orelse {
+        try warn(alloc, warnings, cmd.line, "unsupported command ignored");
+        return .{ .unsupported = name };
+    };
+    switch (kind) {
+        .create_clock => return parseCreateClock(alloc, cmd, warnings),
+        .create_generated_clock => return parseGeneratedClock(alloc, cmd, warnings),
+        .set_clock_groups => return parseClockGroups(alloc, cmd, warnings),
+        .set_false_path => return parseFalsePath(alloc, cmd, warnings),
+        .set_input_delay => return parsePinDelay(alloc, cmd, warnings, true),
+        .set_output_delay => return parsePinDelay(alloc, cmd, warnings, false),
     }
-    return false;
 }
 
 fn warn(alloc: std.mem.Allocator, warnings: *std.ArrayListUnmanaged(tokens.Warning), line: usize, text: []const u8) !void {

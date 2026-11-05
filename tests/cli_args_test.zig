@@ -1,21 +1,26 @@
 const std = @import("std");
 const args = @import("icarium").cli_args;
 
-test "help spellings match" {
-    try std.testing.expect(args.isHelp("help"));
-    try std.testing.expect(args.isHelp("--help"));
-    try std.testing.expect(args.isHelp("-h"));
+test "help spellings parse" {
+    try std.testing.expectEqual(args.Command.help, args.parse("help").?);
+    try std.testing.expectEqual(args.Command.help, args.parse("--help").?);
+    try std.testing.expectEqual(args.Command.help, args.parse("-h").?);
 }
 
-test "version spellings match" {
-    try std.testing.expect(args.isVersion("version"));
-    try std.testing.expect(args.isVersion("--version"));
-    try std.testing.expect(args.isVersion("-V"));
+test "version spellings parse" {
+    try std.testing.expectEqual(args.Command.version, args.parse("version").?);
+    try std.testing.expectEqual(args.Command.version, args.parse("--version").?);
+    try std.testing.expectEqual(args.Command.version, args.parse("-V").?);
 }
 
-test "near misses do not match" {
-    try std.testing.expect(!args.isHelp("helps"));
-    try std.testing.expect(!args.isHelp(""));
-    try std.testing.expect(!args.isVersion("versions"));
-    try std.testing.expect(!args.isVersion("--verb"));
+test "subcommands parse" {
+    try std.testing.expectEqual(args.Command.stats, args.parse("stats").?);
+    try std.testing.expectEqual(args.Command.clocks, args.parse("clocks").?);
+}
+
+test "near misses parse to null" {
+    try std.testing.expectEqual(@as(?args.Command, null), args.parse("helps"));
+    try std.testing.expectEqual(@as(?args.Command, null), args.parse(""));
+    try std.testing.expectEqual(@as(?args.Command, null), args.parse("versions"));
+    try std.testing.expectEqual(@as(?args.Command, null), args.parse("--verb"));
 }

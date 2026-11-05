@@ -22,24 +22,23 @@ pub fn main(init: std.process.Init) !u8 {
         return 2;
     }
 
-    const cmd = argv.items[1];
-    if (args.isHelp(cmd)) {
-        try usage(&stdout.interface);
-        return 0;
+    const cmd = args.parse(argv.items[1]) orelse {
+        try stderr.interface.print("unknown command: {s}\n\n", .{argv.items[1]});
+        try usage(&stderr.interface);
+        return 2;
+    };
+    switch (cmd) {
+        .help => {
+            try usage(&stdout.interface);
+            return 0;
+        },
+        .version => {
+            try stdout.interface.print("icarium {s}\n", .{version});
+            return 0;
+        },
+        .stats => return stats.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
+        .clocks => return clocks.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
     }
-    if (args.isVersion(cmd)) {
-        try stdout.interface.print("icarium {s}\n", .{version});
-        return 0;
-    }
-    if (std.mem.eql(u8, cmd, "stats")) {
-        return stats.run(init, &stdout.interface, &stderr.interface, argv.items[2..]);
-    }
-    if (std.mem.eql(u8, cmd, "clocks")) {
-        return clocks.run(init, &stdout.interface, &stderr.interface, argv.items[2..]);
-    }
-    try stderr.interface.print("unknown command: {s}\n\n", .{cmd});
-    try usage(&stderr.interface);
-    return 2;
 }
 
 fn usage(w: anytype) !void {
