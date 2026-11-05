@@ -16,6 +16,10 @@ zig build test     # unit tests
 zig build e2e      # SystemVerilog end-to-end suite (needs yosys on PATH)
 ```
 
+Run `sh scripts/precommit-check.sh` before every commit: it checks the
+diff and the commit message, and requires green build, unit tests,
+and e2e.
+
 ## Layout
 
 Small topic files; unit tests mirror `src` under `tests/`
