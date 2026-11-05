@@ -24,4 +24,5 @@ test {
     _ = @import("suppress_waivers_test.zig");
     _ = @import("suppress_pragmas_test.zig");
     _ = @import("suppress_baseline_test.zig");
+    _ = @import("suppress_scan_test.zig");
 }

@@ -1,0 +1,3 @@
+tests/suppress/cases/scan-ignored/design.sv
+tests/suppress/cases/scan-ignored/design.sdc
+scan_ignored

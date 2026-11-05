@@ -27,6 +27,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var baseline_path: ?[]const u8 = null;
     var waivers_path: ?[]const u8 = null;
     var strict_waivers = false;
+    var ignore_scan = false;
     var no_findings = false;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
@@ -71,6 +72,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             i += 1;
         } else if (std.mem.eql(u8, a, "--strict-waivers")) {
             strict_waivers = true;
+        } else if (std.mem.eql(u8, a, "--ignore-scan-mode")) {
+            ignore_scan = true;
         } else if (std.mem.eql(u8, a, "--no-findings")) {
             no_findings = true;
         } else if (std.mem.eql(u8, a, "--sync-depth") and i + 1 < argv.len) {
@@ -222,6 +225,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             for (scanned.unknown_rules) |u| err.print("check: {s}:{d}: unknown rule {s} in pragma: ignored\n", .{ u.origin, u.line, u.rule }) catch {};
             suppress.pragmas.apply(scratch, &mod, findings, &scanned) catch return 3;
         }
+    }
+    if (ignore_scan and !no_findings) {
+        suppress.scan.apply(scratch, &mod, findings) catch return 3;
     }
     var carried: u32 = 0;
     var bbytes: []u8 = &.{};
