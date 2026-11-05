@@ -1,0 +1,5 @@
+flop $procdff$4 domain unknown
+note $procdff$4 sequential clock driver
+flop $procdff$5 domain unknown
+note $procdff$5 sequential clock driver
+flop $procdff$6 domain clk

@@ -2,7 +2,8 @@
 # SystemVerilog end-to-end suite: elaborate each case with Yosys,
 # run icarium over it, diff against hand-written goldens.
 # Case layout: tests/e2e/<top>/design.sv, constraints.sdc (optional),
-# expected.stats, expected.clocks (with constraints.sdc).
+# expected.stats, expected.clocks (with constraints.sdc),
+# expected.domains (optional; --sdc passed when present).
 # Goldens were authored against Yosys 0.70 (stock frontend).
 # Exit: 0 all pass, 1 golden mismatch, 3 yosys or binary missing.
 set -eu
@@ -54,6 +55,17 @@ for case in "$ROOT"/tests/e2e/*/; do
             continue
         fi
         check "$name" clocks "$case/expected.clocks" "$TMP/$name.clocks"
+    fi
+    if [ -f "$case/expected.domains" ]; then
+        set -- "$BIN" domains --yosys-json "$TMP/$name.json"
+        if [ -f "$case/constraints.sdc" ]; then set -- "$@" --sdc "$case/constraints.sdc"; fi
+        if ! "$@" >"$TMP/$name.domains" 2>"$TMP/$name.domains.err"; then
+            echo "FAIL $name: domains exited $?"
+            cat "$TMP/$name.domains.err"
+            fail=1
+            continue
+        fi
+        check "$name" domains "$case/expected.domains" "$TMP/$name.domains"
     fi
 done
 

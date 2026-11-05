@@ -65,6 +65,19 @@ test "port typing resolves exact and glob" {
     try std.testing.expect(sdc.model.portClock(&mod, "other") == null);
 }
 
+test "clock roots resolve exact and glob" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var mod = try buildModel(&arena,
+        \\create_clock -name sys -period 10 [get_ports clk]
+        \\create_clock -name io -period 40 [get_ports io_*]
+    );
+    defer mod.deinit();
+    try std.testing.expectEqualStrings("sys", sdc.model.rootClock(&mod, "clk").?);
+    try std.testing.expectEqualStrings("io", sdc.model.rootClock(&mod, "io_sda").?);
+    try std.testing.expect(sdc.model.rootClock(&mod, "other") == null);
+}
+
 test "contradictions and typos warn loudly" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

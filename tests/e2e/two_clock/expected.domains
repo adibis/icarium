@@ -1,0 +1,2 @@
+flop $procdff$3 domain clk_b
+flop $procdff$4 domain clk_a

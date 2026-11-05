@@ -30,6 +30,9 @@ pub const Model = struct {
     groups: []Group,
     false_paths: []FalsePath,
     port_clocks: std.StringHashMapUnmanaged([]const u8),
+    // create_clock objects name clock roots; separate from
+    // input_delay typing, which marks data ports, not clocks.
+    clock_roots: std.StringHashMapUnmanaged([]const u8),
     warnings: []tokens.Warning,
 
     pub fn deinit(self: *Model) void {
@@ -133,13 +136,23 @@ fn memberHit(g: Group, name: []const u8) bool {
 
 // Linear scan per call: resolve each pattern once and reuse
 // it — never call this per bit inside a design-size loop.
-pub fn portClock(self: *const Model, port: []const u8) ?[]const u8 {
-    if (self.port_clocks.get(port)) |c| return c;
-    var it = self.port_clocks.iterator();
+// Linear scan per call: resolve each pattern once and reuse
+// it — never call this per bit inside a design-size loop.
+fn globLookup(map: *const std.StringHashMapUnmanaged([]const u8), port: []const u8) ?[]const u8 {
+    if (map.get(port)) |c| return c;
+    var it = map.iterator();
     while (it.next()) |entry| {
         if (matchGlob(entry.key_ptr.*, port)) return entry.value_ptr.*;
     }
     return null;
+}
+
+pub fn portClock(self: *const Model, port: []const u8) ?[]const u8 {
+    return globLookup(&self.port_clocks, port);
+}
+
+pub fn rootClock(self: *const Model, port: []const u8) ?[]const u8 {
+    return globLookup(&self.clock_roots, port);
 }
 
 pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model {
@@ -153,6 +166,7 @@ pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model 
     var groups: std.ArrayListUnmanaged(Group) = .empty;
     var fps: std.ArrayListUnmanaged(FalsePath) = .empty;
     var port_clocks = std.StringHashMapUnmanaged([]const u8){};
+    var clock_roots = std.StringHashMapUnmanaged([]const u8){};
     var warnings: std.ArrayListUnmanaged(tokens.Warning) = .empty;
     var set_id: u32 = 0;
 
@@ -170,6 +184,7 @@ pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model 
                 .divide_by = 1,
                 .multiply_by = 1,
             };
+            try noteRoots(alloc, c.objects, c.name, &clock_roots, &warnings);
         },
         .generated_clock => |c| {
             const slot = try clocks.getOrPut(alloc, c.name);
@@ -184,6 +199,7 @@ pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model 
                 .divide_by = c.divide_by,
                 .multiply_by = c.multiply_by,
             };
+            try noteRoots(alloc, c.objects, c.name, &clock_roots, &warnings);
         },
         .clock_groups => |g| {
             if (g.kind != .async) try warnings.append(alloc, .{
@@ -233,8 +249,45 @@ pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model 
         .groups = try groups.toOwnedSlice(alloc),
         .false_paths = try fps.toOwnedSlice(alloc),
         .port_clocks = port_clocks,
+        .clock_roots = clock_roots,
         .warnings = try warnings.toOwnedSlice(alloc),
     };
+}
+
+// One call from file bytes to model; the CLI stays thin.
+pub fn fromSlice(
+    parent: std.mem.Allocator,
+    scratch: std.mem.Allocator,
+    text: []const u8,
+    warnings: *std.ArrayListUnmanaged(tokens.Warning),
+) !Model {
+    const cmds = try tokens.parseCommands(scratch, text, warnings);
+    var parsed: std.ArrayListUnmanaged(commands.Parsed) = .empty;
+    for (cmds) |c| try parsed.append(scratch, try commands.parse(scratch, c, warnings));
+    return build(parent, parsed.items);
+}
+
+fn noteRoots(
+    alloc: std.mem.Allocator,
+    objects: [][]const u8,
+    name: []const u8,
+    roots: *std.StringHashMapUnmanaged([]const u8),
+    warnings: *std.ArrayListUnmanaged(tokens.Warning),
+) !void {
+    for (objects) |o| {
+        const slot = try roots.getOrPut(alloc, o);
+        if (!slot.found_existing) {
+            slot.key_ptr.* = try alloc.dupe(u8, o);
+            slot.value_ptr.* = try alloc.dupe(u8, name);
+        } else if (!std.mem.eql(u8, slot.value_ptr.*, name)) {
+            // Two clocks on one net contradict; last wins, loudly.
+            try warnings.append(alloc, .{
+                .line = 0,
+                .text = try alloc.dupe(u8, "net driven by two clocks, last kept"),
+            });
+            slot.value_ptr.* = try alloc.dupe(u8, name);
+        }
+    }
 }
 
 fn reaches(clocks: std.StringHashMapUnmanaged(Clock), from: []const u8, target: []const u8) bool {

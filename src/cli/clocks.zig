@@ -27,18 +27,14 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
 
     const scratch = init.arena.allocator();
     var warnings: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
-    const cmds = sdc.tokens.parseCommands(scratch, bytes, &warnings) catch |e| {
-        err.print("clocks: tokenize failed: {t}\n", .{e}) catch {};
+    var mod = sdc.model.fromSlice(init.gpa, scratch, bytes, &warnings) catch |e| {
+        if (e == error.ForbiddenCommand) {
+            err.print("clocks: forbidden input, aborting: {t}\n", .{e}) catch {};
+        } else {
+            err.print("clocks: tokenize failed: {t}\n", .{e}) catch {};
+        }
         return 3;
     };
-    var parsed: std.ArrayListUnmanaged(sdc.commands.Parsed) = .empty;
-    for (cmds) |c| {
-        parsed.append(scratch, sdc.commands.parse(scratch, c, &warnings) catch |e| {
-            err.print("clocks: forbidden input, aborting: {t}\n", .{e}) catch {};
-            return 3;
-        }) catch return 3;
-    }
-    var mod = sdc.model.build(init.gpa, parsed.items) catch return 3;
     defer mod.deinit();
 
     // Sorted by name so repeated runs diff cleanly.

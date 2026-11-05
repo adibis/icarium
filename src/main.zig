@@ -1,6 +1,7 @@
 const std = @import("std");
 const args = @import("cli/args.zig");
 const clocks = @import("cli/clocks.zig");
+const domains = @import("cli/domains.zig");
 const stats = @import("cli/stats.zig");
 
 const version = "0.1.0-dev";
@@ -38,6 +39,7 @@ pub fn main(init: std.process.Init) !u8 {
         },
         .stats => return stats.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .clocks => return clocks.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
+        .domains => return domains.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
     }
 }
 
@@ -54,6 +56,10 @@ fn usage(w: anytype) !void {
         \\      --top TOP           top module (default: single module)
         \\  clocks            show clocks parsed from an SDC file
         \\      --sdc FILE          constraints file
+        \\  domains           show clock domain per sequential cell
+        \\      --yosys-json FILE   input from scripts/elaborate.sh
+        \\      --top TOP           top module (default: single module)
+        \\      --sdc FILE          constraints file (optional)
         \\
     );
 }
