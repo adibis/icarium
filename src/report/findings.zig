@@ -1,4 +1,5 @@
 const std = @import("std");
+const common = @import("common.zig");
 const ir = @import("../ir.zig");
 const rule = @import("../rule.zig");
 
@@ -34,10 +35,7 @@ pub fn writeJsonOptions(
     const ordered = try tmp.dupe(rule.finding.Finding, findings);
     std.mem.sort(rule.finding.Finding, ordered, {}, rule.finding.Finding.less);
 
-    var by_cell = std.StringHashMapUnmanaged(usize).empty;
-    for (mod.cells, 0..) |c, ci| try by_cell.put(tmp, c.name, ci);
-    var ports = std.StringHashMapUnmanaged(void).empty;
-    for (mod.ports) |p| try ports.put(tmp, p.name, {});
+    const idx = try common.Index.build(tmp, mod);
 
     var errors: u32 = 0;
     var warnings: u32 = 0;
@@ -56,9 +54,9 @@ pub fn writeJsonOptions(
         var items = std.json.Array.init(tmp);
         for (ordered[i..j]) |f| {
             var item = std.json.ObjectMap.empty;
-            try item.put(tmp, "dst", try endpoint(tmp, mod, &by_cell, &ports, f.dst));
+            try item.put(tmp, "dst", try endpoint(tmp, mod, &idx, f.dst));
             if (f.driver) |d| {
-                try item.put(tmp, "driver", try endpoint(tmp, mod, &by_cell, &ports, d));
+                try item.put(tmp, "driver", try endpoint(tmp, mod, &idx, d));
             } else {
                 try item.put(tmp, "driver", .null);
             }
@@ -68,8 +66,8 @@ pub fn writeJsonOptions(
         }
         var g = std.json.ObjectMap.empty;
         try g.put(tmp, "rule", .{ .string = ordered[i].rule });
-        try g.put(tmp, "severity", .{ .string = severityWord(ordered[i].severity) });
-        try g.put(tmp, "title", .{ .string = ruleTitle(ordered[i].rule) });
+        try g.put(tmp, "severity", .{ .string = common.severityWord(ordered[i].severity) });
+        try g.put(tmp, "title", .{ .string = common.ruleTitle(ordered[i].rule) });
         try g.put(tmp, "items", .{ .array = items });
         try groups.append(.{ .object = g });
         i = j;
@@ -95,66 +93,26 @@ pub fn writeJsonOptions(
     if (!opts.minify) writer.writeByte('\n') catch return error.WriteFailed;
 }
 
-// Cells resolve to instance + src; ports and unknown names
-// degrade to bare names rather than invented locations.
 fn endpoint(
     alloc: std.mem.Allocator,
     mod: *const ir.types.Module,
-    by_cell: *const std.StringHashMapUnmanaged(usize),
-    ports: *const std.StringHashMapUnmanaged(void),
+    idx: *const common.Index,
     name: []const u8,
 ) error{OutOfMemory}!std.json.Value {
+    const r = try common.resolve(alloc, mod, idx, name);
+    const kind: []const u8 = switch (r.kind) {
+        .cell => "cell",
+        .port => "port",
+        .other => "other",
+    };
     var ep = std.json.ObjectMap.empty;
     try ep.put(alloc, "name", .{ .string = name });
-    if (by_cell.get(name)) |ci| {
-        const c = mod.cells[ci];
-        try ep.put(alloc, "kind", .{ .string = "cell" });
-        try ep.put(alloc, "instance", .{ .string = try joinPath(alloc, c.instance_path) });
-        if (c.src) |s| {
-            try ep.put(alloc, "src", .{ .string = s });
-        } else {
-            try ep.put(alloc, "src", .null);
-        }
-    } else if (ports.contains(name)) {
-        try ep.put(alloc, "kind", .{ .string = "port" });
-        try ep.put(alloc, "instance", .{ .string = "" });
-        try ep.put(alloc, "src", .null);
+    try ep.put(alloc, "kind", .{ .string = kind });
+    try ep.put(alloc, "instance", .{ .string = r.instance });
+    if (r.src) |s| {
+        try ep.put(alloc, "src", .{ .string = s });
     } else {
-        try ep.put(alloc, "kind", .{ .string = "other" });
-        try ep.put(alloc, "instance", .{ .string = "" });
         try ep.put(alloc, "src", .null);
     }
     return .{ .object = ep };
-}
-
-// Slash-joined hierarchy: dots collide with escaped Yosys
-// identifiers, while waiver globs already speak slashes.
-fn joinPath(alloc: std.mem.Allocator, segs: [][]const u8) error{OutOfMemory}![]const u8 {
-    if (segs.len == 0) return "";
-    var len: usize = 0;
-    for (segs) |s| len += s.len + 1;
-    const out = try alloc.alloc(u8, len - 1);
-    var pos: usize = 0;
-    for (segs, 0..) |s, k| {
-        if (k > 0) {
-            out[pos] = '/';
-            pos += 1;
-        }
-        @memcpy(out[pos .. pos + s.len], s);
-        pos += s.len;
-    }
-    return out;
-}
-
-fn severityWord(s: rule.registry.Severity) []const u8 {
-    return switch (s) {
-        .err => "error",
-        .warn => "warning",
-        .note => "note",
-    };
-}
-
-fn ruleTitle(id: []const u8) []const u8 {
-    if (rule.registry.find(id)) |r| return r.title;
-    return "";
 }

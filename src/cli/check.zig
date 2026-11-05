@@ -3,6 +3,7 @@ const clock = @import("../clock.zig");
 const crossing = @import("../crossing.zig");
 const ir = @import("../ir.zig");
 const findings_json = @import("../report.zig").findings;
+const report_text = @import("../report.zig").text;
 const reset = @import("../reset.zig");
 const rule = @import("../rule.zig");
 const sdc = @import("../sdc.zig");
@@ -155,16 +156,12 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     const skip_arg: ?[]const []const u8 = if (skip_s == null) null else skip;
     const findings = rule.registry.runChecks(scratch, &ctx, only_arg, skip_arg) catch return 3;
 
-    if (fmt == .json) {
-        findings_json.writeJsonOptions(scratch, out, &mod, findings, .{ .minify = minify }) catch return 3;
-    } else {
-        for (findings) |f| {
-            if (fmt == .ids) {
-                rule.finding.renderId(out, f) catch return 3;
-            } else {
-                rule.finding.renderText(out, f) catch return 3;
-            }
-        }
+    switch (fmt) {
+        .json => findings_json.writeJsonOptions(scratch, out, &mod, findings, .{ .minify = minify }) catch return 3,
+        .text => report_text.writeText(scratch, out, &mod, findings) catch return 3,
+        .ids => for (findings) |f| {
+            rule.finding.renderId(out, f) catch return 3;
+        },
     }
     var failed = false;
     for (findings) |f| {

@@ -21,10 +21,6 @@ pub const Finding = struct {
     }
 };
 
-pub fn renderText(out: anytype, f: Finding) !void {
-    try out.print("{s} [{t}] {s}: {s}\n", .{ f.rule, f.severity, f.dst, f.message });
-}
-
 pub fn renderId(out: anytype, f: Finding) !void {
     try out.print("{s}\n", .{f.rule});
 }
