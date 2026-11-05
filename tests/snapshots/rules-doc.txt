@@ -79,3 +79,27 @@ synchronize the foreign side when the domains disagree.
 honors:
 fixtures: fixtures/CDC-011
 
+CDC-012 [warn] Gated bus crossing without synced-back handshake
+A gated multi-bit crossing has no handshake holding the
+payload: the destination latches cycles after the request,
+by which time the source may have moved on. Hold the source
+payload until a synced-back ack confirms the sample.
+honors: cdc_gray cdc_handshake
+fixtures: fixtures/CDC-012
+
+CDC-013 [warn] Toggle-synchronizer event loss on fast-to-slow crossing
+A toggling source runs fast to slow past the period ratio:
+two toggles between destination samples cancel to zero edges
+and both events are silently lost. Handshake, backpressure,
+or the canonical XOR-tail pulse synchronizer closes it.
+honors: cdc_handshake
+fixtures: fixtures/CDC-013
+
+CDC-014 [err] Combinational logic between synchronizer stages
+A gate sits between two stages of a synchronizer: the second
+stage may sample the first while still metastable, destroying
+the resolution time the chain was meant to provide. Move the
+gate past the chain's final stage.
+honors: cdc_sync cdc_handshake
+fixtures: fixtures/CDC-014
+

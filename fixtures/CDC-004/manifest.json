@@ -1,1 +1,1 @@
-{"bad_bare_bus.sv": ["CDC-004"], "bad_port_bus.sv": ["CDC-004"], "good_marked_gray.sv": [], "good_mux_gated.sv": [], "good_gray_fifo.sv": []}
+{"bad_bare_bus.sv": ["CDC-004"], "bad_port_bus.sv": ["CDC-004"], "good_marked_gray.sv": [], "good_mux_gated.sv": ["CDC-012"], "good_gray_fifo.sv": []}

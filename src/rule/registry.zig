@@ -9,6 +9,9 @@ const cdc008 = @import("cdc008.zig");
 const cdc009 = @import("cdc009.zig");
 const cdc010 = @import("cdc010.zig");
 const cdc011 = @import("cdc011.zig");
+const cdc012 = @import("cdc012.zig");
+const cdc013 = @import("cdc013.zig");
+const cdc014 = @import("cdc014.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -39,6 +42,9 @@ pub const rules = [_]Rule{
     cdc009.rule,
     cdc010.rule,
     cdc011.rule,
+    cdc012.rule,
+    cdc013.rule,
+    cdc014.rule,
 };
 
 fn knownAttr(name: []const u8) bool {

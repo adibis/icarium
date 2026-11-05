@@ -705,11 +705,11 @@ const mux_gated_sdc =
     \\set_input_delay -clock cb 1.0 [get_ports go]
 ;
 
-test "a mux-gated bus clears CDC-004" {
+test "a mux-gated bus clears CDC-004 but warns CDC-012" {
     var l = try loadAll(mux_gated, mux_gated_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expectEqual(@as(usize, 0), fs.len);
+    try std.testing.expect(onlyRule(fs, "CDC-012"));
 }
 
 const gray_bus =
@@ -793,6 +793,175 @@ const marked_gray =
 
 test "a user-vouched gray source clears CDC-004" {
     var l = try loadAll(marked_gray, bare_bus_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
+const gate_between =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "m": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "Q": [7]}
+    \\        },
+    \\        "mask": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [5], "Q": [8]}
+    \\        },
+    \\        "g": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [7], "B": [8], "Y": [9]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [9], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const gate_between_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+    \\set_input_delay -clock cb 1.0 [get_ports m]
+;
+
+test "a gate between stages fires CDC-014 alone" {
+    var l = try loadAll(gate_between, gate_between_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-014"));
+}
+
+const toggle_fast =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "fc": {"direction": "input", "bits": [2]},
+    \\        "sc": {"direction": "input", "bits": [3]},
+    \\        "en": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "tog": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "Q": [6]}
+    \\        },
+    \\        "nt": {
+    \\          "type": "$not",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "Y": [7]}
+    \\        },
+    \\        "tm": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "B": [7], "S": [4], "Y": [5]}
+    \\        },
+    \\        "m": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "Q": [8]}
+    \\        },
+    \\        "s": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [8], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const toggle_fast_sdc =
+    \\create_clock -name fc -period 2 [get_ports fc]
+    \\create_clock -name sc -period 20 [get_ports sc]
+    \\set_clock_groups -asynchronous -group {fc} -group {sc}
+    \\set_input_delay -clock fc 1.0 [get_ports en]
+;
+
+test "a fast toggle without an XOR tail fires CDC-013 alone" {
+    var l = try loadAll(toggle_fast, toggle_fast_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-013"));
+}
+
+const gray_gated =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4, 5]},
+    \\        "go": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [14, 15]}
+    \\      },
+    \\      "cells": {
+    \\        "bin": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4, 5], "Q": [7, 8]}
+    \\        },
+    \\        "gx": {
+    \\          "type": "$xor",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [7, 8], "B": [8, "0"], "Y": [9, 17]}
+    \\        },
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [9, 17], "Q": [10, 11]}
+    \\        },
+    \\        "enf": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "Q": [12]}
+    \\        },
+    \\        "gmux": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [14, 15], "B": [10, 11], "S": [12], "Y": [13, 16]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [13, 16], "Q": [14, 15]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a gated gray bus clears both CDC-004 and CDC-012" {
+    var l = try loadAll(gray_gated, mux_gated_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
