@@ -18,6 +18,7 @@ test "subcommands parse" {
     try std.testing.expectEqual(args.Command.clocks, args.parse("clocks").?);
     try std.testing.expectEqual(args.Command.domains, args.parse("domains").?);
     try std.testing.expectEqual(args.Command.resets, args.parse("resets").?);
+    try std.testing.expectEqual(args.Command.crossings, args.parse("crossings").?);
 }
 
 test "near misses parse to null" {

@@ -3,8 +3,8 @@
 # run icarium over it, diff against hand-written goldens.
 # Case layout: tests/e2e/<top>/design.sv, constraints.sdc (optional),
 # expected.stats, expected.clocks (with constraints.sdc),
-# expected.domains / expected.resets (optional; --sdc passed when
-# present).
+# expected.domains / expected.resets / expected.crossings (optional;
+# --sdc passed when present).
 # Goldens were authored against Yosys 0.70 (stock frontend).
 # Exit: 0 all pass, 1 golden mismatch, 3 yosys or binary missing.
 set -eu
@@ -89,6 +89,17 @@ for casedir in tests/e2e/*/; do
             continue
         fi
         check "$name" resets "$case/expected.resets" "$TMP/$name.resets"
+    fi
+    if [ -f "$case/expected.crossings" ]; then
+        set -- "$BIN" crossings --yosys-json "$TMP/$name.json"
+        if [ -f "$case/constraints.sdc" ]; then set -- "$@" --sdc "$case/constraints.sdc"; fi
+        if ! "$@" >"$TMP/$name.crossings" 2>"$TMP/$name.crossings.err"; then
+            echo "FAIL $name: crossings exited $?"
+            cat "$TMP/$name.crossings.err"
+            fail=1
+            continue
+        fi
+        check "$name" crossings "$case/expected.crossings" "$TMP/$name.crossings"
     fi
 done
 

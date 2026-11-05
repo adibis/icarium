@@ -1,0 +1,4 @@
+crossing 0363cddcf3ce339f9fcb75929dd650f6 clock_sink p:clk_b:3 c:$procdff$3:CLK:3 clk_b clk_b async false
+crossing 2f4b38f0b07372fb75c005319ffaa04e clock_sink p:clk_a:2 c:$procdff$4:CLK:2 clk_a clk_a async false
+crossing 5e9c450d4801150b7d8dd4f627fd1f37 port_flop_untyped p:d:4 c:$procdff$4:D:4 port:d clk_a async true
+crossing e0383f1be617213b494b6318dc1512be flop_flop_bit c:$procdff$4:Q:6 c:$procdff$3:D:6 clk_a clk_b async true

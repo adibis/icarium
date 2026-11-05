@@ -1,6 +1,7 @@
 const std = @import("std");
 const args = @import("cli/args.zig");
 const clocks = @import("cli/clocks.zig");
+const crossings = @import("cli/crossings.zig");
 const domains = @import("cli/domains.zig");
 const resets = @import("cli/resets.zig");
 const stats = @import("cli/stats.zig");
@@ -42,6 +43,7 @@ pub fn main(init: std.process.Init) !u8 {
         .clocks => return clocks.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .domains => return domains.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
         .resets => return resets.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
+        .crossings => return crossings.run(init, &stdout.interface, &stderr.interface, argv.items[2..]),
     }
 }
 
@@ -63,6 +65,10 @@ fn usage(w: anytype) !void {
         \\      --top TOP           top module (default: single module)
         \\      --sdc FILE          constraints file (optional)
         \\  resets            show reset source per sequential cell
+        \\      --yosys-json FILE   input from scripts/elaborate.sh
+        \\      --top TOP           top module (default: single module)
+        \\      --sdc FILE          constraints file (optional)
+        \\  crossings         enumerate structural crossings
         \\      --yosys-json FILE   input from scripts/elaborate.sh
         \\      --top TOP           top module (default: single module)
         \\      --sdc FILE          constraints file (optional)

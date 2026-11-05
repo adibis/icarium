@@ -1,0 +1,11 @@
+crossing 2af1d125092bad1cb8905dced7db4107 port_flop_untyped p:d:5 c:$procdff$11:D:12 port:d clk async true
+hop 2af1d125092bad1cb8905dced7db4107 $ternary$tests/e2e/resets/design.sv:20$4
+crossing 368ac087d402eeaeba6c62ae5e42a0eb port_flop_untyped p:d:5 c:$procdff$17:D:5 port:d clk async true
+crossing 3a9e17db98cfc4eb3f8922510451a975 port_flop_untyped p:d:5 c:$procdff$12:D:13 port:d clk async true
+hop 3a9e17db98cfc4eb3f8922510451a975 $procmux$8
+crossing 5fc1945a60133484f79fde085ba9f74a clock_sink p:clk:2 c:$procdff$12:CLK:2 clk clk async false
+crossing 6b2da9c4a9d85d55ff53e872f6184fb4 clock_sink p:clk:2 c:$procdff$10:CLK:2 clk clk async false
+crossing a93b308c197da5e1bca23c08ad19a2c0 clock_sink p:clk:2 c:$procdff$11:CLK:2 clk clk async false
+crossing bdd2509bd084fcb318b2f8db00db2edb port_flop_untyped p:d:5 c:$procdff$10:D:5 port:d clk async true
+crossing beb0a93a455dca1a975758882d261cdf port_flop_untyped p:rst_n:3 c:$procdff$17:ARST:3 port:rst_n clk async true
+crossing c7d9d40a1f15c1a269938af83933c4c3 clock_sink p:clk:2 c:$procdff$17:CLK:2 clk clk async false

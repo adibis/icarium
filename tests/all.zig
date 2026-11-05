@@ -1,6 +1,7 @@
 test {
     _ = @import("cli_args_test.zig");
     _ = @import("clock_trace_test.zig");
+    _ = @import("crossing_test.zig");
     _ = @import("ir_bits_test.zig");
     _ = @import("ir_path_test.zig");
     _ = @import("ir_load_test.zig");

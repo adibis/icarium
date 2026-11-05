@@ -1,0 +1,77 @@
+const std = @import("std");
+const clock = @import("../clock.zig");
+const crossing = @import("../crossing.zig");
+const ir = @import("../ir.zig");
+const sdc = @import("../sdc.zig");
+
+pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []const u8) u8 {
+    var json_path: ?[]const u8 = null;
+    var sdc_path: ?[]const u8 = null;
+    var top: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i < argv.len) : (i += 1) {
+        const a = argv[i];
+        if (std.mem.eql(u8, a, "--yosys-json") and i + 1 < argv.len) {
+            json_path = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--sdc") and i + 1 < argv.len) {
+            sdc_path = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--top") and i + 1 < argv.len) {
+            top = argv[i + 1];
+            i += 1;
+        } else {
+            err.print("crossings: bad argument: {s}\n", .{a}) catch {};
+            return 2;
+        }
+    }
+    const path = json_path orelse {
+        err.writeAll("crossings: missing --yosys-json FILE\n") catch {};
+        return 2;
+    };
+
+    const bytes = std.Io.Dir.cwd().readFileAlloc(init.io, path, init.gpa, .limited(1 << 30)) catch {
+        err.print("crossings: cannot read {s}\n", .{path}) catch {};
+        return 3;
+    };
+    defer init.gpa.free(bytes);
+
+    var mod = ir.load.loadFromSlice(init.gpa, bytes, top) catch |e| {
+        err.print("crossings: ingestion failed: {t}\n", .{e}) catch {};
+        return 3;
+    };
+    defer mod.deinit();
+
+    const scratch = init.arena.allocator();
+    var warnings: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    var sdc_mod: sdc.model.Model = undefined;
+    if (sdc_path) |sp| {
+        const sdc_bytes = std.Io.Dir.cwd().readFileAlloc(init.io, sp, init.gpa, .limited(1 << 26)) catch {
+            err.print("crossings: cannot read {s}\n", .{sp}) catch {};
+            return 3;
+        };
+        defer init.gpa.free(sdc_bytes);
+        sdc_mod = sdc.model.fromSlice(init.gpa, scratch, sdc_bytes, &warnings) catch return 3;
+    } else {
+        sdc_mod = sdc.model.build(init.gpa, &[_]sdc.commands.Parsed{}) catch return 3;
+    }
+    defer sdc_mod.deinit();
+
+    var clock_asg = clock.trace.assign(init.gpa, &mod, &sdc_mod) catch return 3;
+    defer clock_asg.deinit();
+    var report = crossing.enumerate.enumerate(init.gpa, &mod, &clock_asg, &sdc_mod) catch return 3;
+    defer report.deinit();
+
+    for (report.crossings) |x| {
+        const src = crossing.enumerate.renderEndpoint(scratch, &mod, x.src.cell, x.src.port, x.src.bit) catch return 3;
+        defer scratch.free(src);
+        const dst = crossing.enumerate.renderEndpoint(scratch, &mod, x.dst.cell, x.dst.port, x.dst.bit) catch return 3;
+        defer scratch.free(dst);
+        out.print("crossing {s} {t} {s} {s} {s} {s} async {}\n", .{
+            x.id, x.kind, src, dst, x.src_clk, x.dst_clk, x.async_per_sdc,
+        }) catch return 3;
+        for (x.lanes) |l| out.print("lane {s} {d} {d}\n", .{ x.id, l.src_lane, l.dst_lane }) catch return 3;
+        for (x.hops) |h| out.print("hop {s} {s}\n", .{ x.id, mod.cells[h].name }) catch return 3;
+    }
+    return 0;
+}
