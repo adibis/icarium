@@ -51,6 +51,10 @@ pub fn build(b: *std.Build) void {
     suppress.step.dependOn(b.getInstallStep());
     b.step("suppress", "Run suppression CLI suite (needs yosys, jsonschema)").dependOn(&suppress.step);
 
+    const bench = b.addSystemCommand(&.{ "python3", "bench/bench.py" });
+    bench.step.dependOn(b.getInstallStep());
+    b.step("bench", "Head-to-head vs rtl-buddy-cdc tiers 1-2 (needs yosys, fusesoc for tier 2)").dependOn(&bench.step);
+
     if (b.option([]const u8, "test-file", "Run one test file, e.g. tests/ir_path_test.zig")) |file| {
         const one_mod = b.createModule(.{
             .root_source_file = b.path(file),

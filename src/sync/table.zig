@@ -40,6 +40,7 @@ pub const Table = struct {
     // extends the chain only through a single-reader Q into a
     // same-clock D, directly or over a reset mux. Packed shift
     // registers read their effective intra-cell depth instead.
+    // Cost: O(chain) once per head, memoized; revisits are O(1).
     pub fn chainDepth(t: *Table, mod: *const ir.types.Module, head: usize, head_clock: []const u8) error{OutOfMemory}!Entry {
         if (t.memo.get(head)) |e| return e;
         const c = mod.cells[head];

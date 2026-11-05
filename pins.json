@@ -6,9 +6,9 @@
     "yosys":         { "version": null, "minimum": "0.67", "needed_by_phase": 3 },
     "sv-elab":       { "version": null, "needed_by_phase": 3 },
     "slang":         { "version": null, "needed_by_phase": 3 },
-    "rtl-buddy-cdc": { "version": null, "needed_by_phase": 3 },
+    "rtl-buddy-cdc": { "version": "0.7.3", "commit": "16bb74272b79a799e0fb6c53e6d3204bda6cb620", "needed_by_phase": 3 },
     "toon-spec":     { "version": null, "needed_by_phase": 5 },
-    "opentitan":     { "commit": null, "needed_by_phase": 6 },
+    "opentitan":     { "commit": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170", "needed_by_phase": 6 },
     "accellera-1.0": { "version": null, "sha256": null, "needed_by_phase": 7 }
   }
 }

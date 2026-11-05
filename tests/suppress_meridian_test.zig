@@ -118,6 +118,17 @@ test "meridian promotes sample and glitch endpoints to slots" {
     try std.testing.expectEqualStrings("go", cmds[1].record.receiver.?);
 }
 
+test "meridian reads DrivingSignal as the driver" {
+    const text =
+        "set_rule_status -rule {W_ASYNC_RST_FLOPS} -status {Waived} -expression {(DrivingSignal=~\"IO*\") && (ReceivingFlop=~\"*u_spi_tpm.*\")} -comment {pad}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 1), cmds.len);
+    try std.testing.expectEqualStrings("IO*", cmds[0].record.driver.?);
+    try std.testing.expectEqualStrings("*u_spi_tpm.*", cmds[0].record.receiver.?);
+}
+
 test "meridian splits crowded locator sides per locator" {
     const text =
         "set_rule_status -rule {W_MASYNC} -status {Waived} -expression {(ReceivingFlop =~ \"r1\") && (SyncFlop == \"r2\")} -comment {two receivers}\n";

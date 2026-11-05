@@ -5,3 +5,7 @@ zig-out/
 .zig-cache/
 # macOS metadata.
 .DS_Store
+# Bench harness outputs; timings are machine-local.
+bench/results.json
+bench/work/
+bench/__pycache__/
