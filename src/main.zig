@@ -1,5 +1,6 @@
 const std = @import("std");
 const args = @import("cli/args.zig");
+const clocks = @import("cli/clocks.zig");
 const stats = @import("cli/stats.zig");
 
 const version = "0.1.0-dev";
@@ -33,6 +34,9 @@ pub fn main(init: std.process.Init) !u8 {
     if (std.mem.eql(u8, cmd, "stats")) {
         return stats.run(init, &stdout.interface, &stderr.interface, argv.items[2..]);
     }
+    if (std.mem.eql(u8, cmd, "clocks")) {
+        return clocks.run(init, &stdout.interface, &stderr.interface, argv.items[2..]);
+    }
     try stderr.interface.print("unknown command: {s}\n\n", .{cmd});
     try usage(&stderr.interface);
     return 2;
@@ -49,6 +53,8 @@ fn usage(w: anytype) !void {
         \\  stats             summarize a Yosys JSON netlist
         \\      --yosys-json FILE   input from scripts/elaborate.sh
         \\      --top TOP           top module (default: single module)
+        \\  clocks            show clocks parsed from an SDC file
+        \\      --sdc FILE          constraints file
         \\
     );
 }
