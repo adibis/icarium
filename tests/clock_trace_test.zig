@@ -492,3 +492,72 @@ test "cell tables recognize sequential and transparent" {
     try std.testing.expect(clock.cells.isMemRead("$memrd"));
     try std.testing.expect(!clock.cells.isMemRead("$memwr"));
 }
+
+const ormuxed =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "ena": {"direction": "input", "bits": [4]},
+    \\        "enb": {"direction": "input", "bits": [5]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]},
+    \\        "q2": {"direction": "output", "bits": [8]}
+    \\      },
+    \\      "cells": {
+    \\        "and0": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [4], "Y": [10]}
+    \\        },
+    \\        "and1": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "B": [5], "Y": [11]}
+    \\        },
+    \\        "ormux": {
+    \\          "type": "$or",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [11], "Y": [12]}
+    \\        },
+    \\        "f_or": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [12], "D": [6], "Q": [7]}
+    \\        },
+    \\        "bador": {
+    \\          "type": "$or",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "Y": [13]}
+    \\        },
+    \\        "f_bador": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [13], "D": [6], "Q": [8]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "or of gated clocks yields a union with legs" {
+    var l = try loadAll(ormuxed, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_or").?;
+    try std.testing.expectEqualStrings("ca+cb", dom.name);
+    try std.testing.expectEqual(@as(usize, 2), dom.legs.len);
+    try std.testing.expectEqualStrings("ca", dom.legs[0]);
+    try std.testing.expectEqualStrings("cb", dom.legs[1]);
+    try std.testing.expectEqualStrings("ormux:ormux", dom.root);
+    try std.testing.expectEqualStrings("or-built clock mux", dom.notes[0]);
+}
+
+test "naked or of clocks stays unhandled" {
+    var l = try loadAll(ormuxed, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_bador").?;
+    try std.testing.expectEqualStrings("unknown", dom.name);
+}

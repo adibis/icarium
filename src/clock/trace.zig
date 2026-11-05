@@ -115,6 +115,37 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
     };
 }
 
+// Bitwise gates resolve per position: the output index picks
+// the matching leg bit on every input port.
+fn outBitIndex(c: ir.types.Cell, bit: u32) ?usize {
+    for (c.ports) |p| {
+        if (p.direction != .output) continue;
+        for (p.bits, 0..) |b, i| {
+            if (b == .sig and b.sig == bit) return i;
+        }
+    }
+    return null;
+}
+
+// Back through buffers to a clock-gate $and, eight steps max:
+// anything else driving the leg voids the mux shape.
+fn gateLeg(mod: *const ir.types.Module, bit: u32) ?usize {
+    var cur = bit;
+    for (0..8) |_| {
+        const drv = mod.driver_of.get(cur) orelse return null;
+        const ci = drv.cell orelse return null;
+        const c = mod.cells[ci];
+        if (!std.mem.eql(u8, c.type, "$buf")) {
+            if (!cells.isClockGate(c.type)) return null;
+            return ci;
+        }
+        const a = portBits(c, "A") orelse return null;
+        if (a.len != 1 or a[0] != .sig) return null;
+        cur = a[0].sig;
+    }
+    return null;
+}
+
 fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
     for (c.ports) |p| {
         if (std.mem.eql(u8, p.name, want)) return p.bits;
@@ -207,11 +238,10 @@ const Walker = struct {
         if (cells.isTransparent(c.type)) return w.throughTransparent(c);
         if (cells.isClockMux(c.type)) return w.throughMux(ci);
         if (cells.isClockGate(c.type)) return w.throughGate(bit, ci);
+        if (std.mem.eql(u8, c.type, "$or")) return w.throughOrMux(bit, ci);
         if (cells.isSequential(c.type)) return w.throughSequential(ci);
         if (c.blackbox) return w.make("unknown", "", &.{"blackbox-driven clock"});
-        const why = try std.fmt.allocPrint(w.alloc, "unhandled {s} on clock path", .{c.type});
-        defer w.alloc.free(why);
-        return w.make("unknown", "", &.{why});
+        return w.unhandled(c);
     }
 
     // Transparent cells pass the domain through; only inverters
@@ -269,6 +299,70 @@ const Walker = struct {
         const root = try std.fmt.allocPrint(w.alloc, "mux:{s}", .{c.name});
         defer w.alloc.free(root);
         return w.makeUnion(all.items[0..n], root, note);
+    }
+
+    // Gate-built clock muxes (a glitch-free mux's output stage
+    // is an OR of clock-and-enable ANDs): every leg feeding the
+    // resolved bit must be an $and with exactly one clock leg,
+    // and the union of those legs is the domain. Anything else
+    // ORed onto a clock path keeps today's unhandled verdict.
+    fn throughOrMux(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
+        const c = w.mod.cells[ci];
+        const idx = outBitIndex(c, bit) orelse return w.unhandled(c);
+        var first: ?Domain = null;
+        var all: std.ArrayListUnmanaged([]const u8) = .empty;
+        for (c.ports) |p| {
+            if (p.direction == .output) continue;
+            if (idx >= p.bits.len) return w.unhandled(c);
+            const b = p.bits[idx];
+            if (b != .sig) return w.unhandled(c);
+            const and_ci = gateLeg(w.mod, b.sig) orelse return w.unhandled(c);
+            if (try w.clockLegs(and_ci) != 1) return w.unhandled(c);
+            const d = try w.resolveBit(b.sig);
+            if (!isClockDomain(d.name)) return w.unhandled(c);
+            if (first == null) first = d;
+            for (d.legs) |l| try all.append(w.alloc, l);
+        }
+        if (first == null) return w.unhandled(c);
+        std.mem.sort([]const u8, all.items, {}, struct {
+            fn less(_: void, x: []const u8, y: []const u8) bool {
+                return std.mem.lessThan(u8, x, y);
+            }
+        }.less);
+        var n: usize = 0;
+        for (all.items) |l| {
+            if (n == 0 or !std.mem.eql(u8, all.items[n - 1], l)) {
+                all.items[n] = l;
+                n += 1;
+            }
+        }
+        if (n == 1) return w.withNote(first.?, "or-built clock mux");
+        const root = try std.fmt.allocPrint(w.alloc, "ormux:{s}", .{c.name});
+        defer w.alloc.free(root);
+        return w.makeUnion(all.items[0..n], root, "or-built clock mux");
+    }
+
+    fn unhandled(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
+        const why = try std.fmt.allocPrint(w.alloc, "unhandled {s} on clock path", .{c.type});
+        defer w.alloc.free(why);
+        return w.make("unknown", "", &.{why});
+    }
+
+    // Clock-domain inputs on a gate's legs. Unknown legs read as
+    // enables, mirroring the gate doctrine: only the count of
+    // proven clock legs constrains the caller.
+    fn clockLegs(w: *Walker, ci: usize) error{OutOfMemory}!usize {
+        const c = w.mod.cells[ci];
+        var n: usize = 0;
+        for (c.ports) |p| {
+            if (p.direction == .output) continue;
+            for (p.bits) |b| {
+                if (b != .sig) continue;
+                const d = try w.resolveBit(b.sig);
+                if (isClockDomain(d.name)) n += 1;
+            }
+        }
+        return n;
     }
 
     // A clock gate passes its clock leg and notes the rest as
