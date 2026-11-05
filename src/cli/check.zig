@@ -24,6 +24,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var minify = false;
     var domain_map_path: ?[]const u8 = null;
     var reset_map_path: ?[]const u8 = null;
+    var baseline_path: ?[]const u8 = null;
     var waivers_path: ?[]const u8 = null;
     var strict_waivers = false;
     var no_findings = false;
@@ -64,6 +65,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             i += 1;
         } else if (std.mem.eql(u8, a, "--waivers") and i + 1 < argv.len) {
             waivers_path = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--baseline") and i + 1 < argv.len) {
+            baseline_path = argv[i + 1];
             i += 1;
         } else if (std.mem.eql(u8, a, "--strict-waivers")) {
             strict_waivers = true;
@@ -179,7 +183,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     };
     const only_arg: ?[]const []const u8 = if (only_s == null) null else only;
     const skip_arg: ?[]const []const u8 = if (skip_s == null) null else skip;
-    const findings: []rule.finding.Finding = if (no_findings)
+    var findings: []rule.finding.Finding = if (no_findings)
         &.{}
     else
         rule.registry.runChecks(scratch, &ctx, only_arg, skip_arg) catch return 3;
@@ -219,6 +223,29 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             suppress.pragmas.apply(scratch, &mod, findings, &scanned) catch return 3;
         }
     }
+    var carried: u32 = 0;
+    var bbytes: []u8 = &.{};
+    defer if (bbytes.len > 0) init.gpa.free(bbytes);
+    var base: ?suppress.baseline.Baseline = null;
+    defer if (base) |*b| b.deinit();
+    if (baseline_path) |bp| {
+        if (no_findings) {
+            err.writeAll("check: --baseline ignored with --no-findings\n") catch {};
+        } else {
+            bbytes = std.Io.Dir.cwd().readFileAlloc(init.io, bp, init.gpa, .limited(1 << 26)) catch {
+                err.print("check: cannot read {s}\n", .{bp}) catch {};
+                return 3;
+            };
+            base = suppress.baseline.load(init.gpa, bbytes) catch {
+                err.print("check: bad baseline file {s}\n", .{bp}) catch {};
+                return 2;
+            };
+            const kept = suppress.baseline.partition(scratch, findings, &base.?) catch return 3;
+            carried = @intCast(findings.len - kept);
+            findings = findings[0..kept];
+            if (carried > 0) err.print("check: carried over {d} finding(s) from baseline\n", .{carried}) catch {};
+        }
+    }
 
     if (domain_map_path) |mp| {
         var aw = std.Io.Writer.Allocating.init(scratch);
@@ -242,8 +269,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
 
     switch (fmt) {
-        .json => findings_json.writeJsonOptions(scratch, out, &mod, findings, unmatched, .{ .minify = minify }) catch return 3,
-        .text => report_text.writeText(scratch, out, &mod, findings) catch return 3,
+        .json => findings_json.writeJsonOptions(scratch, out, &mod, findings, unmatched, carried, .{ .minify = minify }) catch return 3,
+        .text => report_text.writeText(scratch, out, &mod, findings, carried) catch return 3,
         .sarif => sarif.writeSarif(scratch, out, &mod, findings, tool_version) catch return 3,
         .ids => for (findings) |f| {
             rule.finding.renderId(out, f) catch return 3;

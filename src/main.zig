@@ -87,6 +87,7 @@ fn usage(w: anytype) !void {
         \\      --emit-reset-domain-map FILE  write reset-domain map alongside
         \\      --waivers FILE        native waivers to apply
         \\      --strict-waivers      unmatched waivers fail the run
+        \\      --baseline FILE       carry over matching prior findings
         \\      --no-findings       skip rules; maps only (exit 0)
         \\      --sync-depth N      required chain depth (default 2)
         \\      --cdc-010-no-heuristic  disable library pin-name guessing

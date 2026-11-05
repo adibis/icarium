@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "design": {
+    "top": "bad_reset_port_missed_domain"
+  },
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "notes": 0,
+    "carried_over": 0
+  },
+  "groups": [
+    {
+      "rule": "RDC-008",
+      "severity": "error",
+      "title": "Primary reset port unsynchronized in one domain",
+      "items": [
+        {
+          "dst": {
+            "name": "$procdff$13",
+            "kind": "cell",
+            "instance": "",
+            "src": "fixtures/RDC-008/bad_reset_port_missed_domain.sv:28.5-36.8"
+          },
+          "driver": null,
+          "message": "unsynced primary-reset port: top-level reset port 'raw_rst_n' drives 2 flops ($procdff$13, $procdff$18) in clk_b directly, with no reset-synchronizer chain in that clock domain. Reset assertion is fine, but the deassertion edge is unsynchronized to the consumer clock: recovery/removal timing violations can leave random subsets of flops in different reset states. Add a 2FF reset-synchronizer chain in clk_b whose ARST is 'raw_rst_n', and route consumers through the chain's tail.",
+          "waiver": null
+        }
+      ]
+    }
+  ],
+  "unmatched_waivers": []
+}

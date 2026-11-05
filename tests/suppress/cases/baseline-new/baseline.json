@@ -1,0 +1,1 @@
+{"schema_version": "1.0", "groups": [{"rule": "CDC-001", "severity": "error", "title": "t", "items": [{"dst": {"name": "ghost", "kind": "other", "instance": "", "src": null}, "driver": null, "message": "unrelated prior", "waiver": null}]}]}

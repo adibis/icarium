@@ -11,6 +11,7 @@ pub fn writeText(
     writer: *std.Io.Writer,
     mod: *const ir.types.Module,
     findings: []const rule.finding.Finding,
+    carried_over: u32,
 ) error{ OutOfMemory, WriteFailed }!void {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -39,6 +40,10 @@ pub fn writeText(
             for (slice) |f| try writeItem(tmp, writer, mod, &idx, f, "  ");
         }
         i = j;
+    }
+    if (carried_over > 0) {
+        const noun: []const u8 = if (carried_over == 1) "finding" else "findings";
+        writer.print("carried over from baseline: {d} {s}\n", .{ carried_over, noun }) catch return error.WriteFailed;
     }
 }
 

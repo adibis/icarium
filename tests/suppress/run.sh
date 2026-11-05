@@ -39,12 +39,11 @@ for case in tests/suppress/cases/*/; do
         python3 -c "import json,jsonschema; jsonschema.validate(json.load(open('$case/waivers.json')), json.load(open('schema/waivers-1.0.json')))" 2>"$TMP/serr.txt" || { echo "FAIL $name: waivers.json violates schema"; cat "$TMP/serr.txt"; fail=1; continue; }
     fi
     # shellcheck disable=SC2086
+    extra=""
+    if [ -f "$case/waivers.json" ]; then extra="$extra --waivers $case/waivers.json"; fi
+    if [ -f "$case/baseline.json" ]; then extra="$extra --baseline $case/baseline.json"; fi
     set +e
-    if [ -f "$case/waivers.json" ]; then
-        "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format json $flags --waivers "$case/waivers.json" > "$TMP/out.json" 2>"$TMP/stderr.txt"
-    else
-        "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format json $flags > "$TMP/out.json" 2>"$TMP/stderr.txt"
-    fi
+    "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format json $flags $extra > "$TMP/out.json" 2>"$TMP/stderr.txt"
     code=$?
     set -e
     ran=$((ran + 1))
@@ -58,10 +57,11 @@ for g in got["groups"]:
     for it in g["items"]:
         (waived if it["waiver"] else kept).append(g["rule"])
 ok = (sorted(kept) == sorted(exp["kept"]) and sorted(waived) == sorted(exp.get("waived", []))
-      and sorted(got["unmatched_waivers"]) == sorted(exp.get("unmatched", [])) and code == exp["exit"])
+      and sorted(got["unmatched_waivers"]) == sorted(exp.get("unmatched", []))
+      and got["summary"]["carried_over"] == exp.get("carried", 0) and code == exp["exit"])
 if not ok:
-    print(f"expected exit={exp['exit']} kept={sorted(exp['kept'])} waived={sorted(exp.get('waived', []))} unmatched={sorted(exp.get('unmatched', []))}")
-    print(f"got      exit={code} kept={sorted(kept)} waived={sorted(waived)} unmatched={sorted(got['unmatched_waivers'])}")
+    print(f"expected exit={exp['exit']} kept={sorted(exp['kept'])} waived={sorted(exp.get('waived', []))} unmatched={sorted(exp.get('unmatched', []))} carried={exp.get('carried', 0)}")
+    print(f"got      exit={code} kept={sorted(kept)} waived={sorted(waived)} unmatched={sorted(got['unmatched_waivers'])} carried={got['summary']['carried_over']}")
     sys.exit(1)
 EOF
         echo "PASS $name"

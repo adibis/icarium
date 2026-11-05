@@ -33,7 +33,7 @@ const netlist =
 fn render(mod: *const ir.types.Module, fs: []rule.finding.Finding) ![]u8 {
     var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
-    try report.text.writeText(std.testing.allocator, &aw.writer, mod, fs);
+    try report.text.writeText(std.testing.allocator, &aw.writer, mod, fs, 0);
     return std.testing.allocator.dupe(u8, aw.written());
 }
 

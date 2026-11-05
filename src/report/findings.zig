@@ -18,8 +18,9 @@ pub fn writeJson(
     mod: *const ir.types.Module,
     findings: []const rule.finding.Finding,
     unmatched: []const []const u8,
+    carried_over: u32,
 ) error{ OutOfMemory, WriteFailed }!void {
-    try writeJsonOptions(alloc, writer, mod, findings, unmatched, .{});
+    try writeJsonOptions(alloc, writer, mod, findings, unmatched, carried_over, .{});
 }
 
 pub fn writeJsonOptions(
@@ -28,6 +29,7 @@ pub fn writeJsonOptions(
     mod: *const ir.types.Module,
     findings: []const rule.finding.Finding,
     unmatched: []const []const u8,
+    carried_over: u32,
     opts: Options,
 ) error{ OutOfMemory, WriteFailed }!void {
     var arena = std.heap.ArenaAllocator.init(alloc);
@@ -91,6 +93,7 @@ pub fn writeJsonOptions(
     try summary.put(tmp, "errors", .{ .integer = errors });
     try summary.put(tmp, "warnings", .{ .integer = warnings });
     try summary.put(tmp, "notes", .{ .integer = notes });
+    try summary.put(tmp, "carried_over", .{ .integer = carried_over });
 
     var design = std.json.ObjectMap.empty;
     try design.put(tmp, "top", .{ .string = mod.name });
