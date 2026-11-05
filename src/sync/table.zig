@@ -208,6 +208,7 @@ pub fn build(
     var d_bit_to_flop = std.AutoHashMapUnmanaged(u32, usize).empty;
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type)) continue;
+        if (clock.cells.isLatch(c.type)) continue;
         const d = portBits(c, "D") orelse continue;
         const q = portBits(c, "Q") orelse continue;
         if (d.len != 1 or q.len != 1) continue;
@@ -227,6 +228,7 @@ pub fn build(
     // bit has two readers anyway, so walkers reject it first.
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type)) continue;
+        if (clock.cells.isLatch(c.type)) continue;
         const d = portBits(c, "D") orelse continue;
         const q = portBits(c, "Q") orelse continue;
         if (d.len != 1 or q.len != 1) continue;

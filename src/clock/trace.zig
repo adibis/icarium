@@ -59,7 +59,7 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
     for (mod.cells, 0..) |c, ci| {
         if (!cells.isSequential(c.type)) continue;
         const dom = if (clkBits(c)) |clk|
-            try w.resolveBits(clk)
+            if (cells.isLatch(c.type)) try w.resolveLatch(clk) else try w.resolveBits(clk)
         else
             try w.make("unknown", "", &.{"no clock pin"});
         try flops.append(alloc, .{ .cell = ci, .domain = dom });
@@ -136,6 +136,17 @@ const Walker = struct {
         const dom = if (drv.cell) |ci| try w.throughCell(ci) else try w.throughPort(drv.port);
         _ = w.active.remove(bit);
         try w.memo.put(w.alloc, bit, dom);
+        return dom;
+    }
+
+    // Latch enables are data, not clocks: a typed enable borrows
+    // its input-delay clock, so same-domain latches stay silent.
+    // Flop CLKs never take this path; undeclared clock roots are
+    // CDC-021's finding, not a typing to paper over.
+    fn resolveLatch(w: *Walker, en: []const ir.bits.Bit) error{OutOfMemory}!Domain {
+        const dom = try w.resolveBits(en);
+        if (!std.mem.startsWith(u8, dom.name, "port:")) return dom;
+        if (sdc.model.portClock(w.model, dom.root)) |c| return w.make(c, c, &.{});
         return dom;
     }
 

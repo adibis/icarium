@@ -1,4 +1,5 @@
 const std = @import("std");
+const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -28,6 +29,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     }
     if (!std.mem.eql(u8, x.dst.port, "D")) return null;
     const dc = x.dst.cell orelse return null;
+    if (clock.cells.isLatch(ctx.mod.cells[dc].type)) return null;
     if (std.mem.eql(u8, x.dst_clk, "unknown")) return null;
     if (std.mem.eql(u8, x.src_clk, x.dst_clk)) return null;
     const head_name = ctx.mod.cells[dc].name;
