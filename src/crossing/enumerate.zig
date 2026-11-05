@@ -91,10 +91,13 @@ pub fn enumerate(
     var clock_of = std.AutoHashMapUnmanaged(usize, clock.trace.Domain){};
     for (clock_asg.flops) |f| try clock_of.put(alloc, f.cell, f.domain);
 
+    var scratch = std.heap.ArenaAllocator.init(parent);
+    defer scratch.deinit();
     var en = Enumerator{
         .mod = mod,
         .model = model,
         .alloc = alloc,
+        .scratch = &scratch,
         .clock_of = &clock_of,
         .bit_domains = &clock_asg.bit_domains,
         .controls = clock_asg.controls,
@@ -223,6 +226,7 @@ const Enumerator = struct {
     mod: *const ir.types.Module,
     model: *const sdc.model.Model,
     alloc: std.mem.Allocator,
+    scratch: *std.heap.ArenaAllocator,
     clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
     controls: []clock.trace.ControlPin,
@@ -235,11 +239,15 @@ const Enumerator = struct {
         src_lane: usize,
         pairs: *std.ArrayListUnmanaged(Pair),
     ) error{OutOfMemory}!void {
+        // Walk state resets per source: retaining fifty thousand
+        // visited-sets in the report arena OOMs full-chip runs.
+        _ = en.scratch.reset(.retain_capacity);
+        const tmp = en.scratch.allocator();
         var seen = std.AutoHashMapUnmanaged(u32, ParentLink){};
         var queue: std.ArrayListUnmanaged(u32) = .empty;
         var head: usize = 0;
-        try seen.put(en.alloc, src_bit, .{ .prev = null, .via = null });
-        try queue.append(en.alloc, src_bit);
+        try seen.put(tmp, src_bit, .{ .prev = null, .via = null });
+        try queue.append(tmp, src_bit);
         while (head < queue.items.len) {
             const b = queue.items[head];
             head += 1;
@@ -341,8 +349,9 @@ const Enumerator = struct {
     ) error{OutOfMemory}!void {
         if (ob != .sig) return;
         if (seen.contains(ob.sig)) return;
-        try seen.put(en.alloc, ob.sig, .{ .prev = from, .via = via });
-        try queue.append(en.alloc, ob.sig);
+        const tmp = en.scratch.allocator();
+        try seen.put(tmp, ob.sig, .{ .prev = from, .via = via });
+        try queue.append(tmp, ob.sig);
     }
 
     fn reconstruct(en: *Enumerator, seen: *const std.AutoHashMapUnmanaged(u32, ParentLink), dst: u32) error{OutOfMemory}![]usize {
