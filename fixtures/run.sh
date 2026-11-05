@@ -60,11 +60,11 @@ for rule in $("$BIN" rules --list); do
         flags="$(file_flags "$dir/manifest.json" "$base")"
         set +e
         # shellcheck disable=SC2086
-        "$BIN" check --yosys-json "$TMP/$rule-$top.json" $sdc $flags --format ids \
+        "$BIN" check --yosys-json "$TMP/$rule-$top.json" --top "$top" $sdc $flags --format ids \
             >"$TMP/$rule-$top.ids1" 2>"$TMP/$rule-$top.err"
         code=$?
         # shellcheck disable=SC2086
-        "$BIN" check --yosys-json "$TMP/$rule-$top.json" $sdc $flags --format ids \
+        "$BIN" check --yosys-json "$TMP/$rule-$top.json" --top "$top" $sdc $flags --format ids \
             >"$TMP/$rule-$top.ids2" 2>/dev/null
         code2=$?
         set -e

@@ -86,6 +86,7 @@ fn usage(w: anytype) !void {
         \\      --sync-depth N      required chain depth (default 2)
         \\      --cdc-010-no-heuristic  disable library pin-name guessing
         \\      --cdc-018-depth-threshold N  cascade warn depth (default 4)
+        \\      --sync-primitive NAME   site CDC macro (repeatable)
         \\  rules             list rules (--list) or show docs (--doc)
         \\
     );

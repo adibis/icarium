@@ -151,3 +151,24 @@ the source, handshake it, or sync the bus whole.
 honors: cdc_gray cdc_static cdc_handshake
 fixtures: fixtures/CDC-020
 
+CDC-021 [err] Flop clock driven by an undeclared port
+A top-level input port drives flop clocks with no create_clock
+behind it. Undeclared clocks appear in no async group, so every
+other check touching the domain silently skips. Declare it.
+honors:
+fixtures: fixtures/CDC-021
+
+CDC-022 [warn] Synchronizer primitive shallower than required depth
+A CDC macro carries its stage count as a parameter, not a flop
+chain, so CDC-002 cannot see it. Under a project minimum the
+instance reads short. Raise the parameter or lower the bar.
+honors:
+fixtures: fixtures/CDC-022
+
+CDC-023 [warn] Clock net driven by a combine of declared clocks
+A gate mixes two or more declared clocks onto one net: the net
+glitches, runs at no declared frequency, and leaves its flops
+domainless. Gate one clock, or mux instead of mixing.
+honors:
+fixtures: fixtures/CDC-023
+

@@ -16,6 +16,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
     var heuristic = true;
+    var prims = std.ArrayListUnmanaged([]const u8).empty;
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const a = argv[i];
@@ -44,6 +45,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 err.print("check: bad --sync-depth: {s}\n", .{argv[i + 1]}) catch {};
                 return 2;
             };
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--sync-primitive") and i + 1 < argv.len) {
+            prims.append(init.arena.allocator(), argv[i + 1]) catch return 3;
             i += 1;
         } else if (std.mem.eql(u8, a, "--cdc-018-depth-threshold") and i + 1 < argv.len) {
             depth_threshold = std.fmt.parseInt(u32, argv[i + 1], 10) catch {
@@ -131,7 +135,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         .table = &table,
         .marks = &marks,
         .buses = buses,
-        .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold },
+        .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold, .sync_primitives = prims.items },
         .alloc = scratch,
     };
     const only_arg: ?[]const []const u8 = if (only_s == null) null else only;

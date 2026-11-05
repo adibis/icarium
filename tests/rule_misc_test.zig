@@ -61,6 +61,10 @@ fn freeAll(l: *Loaded) void {
 }
 
 fn checkAll(l: *Loaded) ![]rule.finding.Finding {
+    return checkAllCfg(l, .{});
+}
+
+fn checkAllCfg(l: *Loaded, cfg: rule.context.Config) ![]rule.finding.Finding {
     const alloc = l.arena.allocator();
     const buses = try rule.context.collectBuses(alloc, &l.report);
     var ctx = rule.context.Context{
@@ -70,7 +74,7 @@ fn checkAll(l: *Loaded) ![]rule.finding.Finding {
         .table = &l.table,
         .marks = &l.marks,
         .buses = buses,
-        .cfg = .{},
+        .cfg = cfg,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, null, null);
@@ -1261,4 +1265,191 @@ test "a sliced bus crossing apart fires CDC-020 alone" {
     defer freeAll(&l);
     const fs = try checkAll(&l);
     try std.testing.expect(onlyRule(fs, "CDC-020"));
+}
+
+const undeclared_toggle =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clkx": {"direction": "input", "bits": [2]},
+    \\        "q": {"direction": "output", "bits": [6]}
+    \\      },
+    \\      "cells": {
+    \\        "t": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "Q": [6]}
+    \\        },
+    \\        "nt": {
+    \\          "type": "$not",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "Y": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a toggle on an undeclared port fires CDC-021 alone" {
+    var l = try loadAll(undeclared_toggle, "");
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-021"));
+}
+
+const shallow_macro =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]}
+    \\      },
+    \\      "cells": {
+    \\        "u": {
+    \\          "type": "xpm_cdc_single",
+    \\          "parameters": {"DEST_SYNC_FF": "00000000000000000000000000000010"},
+    \\          "port_directions": {"src_clk": "input", "dest_clk": "input", "src_in": "input", "dest_out": "output"},
+    \\          "connections": {"src_clk": [2], "dest_clk": [3], "src_in": ["0"], "dest_out": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const macro_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+;
+
+test "a shallow macro fires CDC-022 alone under depth 3" {
+    var l = try loadAll(shallow_macro, macro_sdc);
+    defer freeAll(&l);
+    const fs = try checkAllCfg(&l, .{ .sync_depth = 3 });
+    try std.testing.expect(onlyRule(fs, "CDC-022"));
+}
+
+test "a shallow macro stays silent at the default depth" {
+    var l = try loadAll(shallow_macro, macro_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
+const site_macro =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]}
+    \\      },
+    \\      "cells": {
+    \\        "u": {
+    \\          "type": "my_sync_macro",
+    \\          "parameters": {"DEST_SYNC_FF": "2"},
+    \\          "port_directions": {"src_clk": "input", "dest_clk": "input", "src_in": "input", "dest_out": "output"},
+    \\          "connections": {"src_clk": [2], "dest_clk": [3], "src_in": ["0"], "dest_out": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a registered site macro fires CDC-022, unregistered stays out" {
+    var l = try loadAll(site_macro, macro_sdc);
+    defer freeAll(&l);
+    const prims = [_][]const u8{"my_sync_macro"};
+    const fs = try checkAllCfg(&l, .{ .sync_depth = 3, .sync_primitives = &prims });
+    try std.testing.expect(onlyRule(fs, "CDC-022"));
+    const unregistered = try checkAllCfg(&l, .{ .sync_depth = 3 });
+    for (unregistered) |f| try std.testing.expect(!std.mem.eql(u8, f.rule, "CDC-022"));
+}
+
+const clock_combine =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [6]}
+    \\      },
+    \\      "cells": {
+    \\        "g": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "Y": [5]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [5], "D": [4], "Q": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const combine_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+;
+
+test "a two-clock gate fires CDC-023 beside the unresolved CDC-001" {
+    var l = try loadAll(clock_combine, combine_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 2), fs.len);
+    try std.testing.expectEqualStrings("CDC-001", fs[0].rule);
+    try std.testing.expectEqualStrings("CDC-023", fs[1].rule);
+}
+
+const clock_gate_ok =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "en": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [9]}
+    \\      },
+    \\      "cells": {
+    \\        "g": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [4], "Y": [7]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [7], "D": [5], "Q": [9]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const gate_ok_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+    \\set_input_delay -clock ca 1.0 [get_ports en]
+;
+
+test "a clock plus enable gate stays silent" {
+    var l = try loadAll(clock_gate_ok, gate_ok_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
 }

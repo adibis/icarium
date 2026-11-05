@@ -1,0 +1,1 @@
+{"bad_handshake_src.sv": {"rules": ["CDC-022"], "sync-depth": 3}, "bad_shallow_xpm.sv": {"rules": ["CDC-022"], "sync-depth": 3}, "good_default_depth.sv": {"rules": [], "sync-depth": 3}}

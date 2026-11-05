@@ -11,6 +11,7 @@ pub const Config = struct {
     sync_depth: u32 = 2,
     cdc010_heuristic: bool = true,
     cdc018_threshold: u32 = 4,
+    sync_primitives: []const []const u8 = &.{},
 };
 
 pub const Context = struct {

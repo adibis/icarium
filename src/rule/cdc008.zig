@@ -5,6 +5,7 @@ const finding = @import("finding.zig");
 const ir = @import("../ir.zig");
 const registry = @import("registry.zig");
 const sdc = @import("../sdc.zig");
+const sync = @import("../sync.zig");
 
 pub const rule = registry.Rule{
     .id = "CDC-008",
@@ -53,6 +54,11 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             if (std.mem.eql(u8, p.name, "CLK")) continue;
             if (clock.cells.isLatch(c.type) and
                 (std.mem.eql(u8, p.name, "G") or std.mem.eql(u8, p.name, "EN"))) continue;
+            // Clock pins on a recognised macro are clocks, not data:
+            // the macro names its own clock legs, XPM rigidly so.
+            if (c.blackbox and
+                sync.primitives.isSyncPrimitive(c.type, ctx.cfg.sync_primitives) and
+                sync.primitives.isClockPin(p.name)) continue;
             for (p.bits, 0..) |b, idx| {
                 if (b != .sig or !clock_bits.contains(b.sig)) continue;
                 const key = Triple{ .bit = b.sig, .cell = ci, .pin = pi };

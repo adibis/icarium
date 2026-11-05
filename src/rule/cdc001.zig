@@ -4,6 +4,7 @@ const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
 const registry = @import("registry.zig");
+const sync = @import("../sync.zig");
 
 pub const rule = registry.Rule{
     .id = "CDC-001",
@@ -36,6 +37,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (ctx.marks.hasHandshake(dst_name)) return null;
     if (x.src.cell) |sc| {
         if (ctx.marks.hasStatic(ctx.mod.cells[sc].name)) return null;
+        if (sync.primitives.isSyncPrimitive(ctx.mod.cells[sc].type, ctx.cfg.sync_primitives)) return null;
     }
     const depth = try ctx.table.chainDepth(ctx.mod, dc, x.dst_clk);
     if (depth.depth >= 2) return null;
