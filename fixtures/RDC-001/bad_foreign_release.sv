@@ -1,0 +1,38 @@
+// RDC-001: a 2FF chain in dst_clk whose ARST comes from a flop
+// registered in src_clk. CDC-015 frames the chain side; RDC-001
+// frames the reset-release side. Both fire by design.
+module bad_foreign_release (
+    input  logic src_clk,
+    input  logic dst_clk,
+    input  logic global_rst_n,
+    input  logic async_signal,
+    output logic dst_q
+);
+
+    logic src_rst_q;
+    always_ff @(posedge src_clk or negedge global_rst_n) begin
+        if (!global_rst_n) src_rst_q <= 1'b0;
+        else               src_rst_q <= 1'b1;
+    end
+
+    logic src_q;
+    always_ff @(posedge src_clk or negedge global_rst_n) begin
+        if (!global_rst_n) src_q <= 1'b0;
+        else               src_q <= async_signal;
+    end
+
+    logic sync_1;
+    always_ff @(posedge dst_clk or negedge src_rst_q) begin
+        if (!src_rst_q) sync_1 <= 1'b0;
+        else            sync_1 <= src_q;
+    end
+
+    logic sync_2;
+    always_ff @(posedge dst_clk or negedge src_rst_q) begin
+        if (!src_rst_q) sync_2 <= 1'b0;
+        else            sync_2 <= sync_1;
+    end
+
+    assign dst_q = sync_2;
+
+endmodule

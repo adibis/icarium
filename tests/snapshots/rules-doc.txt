@@ -172,3 +172,20 @@ domainless. Gate one clock, or mux instead of mixing.
 honors:
 fixtures: fixtures/CDC-023
 
+RDC-001 [err] Async reset released from a foreign clock domain
+A flop's async reset fans in from a register in another clock
+domain: every foreign deassertion races the local clock, so
+the flop never reaches a clean out-of-reset state. Reset it
+from its own domain's tree, or synchronize the reset across.
+honors:
+fixtures: fixtures/RDC-001
+
+RDC-002 [err] Reset polarity mismatch on async reset distribution
+A flop's async reset disagrees with its source: a producer
+flop drives a value the consumer never treats as assert, or a
+port declaration contradicts the pin. The consumer never
+enters reset when the source does. Add an inverter, or fix
+the edge to match the declaration.
+honors: reset_sync
+fixtures: fixtures/RDC-002
+

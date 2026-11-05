@@ -58,7 +58,7 @@ pub fn find(
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         const fr = by_cell.get(ci) orelse continue;
-        const ar = canonicalAsync(fr) orelse continue;
+        const ar = canonicalAsync(c, fr) orelse continue;
         const tail_clk = domains.get(ci) orelse continue;
         if (std.mem.eql(u8, tail_clk.name, "unknown")) continue;
         const found = try traceChain(alloc, mod, &by_cell, domains, ci, ar);
@@ -90,11 +90,10 @@ pub fn find(
 
 // One canonical async pin per flop, ARST first: SET pins never
 // seed recognition, matching the reference pin order.
-fn canonicalAsync(fr: *const trace.FlopReset) ?trace.AsyncReset {
-    for ([_][]const u8{ "ARST", "ALOAD", "CLR" }) |want| {
-        for (fr.async) |ar| {
-            if (std.mem.eql(u8, ar.pin, want)) return ar;
-        }
+fn canonicalAsync(c: ir.types.Cell, fr: *const trace.FlopReset) ?trace.AsyncReset {
+    const want = cells.canonicalAsyncPin(c) orelse return null;
+    for (fr.async) |ar| {
+        if (std.mem.eql(u8, ar.pin, want.pin)) return ar;
     }
     return null;
 }
@@ -134,7 +133,7 @@ fn traceChain(
         const dc = mod.cells[di];
         if (!clock.cells.isSequential(dc.type) or clock.cells.isLatch(dc.type)) return null;
         const dfr = by_cell.get(di) orelse return null;
-        const dar = canonicalAsync(dfr) orelse return null;
+        const dar = canonicalAsync(dc, dfr) orelse return null;
         const dclk = domains.get(di) orelse return null;
         if (std.mem.eql(u8, dclk.name, "unknown")) return null;
         if (!std.mem.eql(u8, dclk.name, tail_clk)) return null;
@@ -148,7 +147,7 @@ fn traceChain(
 
 // The pin's own parameter, trailing bit wins; absent reads
 // high, the reference default Yosys never exercises.
-fn paramPolarity(c: ir.types.Cell, pin: []const u8) trace.Polarity {
+pub fn paramPolarity(c: ir.types.Cell, pin: []const u8) trace.Polarity {
     const rp = cells.resetPins(c.type) orelse return .high;
     for (rp.async) |ap| {
         if (!std.mem.eql(u8, ap.pin, pin)) continue;

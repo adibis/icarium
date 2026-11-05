@@ -1,4 +1,5 @@
 const std = @import("std");
+const ir = @import("../ir.zig");
 
 pub const AsyncPin = struct {
     pin: []const u8,
@@ -36,6 +37,21 @@ const reset_mux = std.StaticStringMap(bool).initComptime(.{
     .{ "$mux", true },
     .{ "$pmux", false },
 });
+
+// One canonical async pin per cell, ARST first: SET pins never
+// seed recognition or RDC reasoning, matching the reference.
+pub fn canonicalAsyncPin(c: ir.types.Cell) ?AsyncPin {
+    const rp = resetPins(c.type) orelse return null;
+    for ([_][]const u8{ "ARST", "ALOAD", "CLR" }) |want| {
+        for (rp.async) |ap| {
+            if (!std.mem.eql(u8, ap.pin, want)) continue;
+            for (c.ports) |p| {
+                if (std.mem.eql(u8, p.name, want) and p.bits.len > 0) return ap;
+            }
+        }
+    }
+    return null;
+}
 
 pub fn muxFollowStatic(cell_type: []const u8) ?bool {
     return reset_mux.get(cell_type);

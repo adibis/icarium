@@ -1022,11 +1022,13 @@ const foreign_reset =
     \\}
 ;
 
-test "a chain on a foreign reset fires CDC-015 alone" {
+test "a chain on a foreign reset fires CDC-015 and RDC-001" {
     var l = try loadAll(foreign_reset, gate_between_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);
-    try std.testing.expect(onlyRule(fs, "CDC-015"));
+    try std.testing.expectEqual(@as(usize, 2), fs.len);
+    try std.testing.expectEqualStrings("CDC-015", fs[0].rule);
+    try std.testing.expectEqualStrings("RDC-001", fs[1].rule);
 }
 
 const opp_edge =

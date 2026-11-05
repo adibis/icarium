@@ -1,1 +1,1 @@
-{"bad_foreign_reset.sv": ["CDC-015"], "good_local_reset.sv": []}
+{"bad_foreign_reset.sv": ["CDC-015", "RDC-001"], "good_local_reset.sv": []}
