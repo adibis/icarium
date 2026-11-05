@@ -100,3 +100,47 @@ pub fn ruleTitle(id: []const u8) []const u8 {
     if (rule.registry.find(id)) |r| return r.title;
     return "";
 }
+
+pub const FileLoc = struct {
+    file: []const u8,
+    start_line: i64,
+    start_col: ?i64,
+    end_line: ?i64,
+    end_col: ?i64,
+};
+
+// A Yosys src string as a tool-joinable file location; the
+// sarif parser owns the grammar, maps only reshape it.
+pub fn fileLoc(src: []const u8) ?FileLoc {
+    const p = @import("sarif.zig").parseSrc(src);
+    const rg = p.region orelse return null;
+    return .{
+        .file = p.uri,
+        .start_line = rg.start_line,
+        .start_col = rg.start_col,
+        .end_line = rg.end_line,
+        .end_col = rg.end_col,
+    };
+}
+
+pub fn locValue(alloc: std.mem.Allocator, l: FileLoc) error{OutOfMemory}!std.json.Value {
+    var o = std.json.ObjectMap.empty;
+    try o.put(alloc, "file", .{ .string = l.file });
+    try o.put(alloc, "start_line", .{ .integer = l.start_line });
+    if (l.start_col) |c| {
+        try o.put(alloc, "start_column", .{ .integer = c });
+    } else {
+        try o.put(alloc, "start_column", .null);
+    }
+    if (l.end_line) |e| {
+        try o.put(alloc, "end_line", .{ .integer = e });
+    } else {
+        try o.put(alloc, "end_line", .null);
+    }
+    if (l.end_col) |c| {
+        try o.put(alloc, "end_column", .{ .integer = c });
+    } else {
+        try o.put(alloc, "end_column", .null);
+    }
+    return .{ .object = o };
+}

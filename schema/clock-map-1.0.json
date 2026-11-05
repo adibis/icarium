@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.dev/schema/clock-map-1.0.json",
+  "title": "icarium clock-domain map",
+  "description": "Clocks, groups, per-flop domains, and structural crossings with synchronizer verdicts. Additive evolution within major version 1.",
+  "type": "object",
+  "required": ["schema_version", "generator", "design", "clocks", "generated_clocks", "clock_groups", "false_path_pairs", "flop_domains", "port_domains", "crossings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "design": {
+      "type": "object",
+      "required": ["top", "frontend"],
+      "properties": {
+        "top": {"type": "string"},
+        "frontend": {"type": "string"}
+      }
+    },
+    "clocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "period", "source", "ports"],
+        "properties": {
+          "name": {"type": "string"},
+          "period": {"type": ["number", "null"]},
+          "source": {"type": "string"},
+          "ports": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "generated_clocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "period", "source", "master", "divide_by", "multiply_by", "ports"],
+        "properties": {
+          "name": {"type": "string"},
+          "period": {"type": ["number", "null"]},
+          "source": {"type": "string"},
+          "master": {"type": "string"},
+          "divide_by": {"type": "integer", "minimum": 1},
+          "multiply_by": {"type": "integer", "minimum": 1},
+          "ports": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "clock_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "members"],
+        "properties": {
+          "kind": {"enum": ["asynchronous", "logically_exclusive", "physically_exclusive"]},
+          "members": {
+            "type": "array",
+            "items": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "false_path_pairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "through"],
+        "properties": {
+          "from": {"type": "array", "items": {"type": "string"}},
+          "to": {"type": "array", "items": {"type": "string"}},
+          "through": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "flop_domains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cell", "instance", "clock", "location"],
+        "properties": {
+          "cell": {"type": "string"},
+          "instance": {"type": "string"},
+          "clock": {"type": "string"},
+          "location": {
+            "anyOf": [{"$ref": "#/$defs/location"}, {"type": "null"}]
+          }
+        }
+      }
+    },
+    "port_domains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["port", "clock", "kind"],
+        "properties": {
+          "port": {"type": "string"},
+          "clock": {"type": "string"},
+          "kind": {"enum": ["input", "output"]}
+        }
+      }
+    },
+    "crossings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "src", "dst", "src_clock", "dst_clock", "async_per_sdc", "width", "hops", "synchronizer", "findings"],
+        "properties": {
+          "id": {"type": "string"},
+          "kind": {"type": "string"},
+          "src": {"$ref": "#/$defs/endpoint"},
+          "dst": {"$ref": "#/$defs/endpoint"},
+          "src_clock": {"type": "string"},
+          "dst_clock": {"type": "string"},
+          "async_per_sdc": {"type": "boolean"},
+          "width": {"type": "integer", "minimum": 1},
+          "hops": {"type": "integer", "minimum": 0},
+          "synchronizer": {
+            "description": "Scheme the rule pack accepts here (2ff, handshake, static), or null when none is recognized. Pulse and gray shapes report null in 1.0.",
+            "type": ["string", "null"]
+          },
+          "findings": {
+            "description": "Rule IDs of findings naming this crossing's receiver cell. Empty in map-only mode.",
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "required": ["name", "kind", "instance"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"enum": ["cell", "port", "other"]},
+        "instance": {"type": "string"}
+      }
+    },
+    "location": {
+      "type": "object",
+      "required": ["file", "start_line", "start_column", "end_line", "end_column"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string"},
+        "start_line": {"type": "integer", "minimum": 1},
+        "start_column": {"type": ["integer", "null"]},
+        "end_line": {"type": ["integer", "null"]},
+        "end_column": {"type": ["integer", "null"]}
+      }
+    }
+  }
+}

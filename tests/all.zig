@@ -19,4 +19,5 @@ test {
     _ = @import("report_findings_test.zig");
     _ = @import("report_text_test.zig");
     _ = @import("report_sarif_test.zig");
+    _ = @import("report_clockmap_test.zig");
 }

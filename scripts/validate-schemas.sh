@@ -39,4 +39,22 @@ check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_
 check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc sarif schema/sarif-2.1.0.json "sarif/error-grouped"
 check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc sarif schema/sarif-2.1.0.json "sarif/empty"
 
+check_map() {
+    # check_map <sv> <sdc> <flag> <schema> <label>: elaborate, emit map, validate.
+    sv="$1"; sdc="$2"; flag="$3"; schema="$4"; label="$5"
+    top="$(basename "$sv" .sv)"
+    sh scripts/elaborate.sh --top "$top" --out "$TMP/net.json" "$sv" >/dev/null 2>&1
+    "$BIN" check --yosys-json "$TMP/net.json" --sdc "$sdc" --format ids "$flag" "$TMP/out.json" >/dev/null 2>/dev/null || true
+    if python3 -c "import json,jsonschema,sys; jsonschema.validate(json.load(open('$TMP/out.json')), json.load(open('$schema')))" 2>"$TMP/err.txt"; then
+        echo "PASS $label"
+    else
+        echo "FAIL $label"
+        cat "$TMP/err.txt"
+        fail=1
+    fi
+}
+
+check_map fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc --emit-domain-map schema/clock-map-1.0.json "clock-map/two-clock"
+check_map fixtures/RDC-006/good_muxed_reset_synced.sv fixtures/RDC-006/good_muxed_reset_synced.sdc --emit-domain-map schema/clock-map-1.0.json "clock-map/synced-mux"
+
 exit "$fail"
