@@ -3,7 +3,8 @@
 # run icarium over it, diff against hand-written goldens.
 # Case layout: tests/e2e/<top>/design.sv, constraints.sdc (optional),
 # expected.stats, expected.clocks (with constraints.sdc),
-# expected.domains (optional; --sdc passed when present).
+# expected.domains / expected.resets (optional; --sdc passed when
+# present).
 # Goldens were authored against Yosys 0.70 (stock frontend).
 # Exit: 0 all pass, 1 golden mismatch, 3 yosys or binary missing.
 set -eu
@@ -77,6 +78,17 @@ for casedir in tests/e2e/*/; do
             continue
         fi
         check "$name" domains "$case/expected.domains" "$TMP/$name.domains"
+    fi
+    if [ -f "$case/expected.resets" ]; then
+        set -- "$BIN" resets --yosys-json "$TMP/$name.json"
+        if [ -f "$case/constraints.sdc" ]; then set -- "$@" --sdc "$case/constraints.sdc"; fi
+        if ! "$@" >"$TMP/$name.resets" 2>"$TMP/$name.resets.err"; then
+            echo "FAIL $name: resets exited $?"
+            cat "$TMP/$name.resets.err"
+            fail=1
+            continue
+        fi
+        check "$name" resets "$case/expected.resets" "$TMP/$name.resets"
     fi
 done
 

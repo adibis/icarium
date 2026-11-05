@@ -1,0 +1,4 @@
+flop $procdff$10 domain clk
+flop $procdff$11 domain clk
+flop $procdff$12 domain clk
+flop $procdff$17 domain clk

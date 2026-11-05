@@ -8,8 +8,11 @@ const sequential = std.StaticStringMap(void).initComptime(.{
     .{ "$sdff", {} },
     .{ "$sdffe", {} },
     .{ "$adff", {} },
+    .{ "$adffe", {} },
     .{ "$dffsr", {} },
     .{ "$dlatch", {} },
+    .{ "$dlatchsr", {} },
+    .{ "$sr", {} },
 });
 
 pub fn isSequential(cell_type: []const u8) bool {

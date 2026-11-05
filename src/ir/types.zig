@@ -50,8 +50,14 @@ pub const Loc = struct {
     port: []const u8,
 };
 
+pub const Netname = struct {
+    bits: []bits.Bit,
+    attrs: []Attr,
+};
+
 pub const DriverMap = std.AutoHashMapUnmanaged(u32, Loc);
 pub const LoadsMap = std.AutoHashMapUnmanaged(u32, std.ArrayListUnmanaged(Loc));
+pub const NetnameMap = std.StringHashMapUnmanaged(Netname);
 
 pub const Module = struct {
     // Heap-owned: ArenaAllocator captures its own address, so a
@@ -62,6 +68,9 @@ pub const Module = struct {
     ports: []ModulePort,
     driver_of: DriverMap,
     loads_of: LoadsMap,
+    // Netname attributes (reset polarity and friends) live on wires,
+    // not cells, so the map survives ingestion for later lookups.
+    netnames: NetnameMap,
 
     pub fn deinit(self: *Module) void {
         const parent = self.backing.child_allocator;

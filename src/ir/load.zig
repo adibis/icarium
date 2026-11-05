@@ -36,8 +36,10 @@ pub fn loadFromSlice(parent: std.mem.Allocator, bytes: []const u8, top_name: ?[]
         .ports = try ports.toOwnedSlice(alloc),
         .driver_of = .{},
         .loads_of = .{},
+        .netnames = .{},
     };
     try indexConnectivity(alloc, &mod);
+    try indexNetnames(alloc, &mod, picked.value);
     return mod;
 }
 
@@ -160,6 +162,22 @@ fn indexConnectivity(alloc: std.mem.Allocator, mod: *types.Module) !void {
                 }
             }
         }
+    }
+}
+
+fn indexNetnames(alloc: std.mem.Allocator, mod: *types.Module, picked: std.json.Value) !void {
+    const nns = picked.object.get("netnames") orelse return;
+    if (nns != .object) return error.BadShape;
+    var it = nns.object.iterator();
+    while (it.next()) |entry| {
+        const v = entry.value_ptr.*;
+        if (v != .object) return error.BadShape;
+        var attrs: std.ArrayListUnmanaged(types.Attr) = .empty;
+        if (v.object.get("attributes")) |a| try appendAttrs(alloc, &attrs, a);
+        try mod.netnames.put(alloc, entry.key_ptr.*, .{
+            .bits = try bits.listFromJson(alloc, try reqObjField(v, "bits")),
+            .attrs = try attrs.toOwnedSlice(alloc),
+        });
     }
 }
 

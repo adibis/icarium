@@ -1,0 +1,9 @@
+flop $procdff$10 clock clk
+sync $procdff$10 none
+flop $procdff$11 clock clk
+sync $procdff$11 mux $ternary$tests/e2e/resets/design.sv:20$4
+flop $procdff$12 clock clk
+sync $procdff$12 mux $procmux$8
+flop $procdff$17 clock clk
+async $procdff$17 ARST origin port ref rst_n polarity low
+sync $procdff$17 none

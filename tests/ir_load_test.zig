@@ -38,6 +38,10 @@ const design =
     \\          "parameters": {},
     \\          "attributes": {"src": "pll.sv:3"}
     \\        }
+    \\      },
+    \\      "netnames": {
+    \\        "clk": {"hide_name": 0, "bits": [2], "attributes": {"src": "top.sv:1"}},
+    \\        "q": {"hide_name": 0, "bits": [6], "attributes": {}}
     \\      }
     \\    }
     \\  }
@@ -137,6 +141,17 @@ test "wide fanout indexes completely" {
 // Exact bytes matter: this shape forces an arena chunk to be
 // allocated after the Module takes shape, which a by-value arena
 // would orphan from deinit. Deterministic for the pinned toolchain.
+test "netnames index by name with attributes" {
+    var mod = try load.loadFromSlice(std.testing.allocator, design, null);
+    defer mod.deinit();
+    try std.testing.expectEqual(@as(u32, 2), mod.netnames.count());
+    const clk = mod.netnames.get("clk").?;
+    try std.testing.expectEqual(@as(u32, 2), clk.bits[0].sig);
+    try std.testing.expectEqualStrings("top.sv:1", clk.attrs[0].value.str);
+    try std.testing.expectEqual(@as(usize, 0), mod.netnames.get("q").?.attrs.len);
+    try std.testing.expect(mod.netnames.get("ghost") == null);
+}
+
 test "real yosys output frees post-copy chunks" {
     const bytes = try std.Io.Dir.cwd().readFileAlloc(
         std.testing.io,

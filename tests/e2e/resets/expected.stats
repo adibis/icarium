@@ -1,0 +1,9 @@
+module: resets
+cells: 8
+unique bits: 12
+cells with src: 7
+  $adff: 1
+  $dff: 3
+  $logic_not: 1
+  $mux: 2
+  $not: 1

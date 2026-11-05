@@ -1,0 +1,4 @@
+flop $procdff$2 clock clk
+sync $procdff$2 none
+flop $procdff$3 clock clk
+sync $procdff$3 none

@@ -455,6 +455,9 @@ test "cell tables recognize sequential and transparent" {
     try std.testing.expect(clock.cells.isSequential("$dff"));
     try std.testing.expect(clock.cells.isSequential("$adff"));
     try std.testing.expect(clock.cells.isSequential("$dlatch"));
+    try std.testing.expect(clock.cells.isSequential("$adffe"));
+    try std.testing.expect(clock.cells.isSequential("$dlatchsr"));
+    try std.testing.expect(clock.cells.isSequential("$sr"));
     try std.testing.expect(!clock.cells.isSequential("$mux"));
     try std.testing.expect(!clock.cells.isSequential("$memrd"));
     try std.testing.expect(clock.cells.isTransparent("$not"));
