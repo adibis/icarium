@@ -445,3 +445,130 @@ test "user marks resolve through netname wires to flop Q" {
     try std.testing.expect(l.marks.glitchlessBit(14));
     try std.testing.expect(!l.marks.glitchlessBit(10));
 }
+
+const bufchain =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [10]}
+    \\        },
+    \\        "b1": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "Y": [11]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "buffers between stages keep the chain whole" {
+    var l = try loadAll(bufchain, two_sdc);
+    defer freeAll(&l);
+    const s1 = try l.table.chainDepth(&l.mod, cellIdx(&l.mod, "s1"), "clk");
+    try std.testing.expectEqual(@as(u32, 2), s1.depth);
+    try std.testing.expect(l.table.hasInterStageComb(&l.mod, cellIdx(&l.mod, "s1")) == null);
+}
+
+const tapgate =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "mask": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [12]},
+    \\        "tap": {"direction": "output", "bits": [13]}
+    \\      },
+    \\      "cells": {
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [10]}
+    \\        },
+    \\        "g1": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [4], "Y": [11]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
+    \\        },
+    \\        "leak": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "Y": [13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a tapped head feeds logic, not an inter-stage gate" {
+    var l = try loadAll(tapgate, two_sdc);
+    defer freeAll(&l);
+    try std.testing.expect(l.table.hasInterStageComb(&l.mod, cellIdx(&l.mod, "s1")) == null);
+}
+
+const sharedgate =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "mask": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [12]},
+    \\        "tap": {"direction": "output", "bits": [13]}
+    \\      },
+    \\      "cells": {
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [10]}
+    \\        },
+    \\        "g1": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [4], "Y": [11]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
+    \\        },
+    \\        "leak": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [11], "Y": [13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a shared gate output feeds logic, not a second stage" {
+    var l = try loadAll(sharedgate, two_sdc);
+    defer freeAll(&l);
+    try std.testing.expect(l.table.hasInterStageComb(&l.mod, cellIdx(&l.mod, "s1")) == null);
+}

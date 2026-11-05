@@ -1,1 +1,1 @@
-{"bad_gate_between.sv": ["CDC-014"], "good_clean_chain.sv": []}
+{"bad_gate_between.sv": ["CDC-014"],"good_clean_chain.sv": [],"good_tapped_gate.sv": ["CDC-001"]}

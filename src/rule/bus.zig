@@ -88,9 +88,18 @@ fn hasGraySignature(c: ir.types.Cell) bool {
     return b[a.len - 1] != .sig;
 }
 
+// Muxed-clock endpoints carry several legs: a verdict needing
+// one exact domain cannot prove membership and stays out,
+// leaving the pair to the MULTCLK leg-pair report (CDC-026).
+pub fn isMuxedClock(ctx: *context.Context, cell: usize) bool {
+    const d = ctx.table.domainOf(cell) orelse return true;
+    return d.legs.len > 1;
+}
+
 // Handshake gating, enabled-flop or mux-on-D: the control
-// fanin must sit entirely in the destination domain.
-pub fn isGatedBusCrossing(ctx: *context.Context, dst: usize, dst_clock: []const u8) error{OutOfMemory}!bool {
+// fanin must sit entirely in the destination domain. Walks run
+// in caller scratch: retaining them per pair buried spi at 8GB.
+pub fn isGatedBusCrossing(ctx: *context.Context, scratch: std.mem.Allocator, dst: usize, dst_clock: []const u8) error{OutOfMemory}!bool {
     const mod = ctx.mod;
     const c = mod.cells[dst];
     const flopped = clock.cells.isSequential(c.type) and !clock.cells.isLatch(c.type);
@@ -101,7 +110,7 @@ pub fn isGatedBusCrossing(ctx: *context.Context, dst: usize, dst_clock: []const 
                 if (b == .sig) any_sig = true;
             }
             if (any_sig) {
-                const fanin = try context.backwardFlopFanin(ctx.alloc, mod, en);
+                const fanin = try context.backwardFlopFanin(scratch, mod, en);
                 if (fanin.items.len > 0 and allInDomain(ctx, fanin.items, dst_clock)) return true;
             }
         }
@@ -111,7 +120,7 @@ pub fn isGatedBusCrossing(ctx: *context.Context, dst: usize, dst_clock: []const 
     for (d) |db| {
         if (db != .sig) continue;
         const drv = traceThroughBuffers(mod, db.sig) orelse return false;
-        try origins.put(ctx.alloc, drv, {});
+        try origins.put(scratch, drv, {});
     }
     if (origins.count() != 1) return false;
     var oit = origins.iterator();
@@ -119,7 +128,7 @@ pub fn isGatedBusCrossing(ctx: *context.Context, dst: usize, dst_clock: []const 
     if (!std.mem.eql(u8, mod.cells[origin].type, "$mux")) return false;
     const s = portBits(mod.cells[origin], "S") orelse return false;
     if (s.len == 0) return false;
-    const fanin = try context.backwardFlopFanin(ctx.alloc, mod, s);
+    const fanin = try context.backwardFlopFanin(scratch, mod, s);
     if (fanin.items.len == 0) return false;
     return allInDomain(ctx, fanin.items, dst_clock);
 }

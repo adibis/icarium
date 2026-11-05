@@ -25,6 +25,9 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (x.kind != .flop_flop_bus and x.kind != .port_flop_bus) return null;
     if (!x.async_per_sdc) return null;
     const dc = x.dst.cell orelse return null;
+    // Muxed destinations belong to the leg-pair report: gating
+    // and gray verdicts need one exact destination domain.
+    if (bus.isMuxedClock(ctx, dc)) return null;
     if (x.src.cell) |sc| {
         const src_name = ctx.mod.cells[sc].name;
         if (ctx.marks.hasGray(src_name)) return null;
@@ -32,7 +35,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         if (bus.isMultibitSyncFirstStage(ctx, dc, x.dst_clk) and
             bus.isGrayEncodedSource(ctx, sc)) return null;
     }
-    if (try bus.isGatedBusCrossing(ctx, dc, x.dst_clk)) return null;
+    if (try bus.isGatedBusCrossing(ctx, ctx.alloc, dc, x.dst_clk)) return null;
     const width = x.lanes.len;
     const src_desc = if (x.src.cell) |sc|
         try std.fmt.allocPrint(ctx.alloc, "flop {s}", .{ctx.mod.cells[sc].name})

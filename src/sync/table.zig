@@ -38,8 +38,12 @@ pub const Table = struct {
 
     // Length of the chain starting at head, head included. A stage
     // extends the chain only through a single-reader Q into a
-    // same-clock D, directly or over a reset mux. Packed shift
-    // registers read their effective intra-cell depth instead.
+    // same-clock D, directly, over a reset mux, or through
+    // transparent buffers: slang buffers every net, so direct-Q
+    // rigidity reads clean chains short. Inversions ride along:
+    // data chains need timing, not value agreement (reset chains
+    // keep the stricter value contract). Packed shift registers
+    // read their effective intra-cell depth instead.
     // Cost: O(chain) once per head, memoized; revisits are O(1).
     pub fn chainDepth(t: *Table, mod: *const ir.types.Module, head: usize, head_clock: []const u8) error{OutOfMemory}!Entry {
         if (t.memo.get(head)) |e| return e;
@@ -64,8 +68,9 @@ pub const Table = struct {
             const cq = portBits(mod.cells[cur], "Q").?[0];
             if (cq != .sig) break;
             if (t.readers(mod, cq.sig) != 1) break;
-            const nxt = t.d_bit_to_flop.get(cq.sig) orelse
-                t.srst_data_bit_to_flop.get(cq.sig) orelse break;
+            const db = stepThroughTransparent(mod, cq.sig) orelse break;
+            const nxt = t.d_bit_to_flop.get(db) orelse
+                t.srst_data_bit_to_flop.get(db) orelse break;
             if (visited.contains(nxt)) break;
             const dom = t.domains.get(nxt) orelse break;
             if (!std.mem.eql(u8, dom.name, head_clock)) break;
@@ -81,28 +86,31 @@ pub const Table = struct {
     // A gate between the stages: head Q feeds comb whose Y lands on a
     // same-clock D. Single hop only; deeper shapes belong to other
     // rules. A reset mux on the far D is part of that flop, not a gate.
+    // Transparent cells never count (a buffer is wire, an inverter
+    // preserves the full-cycle resolution), and the link must be
+    // dedicated at both ends: a tapped head or a shared gate output
+    // feeds logic, not a second stage.
     pub fn hasInterStageComb(t: *const Table, mod: *const ir.types.Module, head: usize) ?usize {
         const c = mod.cells[head];
         const q = portBits(c, "Q") orelse return null;
         if (q.len != 1 or q[0] != .sig) return null;
         const head_clock = (t.domains.get(head) orelse return null).name;
-        const loads = mod.loads_of.get(q[0].sig) orelse return null;
-        for (loads.items) |loc| {
-            const ci = loc.cell orelse continue;
-            const m = mod.cells[ci];
-            if (clock.cells.isSequential(m.type)) continue;
-            const y = portBits(m, "Y") orelse continue;
-            for (y) |yb| {
-                if (yb != .sig) continue;
-                const nxt = t.d_bit_to_flop.get(yb.sig) orelse continue;
-                if (nxt == head) continue;
-                const dom = t.domains.get(nxt) orelse continue;
-                if (!std.mem.eql(u8, dom.name, head_clock)) continue;
-                if (t.srst_data_bit_to_flop.get(q[0].sig)) |behind| {
-                    if (behind == nxt) continue;
-                }
-                return nxt;
+        const ci = singleConsumer(mod, q[0].sig) orelse return null;
+        const m = mod.cells[ci];
+        if (clock.cells.isSequential(m.type)) return null;
+        if (clock.cells.isTransparent(m.type)) return null;
+        const y = portBits(m, "Y") orelse return null;
+        for (y) |yb| {
+            if (yb != .sig) continue;
+            if (singleConsumer(mod, yb.sig) == null) continue;
+            const nxt = t.d_bit_to_flop.get(yb.sig) orelse continue;
+            if (nxt == head) continue;
+            const dom = t.domains.get(nxt) orelse continue;
+            if (!std.mem.eql(u8, dom.name, head_clock)) continue;
+            if (t.srst_data_bit_to_flop.get(q[0].sig)) |behind| {
+                if (behind == nxt) continue;
             }
+            return nxt;
         }
         return null;
     }
@@ -260,6 +268,51 @@ fn oneStage(alloc: std.mem.Allocator, head: usize) error{OutOfMemory}![]usize {
 fn allConst(bits: []ir.bits.Bit) bool {
     for (bits) |b| if (b == .sig) return false;
     return true;
+}
+
+// The bit's sole consuming cell, or null when the value
+// escapes: tied legs on one gate still count as one consumer,
+// but a second cell or a port tap voids dedication.
+fn singleConsumer(mod: *const ir.types.Module, bit: u32) ?usize {
+    const loads = mod.loads_of.get(bit) orelse return null;
+    var seen: ?usize = null;
+    for (loads.items) |loc| {
+        const ci = loc.cell orelse return null;
+        if (seen) |s| {
+            if (s != ci) return null;
+        } else seen = ci;
+    }
+    return seen;
+}
+
+// Forward through single-consumer transparent cells to the
+// driven bit. A tap after a buffer breaks the step exactly
+// as a Q tap breaks the chain: the value escapes either way.
+fn stepThroughTransparent(mod: *const ir.types.Module, bit: u32) ?u32 {
+    var cur = bit;
+    for (0..8) |_| {
+        const loads = mod.loads_of.get(cur) orelse return cur;
+        if (loads.items.len == 0) return cur;
+        const only = singleConsumer(mod, cur) orelse return null;
+        const c = mod.cells[only];
+        if (!clock.cells.isTransparent(c.type)) return cur;
+        cur = transparentOut(c, loads.items[0].port, cur) orelse return null;
+    }
+    return null;
+}
+
+// Output bit at the input's index: transparent cells pass
+// lane-to-lane, so the load position picks the driven bit.
+fn transparentOut(c: ir.types.Cell, port: []const u8, bit: u32) ?u32 {
+    const a = portBits(c, port) orelse return null;
+    const y = portBits(c, "Y") orelse return null;
+    for (a, 0..) |b, i| {
+        if (b == .sig and b.sig == bit) {
+            if (i < y.len and y[i] == .sig) return y[i].sig;
+            return null;
+        }
+    }
+    return null;
 }
 
 fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {

@@ -1,1 +1,1 @@
-{"bad_sync_missing.sv": ["CDC-001"], "good_2ff.sv": [], "good_marked_sync.sv": [], "good_srst_2ff.sv": []}
+{"bad_sync_missing.sv": ["CDC-001"],"good_2ff.sv": [],"good_marked_sync.sv": [],"good_srst_2ff.sv": [],"good_bufchain.sv": []}
