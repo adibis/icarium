@@ -17,9 +17,13 @@ zig build test     # unit tests
 
 ## Layout
 
-- `src/main.zig` — CLI entry
-- `src/ir.zig` — elaborated-netlist ingestion (next chunk)
-- `src/sdc.zig` — SDC subset parser and clock model (next chunk)
+Small topic files; unit tests mirror `src` under `tests/`
+(one `*_test.zig` per unit, aggregated by `tests/all.zig`).
+
+- `src/main.zig` — CLI entry and dispatch
+- `src/cli/` — argument matching, per-command runners
+- `src/ir/` — elaborated-netlist ingestion (next chunk)
+- `src/sdc/` — SDC subset parser and clock model (next chunk)
 - `pins.json` — machine-readable dependency pins
 - `bench/` — benchmark oracle, results, triage log
 - `fixtures/` — paired bad/good rule fixtures

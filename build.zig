@@ -18,13 +18,33 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run icarium");
     run_step.dependOn(&run_cmd.step);
 
-    const test_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
+    const core = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+
+    const test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/all.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    test_mod.addImport("icarium", core);
     const unit_tests = b.addTest(.{ .root_module = test_mod });
     const run_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
+
+    if (b.option([]const u8, "test-file", "Run one test file, e.g. tests/ir_path_test.zig")) |file| {
+        const one_mod = b.createModule(.{
+            .root_source_file = b.path(file),
+            .target = target,
+            .optimize = optimize,
+        });
+        one_mod.addImport("icarium", core);
+        const one_tests = b.addTest(.{ .root_module = one_mod });
+        const run_one = b.addRunArtifact(one_tests);
+        const one_step = b.step("test-file", "Run one test file");
+        one_step.dependOn(&run_one.step);
+    }
 }

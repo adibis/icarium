@@ -1,4 +1,5 @@
 const std = @import("std");
+const args = @import("cli/args.zig");
 
 const version = "0.1.0-dev";
 
@@ -17,25 +18,17 @@ pub fn main(init: std.process.Init) !u8 {
         try usage(&stderr.interface);
         return 2;
     };
-    if (isHelp(cmd)) {
+    if (args.isHelp(cmd)) {
         try usage(&stdout.interface);
         return 0;
     }
-    if (isVersion(cmd)) {
+    if (args.isVersion(cmd)) {
         try stdout.interface.print("icarium {s}\n", .{version});
         return 0;
     }
     try stderr.interface.print("unknown command: {s}\n\n", .{cmd});
     try usage(&stderr.interface);
     return 2;
-}
-
-fn isHelp(s: []const u8) bool {
-    return std.mem.eql(u8, s, "help") or std.mem.eql(u8, s, "--help") or std.mem.eql(u8, s, "-h");
-}
-
-fn isVersion(s: []const u8) bool {
-    return std.mem.eql(u8, s, "version") or std.mem.eql(u8, s, "--version") or std.mem.eql(u8, s, "-V");
 }
 
 fn usage(w: anytype) !void {
