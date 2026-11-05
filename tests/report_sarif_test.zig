@@ -539,6 +539,19 @@ const golden =
     \\              "defaultConfiguration": {
     \\                "level": "note"
     \\              }
+    \\            },
+    \\            {
+    \\              "id": "RDC-011",
+    \\              "name": "RDC-011",
+    \\              "shortDescription": {
+    \\                "text": "One net drives both sync and async resets"
+    \\              },
+    \\              "fullDescription": {
+    \\                "text": "One resolved reset root reaches an async pin on some flop\nand a sync control ($sdff SRST or a const-leg D-mux) on\nanother. Async users leave reset on the net's edge while\nsync users wait for a clock, so the groups skew and their\nhandoff corrupts. Split the net or qualify one side."
+    \\              },
+    \\              "defaultConfiguration": {
+    \\                "level": "error"
+    \\              }
     \\            }
     \\          ]
     \\        }

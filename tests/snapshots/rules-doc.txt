@@ -287,3 +287,12 @@ on the raw root in a served domain report at warn.
 honors:
 fixtures: fixtures/RDC-010
 
+RDC-011 [err] One net drives both sync and async resets
+One resolved reset root reaches an async pin on some flop
+and a sync control ($sdff SRST or a const-leg D-mux) on
+another. Async users leave reset on the net's edge while
+sync users wait for a clock, so the groups skew and their
+handoff corrupts. Split the net or qualify one side.
+honors:
+fixtures: fixtures/RDC-011
+

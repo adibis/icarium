@@ -754,3 +754,88 @@ test "chain tap reports a note plus an err for RDC-010" {
     try std.testing.expectEqual(@as(usize, 1), notes);
     try std.testing.expectEqual(@as(usize, 1), errs);
 }
+
+const dual_shared =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rst": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "aflop": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "ARST": [3], "Q": [6]}
+    \\        },
+    \\        "sflop": {
+    \\          "type": "$sdff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "SRST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "SRST": [3], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const dual_shared_sdc = "create_clock -name clk -period 10 [get_ports clk]\nset_input_delay -clock clk 1.0 [get_ports d]\n";
+
+test "one net on ARST and SRST fires RDC-011" {
+    var l = try loadAll(dual_shared, dual_shared_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var n: usize = 0;
+    for (fs) |f| {
+        if (!std.mem.eql(u8, f.rule, "RDC-011")) continue;
+        n += 1;
+        try std.testing.expectEqual(rule.registry.Severity.err, f.severity);
+        try std.testing.expectEqualStrings("aflop", f.dst);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "net 'rst' (port)") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "async reset of aflop") != null);
+        try std.testing.expect(std.mem.indexOf(u8, f.message, "sync reset of sflop") != null);
+    }
+    try std.testing.expectEqual(@as(usize, 1), n);
+}
+
+const dual_split =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "rst_a": {"direction": "input", "bits": [3]},
+    \\        "rst_s": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [6]}
+    \\      },
+    \\      "cells": {
+    \\        "aflop": {
+    \\          "type": "$adff",
+    \\          "parameters": {"ARST_POLARITY": "1", "ARST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "ARST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [5], "ARST": [3], "Q": [7]}
+    \\        },
+    \\        "sflop": {
+    \\          "type": "$sdff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "SRST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [7], "SRST": [4], "Q": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "split reset nets stay silent on RDC-011" {
+    var l = try loadAll(dual_split, dual_shared_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    for (fs) |f| {
+        try std.testing.expect(!std.mem.eql(u8, f.rule, "RDC-011"));
+    }
+}
