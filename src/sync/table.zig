@@ -19,6 +19,7 @@ pub const Table = struct {
     d_bit_to_flop: std.AutoHashMapUnmanaged(u32, usize),
     srst_data_bit_to_flop: std.AutoHashMapUnmanaged(u32, usize),
     memo: std.AutoHashMapUnmanaged(usize, Entry),
+    combines: []clock.trace.Combine,
 
     pub fn deinit(self: *Table) void {
         const parent = self.backing.child_allocator;
@@ -216,6 +217,14 @@ pub fn build(
         try d_bit_to_flop.put(alloc, d[0].sig, ci);
     }
 
+    // Combines copy over, strings included: the assignment that
+    // owns them may die before the table does.
+    var combines = std.ArrayListUnmanaged(clock.trace.Combine).empty;
+    for (asg.combines) |cb| {
+        var names = std.ArrayListUnmanaged([]const u8).empty;
+        for (cb.clocks) |n| try names.append(alloc, try alloc.dupe(u8, n));
+        try combines.append(alloc, .{ .cell = cb.cell, .bit = cb.bit, .clocks = try names.toOwnedSlice(alloc) });
+    }
     var t = Table{
         .alloc = alloc,
         .backing = backing,
@@ -223,6 +232,7 @@ pub fn build(
         .d_bit_to_flop = d_bit_to_flop,
         .srst_data_bit_to_flop = .{},
         .memo = .{},
+        .combines = try combines.toOwnedSlice(alloc),
     };
     // First flop wins a shared data bit, in cell order: a shared
     // bit has two readers anyway, so walkers reject it first.

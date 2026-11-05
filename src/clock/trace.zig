@@ -34,12 +34,23 @@ pub const Assignment = struct {
     // Every bit resolved while tracing, kept for consumers that
     // need domains below flop granularity (crossing endpoints).
     bit_domains: std.AutoHashMapUnmanaged(u32, Domain),
+    // Clock-combine declines, sorted by cell: CDC-023 reports
+    // these instead of re-walking the tracer's own decision.
+    combines: []Combine,
 
     pub fn deinit(self: *Assignment) void {
         const parent = self.backing.child_allocator;
         self.backing.deinit();
         parent.destroy(self.backing);
     }
+};
+
+// A gate whose legs carried two or more distinct declared
+// clocks: the output bit, its driver, and the leg clocks.
+pub const Combine = struct {
+    cell: usize,
+    bit: u32,
+    clocks: [][]const u8,
 };
 
 // One backward walk per CLK bit with a shared memo: each bit
@@ -55,7 +66,8 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
     var active = std.AutoHashMapUnmanaged(u32, void){};
     var flops: std.ArrayListUnmanaged(FlopDomain) = .empty;
     var controls: std.ArrayListUnmanaged(ControlPin) = .empty;
-    var w = Walker{ .mod = mod, .model = model, .alloc = alloc, .memo = &memo, .active = &active, .controls = &controls };
+    var combine_sets = std.AutoHashMapUnmanaged(u32, std.StringHashMapUnmanaged(void)){};
+    var w = Walker{ .mod = mod, .model = model, .alloc = alloc, .memo = &memo, .active = &active, .controls = &controls, .combines = &combine_sets };
     for (mod.cells, 0..) |c, ci| {
         if (!cells.isSequential(c.type)) continue;
         const dom = if (clkBits(c)) |clk|
@@ -72,11 +84,34 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
             _ = try w.resolveBits(clk);
         }
     }
+    var combines = std.ArrayListUnmanaged(Combine).empty;
+    var cit = combine_sets.iterator();
+    while (cit.next()) |ce| {
+        const drv = mod.driver_of.get(ce.key_ptr.*) orelse continue;
+        const ci = drv.cell orelse continue;
+        var names = std.ArrayListUnmanaged([]const u8).empty;
+        var nit = ce.value_ptr.iterator();
+        while (nit.next()) |ne| try names.append(alloc, ne.key_ptr.*);
+        std.mem.sort([]const u8, names.items, {}, struct {
+            fn less(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.less);
+        try combines.append(alloc, .{ .cell = ci, .bit = ce.key_ptr.*, .clocks = try names.toOwnedSlice(alloc) });
+    }
+    std.mem.sort(Combine, combines.items, mod, struct {
+        fn less(m: *const ir.types.Module, a: Combine, b: Combine) bool {
+            const ck = std.mem.order(u8, m.cells[a.cell].name, m.cells[b.cell].name);
+            if (ck != .eq) return ck == .lt;
+            return a.bit < b.bit;
+        }
+    }.less);
     return .{
         .backing = backing,
         .flops = try flops.toOwnedSlice(alloc),
         .controls = try controls.toOwnedSlice(alloc),
         .bit_domains = memo,
+        .combines = try combines.toOwnedSlice(alloc),
     };
 }
 
@@ -109,6 +144,7 @@ const Walker = struct {
     memo: *std.AutoHashMapUnmanaged(u32, Domain),
     active: *std.AutoHashMapUnmanaged(u32, void),
     controls: *std.ArrayListUnmanaged(ControlPin),
+    combines: *std.AutoHashMapUnmanaged(u32, std.StringHashMapUnmanaged(void)),
 
     // A clock bus must agree with itself; disagreement is broken
     // input, reported as unknown rather than picked arbitrarily.
@@ -133,7 +169,7 @@ const Walker = struct {
         if (w.active.contains(bit)) return w.make("unknown", "", &.{"clock-path loop"});
         const drv = w.mod.driver_of.get(bit) orelse return w.make("unknown", "", &.{"undriven clock"});
         try w.active.put(w.alloc, bit, {});
-        const dom = if (drv.cell) |ci| try w.throughCell(ci) else try w.throughPort(drv.port);
+        const dom = if (drv.cell) |ci| try w.throughCell(bit, ci) else try w.throughPort(drv.port);
         _ = w.active.remove(bit);
         try w.memo.put(w.alloc, bit, dom);
         return dom;
@@ -166,11 +202,11 @@ const Walker = struct {
         };
     }
 
-    fn throughCell(w: *Walker, ci: usize) error{OutOfMemory}!Domain {
+    fn throughCell(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         if (cells.isTransparent(c.type)) return w.throughTransparent(c);
         if (cells.isClockMux(c.type)) return w.throughMux(ci);
-        if (cells.isClockGate(c.type)) return w.throughGate(ci);
+        if (cells.isClockGate(c.type)) return w.throughGate(bit, ci);
         if (cells.isSequential(c.type)) return w.throughSequential(ci);
         if (c.blackbox) return w.make("unknown", "", &.{"blackbox-driven clock"});
         const why = try std.fmt.allocPrint(w.alloc, "unhandled {s} on clock path", .{c.type});
@@ -236,9 +272,10 @@ const Walker = struct {
 
     // A clock gate passes its clock leg and notes the rest as
     // enables; ambiguous legs stay unknown rather than guessed.
-    fn throughGate(w: *Walker, ci: usize) error{OutOfMemory}!Domain {
+    fn throughGate(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         var clock_dom: ?Domain = null;
+        var clock_legs = std.StringHashMapUnmanaged(void).empty;
         var enables: std.ArrayListUnmanaged([]const u8) = .empty;
         for (c.ports) |p| {
             if (p.direction == .output) continue;
@@ -246,12 +283,8 @@ const Walker = struct {
                 if (b != .sig) continue;
                 const d = try w.resolveBit(b.sig);
                 if (isClockDomain(d.name)) {
-                    if (clock_dom) |cd| {
-                        if (!std.mem.eql(u8, cd.name, d.name))
-                            return w.make("unknown", "", &.{"clock gate with multiple clock legs"});
-                    } else {
-                        clock_dom = d;
-                    }
+                    try clock_legs.put(w.alloc, d.name, {});
+                    if (clock_dom == null) clock_dom = d;
                 } else {
                     const desc = try w.describeBit(b);
                     var seen = false;
@@ -266,6 +299,15 @@ const Walker = struct {
                     }
                 }
             }
+        }
+        // Every leg resolves before the decline: nested combines
+        // and controls below the gate still get recorded.
+        if (clock_legs.count() >= 2) {
+            const slot = try w.combines.getOrPut(w.alloc, bit);
+            if (!slot.found_existing) slot.value_ptr.* = .empty;
+            var lit = clock_legs.iterator();
+            while (lit.next()) |le| try slot.value_ptr.put(w.alloc, le.key_ptr.*, {});
+            return w.make("unknown", "", &.{"clock gate with multiple clock legs"});
         }
         var dom = clock_dom orelse return w.make("unknown", "", &.{"clock gate without clock leg"});
         // Every non-clock leg is a recorded enable; flop-driven
