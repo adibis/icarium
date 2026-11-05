@@ -21,13 +21,14 @@ usage: icarium <command>
       --yosys-json FILE   input from scripts/elaborate.sh
       --top TOP           top module (default: single module)
       --sdc FILE          constraints file (optional)
+      --format FMT        text (default) or toon
   check             run CDC/RDC rules over a netlist
       --yosys-json FILE   input from scripts/elaborate.sh
       --top TOP           top module (default: single module)
       --sdc FILE          constraints file (optional)
       --only IDS          comma-separated rule allowlist
       --skip IDS          comma-separated rule blocklist
-      --format FMT        text (default), ids, json, or sarif
+      --format FMT        text (default), ids, json, sarif, or toon
       --minify            minified json (with --format json)
       --emit-domain-map FILE  write clock-domain map alongside
       --emit-reset-domain-map FILE  write reset-domain map alongside

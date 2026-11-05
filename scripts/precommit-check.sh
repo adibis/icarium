@@ -206,6 +206,20 @@ else
     grep -E 'FAIL' /tmp/precommit-suppress.log | sed 's/^/    /'
 fi
 
+# TOON size proof; same safe-skip contract.
+set +e
+sh bench/toon-tokens.sh >/tmp/precommit-toon.log 2>&1
+tt_code=$?
+set -e
+if [[ $tt_code -eq 0 ]]; then
+    pass "toon size proof"
+elif [[ $tt_code -eq 3 ]]; then
+    warn "toon size proof skipped (yosys missing)"
+else
+    fail "toon size proof — see /tmp/precommit-toon.log"
+    grep -E 'FAIL' /tmp/precommit-toon.log | sed 's/^/    /'
+fi
+
 # --- Summary ---------------------------------------------------------------
 
 echo

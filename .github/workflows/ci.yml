@@ -28,6 +28,10 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq yosys || echo "yosys unavailable, e2e will skip"
       - name: Install jsonschema for schema-gated suites
         run: pip install jsonschema || echo "jsonschema unavailable, schema-gated suites will skip"
+      - name: Install toon-format for TOON round-trip proof
+        run: pip install toon-format || echo "toon-format unavailable, round-trip will skip"
+      - name: TOON size proof (skips without yosys)
+        run: sh bench/toon-tokens.sh; code=$?; if [ $code -eq 3 ]; then echo "toon proof skipped: yosys not installed"; else exit $code; fi
       - run: zig build
       - name: End-to-end suite (skips without yosys)
         run: sh tests/e2e/run.sh; code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi

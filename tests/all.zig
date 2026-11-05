@@ -27,4 +27,5 @@ test {
     _ = @import("suppress_scan_test.zig");
     _ = @import("sync_hints_test.zig");
     _ = @import("suppress_meridian_test.zig");
+    _ = @import("report_toon_test.zig");
 }
