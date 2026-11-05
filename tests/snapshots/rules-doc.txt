@@ -172,6 +172,15 @@ domainless. Gate one clock, or mux instead of mixing.
 honors:
 fixtures: fixtures/CDC-023
 
+CDC-024 [warn] Single source fanning to multiple synchronizers
+One source bit reaches two or more synchronizer chains: each
+chain resolves metastability on its own edge, so the set only
+holds when the destinations never recombine what they latched
+apart. CDC-005 proves the recombination; this rule flags the
+fanout itself for the independence judgement.
+honors:
+fixtures: fixtures/CDC-024
+
 CDC-025 [warn] Unresolved clock association
 A crossing endpoint has no clock association: undriven flop
 clock, macro or memory output, unhandled primitive, or an

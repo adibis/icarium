@@ -372,6 +372,19 @@ const golden =
     \\              }
     \\            },
     \\            {
+    \\              "id": "CDC-024",
+    \\              "name": "CDC-024",
+    \\              "shortDescription": {
+    \\                "text": "Single source fanning to multiple synchronizers"
+    \\              },
+    \\              "fullDescription": {
+    \\                "text": "One source bit reaches two or more synchronizer chains: each\nchain resolves metastability on its own edge, so the set only\nholds when the destinations never recombine what they latched\napart. CDC-005 proves the recombination; this rule flags the\nfanout itself for the independence judgement."
+    \\              },
+    \\              "defaultConfiguration": {
+    \\                "level": "warning"
+    \\              }
+    \\            },
+    \\            {
     \\              "id": "CDC-025",
     \\              "name": "CDC-025",
     \\              "shortDescription": {

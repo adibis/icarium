@@ -182,3 +182,14 @@ test "meridian map load honors _meta and reserved ids" {
     try std.testing.expect(map.contains("W_X"));
     try std.testing.expect(!map.contains("_meta"));
 }
+
+test "meridian reads Fanout as the receiver" {
+    const text =
+        "set_rule_status -rule {W_FANOUT} -status {Waived} -expression {(Fanout =~ \"*u_sync_1*\") && (Driver =~ \"*ip_clk_en_q*\")} -comment {independent}\n";
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cmds = try suppress.meridian.parseText(arena.allocator(), text, null);
+    try std.testing.expectEqual(@as(usize, 1), cmds.len);
+    try std.testing.expectEqualStrings("*ip_clk_en_q*", cmds[0].record.driver.?);
+    try std.testing.expectEqualStrings("*u_sync_1*", cmds[0].record.receiver.?);
+}

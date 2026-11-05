@@ -1546,3 +1546,96 @@ test "a clock plus enable gate stays silent" {
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
 }
+
+const fanout_src =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "qa": {"direction": "output", "bits": [13]},
+    \\        "qb": {"direction": "output", "bits": [15]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [20], "Q": [11]}
+    \\        },
+    \\        "a1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [11], "Q": [12]}
+    \\        },
+    \\        "a2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [12], "Q": [13]}
+    \\        },
+    \\        "b1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [11], "Q": [14]}
+    \\        },
+    \\        "b2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [14], "Q": [15]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const fanout2_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+;
+
+test "one source into two syncs fires CDC-024 alone" {
+    var l = try loadAll(fanout_src, fanout2_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-024"));
+}
+
+const fanout_single =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "qa": {"direction": "output", "bits": [13]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [20], "Q": [11]}
+    \\        },
+    \\        "a1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [11], "Q": [12]}
+    \\        },
+    \\        "a2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [12], "Q": [13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "one source into one sync stays silent" {
+    var l = try loadAll(fanout_single, fanout2_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}

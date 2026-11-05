@@ -1,3 +1,5 @@
+// Good for CDC-005 (the twin chains never recombine) but bad for
+// CDC-024 by design: the fanout itself still needs judgement.
 module good_no_reconverge (
     input  logic ca,
     input  logic cb,

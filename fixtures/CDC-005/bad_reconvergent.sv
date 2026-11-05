@@ -1,3 +1,5 @@
+// Reconvergent twin chains: CDC-005 proves the recombination and
+// CDC-024 flags the fanout behind it. Both fire by design.
 module bad_reconvergent (
     input  logic ca,
     input  logic cb,

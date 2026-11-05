@@ -4,7 +4,7 @@
     "date": "2026-11-05",
     "source": "hw/top_earlgrey/cdc/cdc_waivers*.tcl",
     "opentitan": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170",
-    "reserved": ["CDC-024", "CDC-025", "CDC-026", "RDC-009", "RDC-010"]
+    "reserved": ["CDC-026", "RDC-009", "RDC-010"]
   },
   "W_DATA": ["CDC-001", "CDC-004"],
   "DATA": ["CDC-001", "CDC-004"],

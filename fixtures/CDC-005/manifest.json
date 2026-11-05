@@ -1,1 +1,1 @@
-{"bad_reconvergent.sv": ["CDC-005"], "good_no_reconverge.sv": [], "good_single_chain.sv": []}
+{"bad_reconvergent.sv": ["CDC-005", "CDC-024"], "good_no_reconverge.sv": ["CDC-024"], "good_single_chain.sv": []}

@@ -71,6 +71,7 @@ fn fire(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOf
 }
 
 fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!bool {
+    if (registry.unknownSide(x)) return false;
     if (!x.async_per_sdc) return false;
     if (x.kind != .flop_flop_bit) return false;
     if (ctx.isBusMember(x)) return false;

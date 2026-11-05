@@ -356,11 +356,13 @@ const reconv =
     \\}
 ;
 
-test "twin chains recombining fire CDC-005 exactly once" {
+test "twin chains recombining fire CDC-005 beside CDC-024" {
     var l = try loadAll(reconv, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkDepth(&l, 2);
-    try std.testing.expect(onlyRule(fs, "CDC-005"));
+    try std.testing.expectEqual(@as(usize, 2), fs.len);
+    try std.testing.expectEqualStrings("CDC-005", fs[0].rule);
+    try std.testing.expectEqualStrings("CDC-024", fs[1].rule);
     try std.testing.expectEqualStrings("src", fs[0].dst);
     try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "2 independent sync chains") != null);
 }
@@ -408,9 +410,9 @@ const split =
     \\}
 ;
 
-test "twin chains without recombination stay silent" {
+test "twin chains without recombination fire CDC-024 alone" {
     var l = try loadAll(split, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkDepth(&l, 2);
-    try std.testing.expectEqual(@as(usize, 0), fs.len);
+    try std.testing.expect(onlyRule(fs, "CDC-024"));
 }
