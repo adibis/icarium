@@ -1,0 +1,14 @@
+{
+  "_note": "Machine-readable pins. One line per tool so check-pins.sh can grep without jq.",
+  "implemented_through_phase": 1,
+  "zig_version": "0.16.0",
+  "tools": {
+    "yosys":         { "version": null, "minimum": "0.67", "needed_by_phase": 3 },
+    "sv-elab":       { "version": null, "needed_by_phase": 3 },
+    "slang":         { "version": null, "needed_by_phase": 3 },
+    "rtl-buddy-cdc": { "version": null, "needed_by_phase": 3 },
+    "toon-spec":     { "version": null, "needed_by_phase": 5 },
+    "opentitan":     { "commit": null, "needed_by_phase": 6 },
+    "accellera-1.0": { "version": null, "sha256": null, "needed_by_phase": 7 }
+  }
+}
