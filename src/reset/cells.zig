@@ -15,11 +15,15 @@ pub const ResetPins = struct {
 const table = std.StaticStringMap(ResetPins).initComptime(.{
     .{ "$adff", ResetPins{ .async = &.{AsyncPin{ .pin = "ARST", .polarity_param = "ARST_POLARITY" }}, .sync = &.{} } },
     .{ "$adffe", ResetPins{ .async = &.{AsyncPin{ .pin = "ARST", .polarity_param = "ARST_POLARITY" }}, .sync = &.{} } },
+    .{ "$aldff", ResetPins{ .async = &.{AsyncPin{ .pin = "ALOAD", .polarity_param = "ALOAD_POLARITY" }}, .sync = &.{} } },
+    .{ "$aldffe", ResetPins{ .async = &.{AsyncPin{ .pin = "ALOAD", .polarity_param = "ALOAD_POLARITY" }}, .sync = &.{} } },
+    .{ "$dffsre", ResetPins{ .async = &.{AsyncPin{ .pin = "CLR", .polarity_param = "CLR_POLARITY" }}, .sync = &.{} } },
     .{ "$dffsr", ResetPins{ .async = &.{ AsyncPin{ .pin = "SET", .polarity_param = "SET_POLARITY" }, AsyncPin{ .pin = "CLR", .polarity_param = "CLR_POLARITY" } }, .sync = &.{} } },
     .{ "$dlatchsr", ResetPins{ .async = &.{ AsyncPin{ .pin = "SET", .polarity_param = "SET_POLARITY" }, AsyncPin{ .pin = "CLR", .polarity_param = "CLR_POLARITY" } }, .sync = &.{} } },
     .{ "$sr", ResetPins{ .async = &.{ AsyncPin{ .pin = "SET", .polarity_param = "SET_POLARITY" }, AsyncPin{ .pin = "CLR", .polarity_param = "CLR_POLARITY" } }, .sync = &.{} } },
     .{ "$sdff", ResetPins{ .async = &.{}, .sync = &.{"SRST"} } },
     .{ "$sdffe", ResetPins{ .async = &.{}, .sync = &.{"SRST"} } },
+    .{ "$sdffce", ResetPins{ .async = &.{}, .sync = &.{"SRST"} } },
 });
 
 pub fn resetPins(cell_type: []const u8) ?ResetPins {

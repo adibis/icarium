@@ -3,6 +3,7 @@ const clock = @import("icarium").clock;
 const crossing = @import("icarium").crossing;
 const ir = @import("icarium").ir;
 const rule = @import("icarium").rule;
+const reset = @import("icarium").reset;
 const sdc = @import("icarium").sdc;
 const sync = @import("icarium").sync;
 
@@ -13,6 +14,8 @@ const Loaded = struct {
     report: crossing.enumerate.Report,
     table: sync.table.Table,
     marks: sync.attrs.Marks,
+    reset_view: reset.trace.View,
+    reset_syncs: reset.chains.Syncs,
     arena: std.heap.ArenaAllocator,
 };
 
@@ -38,7 +41,12 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
     errdefer report.deinit();
     var table = try sync.table.build(std.testing.allocator, &mod, &clock_asg);
     errdefer table.deinit();
-    const marks = try sync.attrs.collect(std.testing.allocator, &mod);
+    var marks = try sync.attrs.collect(std.testing.allocator, &mod);
+    errdefer marks.deinit();
+    var reset_view = try reset.trace.assign(std.testing.allocator, &mod, &clock_asg);
+    errdefer reset_view.deinit();
+    var reset_syncs = try reset.chains.find(std.testing.allocator, &mod, &reset_view, &table.domains, &marks.reset_syncs);
+    errdefer reset_syncs.deinit();
     return .{
         .mod = mod,
         .sdc_mod = sdc_mod,
@@ -46,12 +54,16 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
         .report = report,
         .table = table,
         .marks = marks,
+        .reset_view = reset_view,
+        .reset_syncs = reset_syncs,
         .arena = std.heap.ArenaAllocator.init(std.testing.allocator),
     };
 }
 
 fn freeAll(l: *Loaded) void {
     l.arena.deinit();
+    l.reset_syncs.deinit();
+    l.reset_view.deinit();
     l.marks.deinit();
     l.table.deinit();
     l.report.deinit();
@@ -69,6 +81,8 @@ fn checkAll(l: *Loaded, only: ?[]const []const u8, skip: ?[]const []const u8) ![
         .report = &l.report,
         .table = &l.table,
         .marks = &l.marks,
+        .reset_view = &l.reset_view,
+        .reset_syncs = &l.reset_syncs,
         .buses = buses,
         .cfg = .{},
         .alloc = alloc,

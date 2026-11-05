@@ -127,6 +127,10 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     defer table.deinit();
     var marks = sync.attrs.collect(init.gpa, &mod) catch return 3;
     defer marks.deinit();
+    var reset_view = reset.trace.assign(init.gpa, &mod, &clock_asg) catch return 3;
+    defer reset_view.deinit();
+    var reset_syncs = reset.chains.find(init.gpa, &mod, &reset_view, &table.domains, &marks.reset_syncs) catch return 3;
+    defer reset_syncs.deinit();
     const buses = rule.context.collectBuses(scratch, &report) catch return 3;
     var ctx = rule.context.Context{
         .mod = &mod,
@@ -134,6 +138,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         .report = &report,
         .table = &table,
         .marks = &marks,
+        .reset_view = &reset_view,
+        .reset_syncs = &reset_syncs,
         .buses = buses,
         .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold, .sync_primitives = prims.items },
         .alloc = scratch,

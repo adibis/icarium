@@ -1,5 +1,6 @@
 const std = @import("std");
 const ir = @import("../ir.zig");
+const reset = @import("../reset.zig");
 
 // User-vetted synchronizer assertions, read off netname wires:
 // the attribute sits on the signal, membership on the flop whose
@@ -31,6 +32,15 @@ pub const glitchless_names = std.StaticStringMap(void).initComptime(.{
     .{ "glitchfree_clock_mux", {} },
 });
 
+pub const reset_sync_names = std.StaticStringMap(void).initComptime(.{
+    .{ "reset_sync", {} },
+    .{ "reset_synchronizer", {} },
+});
+
+pub const reset_polarity_names = std.StaticStringMap(void).initComptime(.{
+    .{ "reset_polarity", {} },
+});
+
 pub const Marks = struct {
     backing: *std.heap.ArenaAllocator,
     syncs: std.StringHashMapUnmanaged(void),
@@ -38,6 +48,8 @@ pub const Marks = struct {
     handshakes: std.StringHashMapUnmanaged(void),
     grays: std.StringHashMapUnmanaged(void),
     glitchless_bits: std.AutoHashMapUnmanaged(u32, void),
+    reset_syncs: std.StringHashMapUnmanaged(void),
+    reset_polarities: std.StringHashMapUnmanaged(reset.trace.Polarity),
 
     pub fn deinit(self: *Marks) void {
         const parent = self.backing.child_allocator;
@@ -63,6 +75,14 @@ pub const Marks = struct {
 
     pub fn glitchlessBit(self: *const Marks, bit: u32) bool {
         return self.glitchless_bits.contains(bit);
+    }
+
+    pub fn hasResetSync(self: *const Marks, cell_name: []const u8) bool {
+        return self.reset_syncs.contains(cell_name);
+    }
+
+    pub fn resetPolarity(self: *const Marks, port: []const u8) ?reset.trace.Polarity {
+        return self.reset_polarities.get(port);
     }
 };
 
@@ -112,11 +132,13 @@ pub fn collect(parent: std.mem.Allocator, mod: *const ir.types.Module) error{Out
     const handshake_bits = try markedBits(alloc, mod, &handshake_names, false);
     const gray_bits = try markedBits(alloc, mod, &gray_names, false);
     const glitchless_bits = try markedBits(alloc, mod, &glitchless_names, false);
+    const reset_sync_bits = try markedBits(alloc, mod, &reset_sync_names, false);
 
     var syncs = std.StringHashMapUnmanaged(void).empty;
     var statics = std.StringHashMapUnmanaged(void).empty;
     var handshakes = std.StringHashMapUnmanaged(void).empty;
     var grays = std.StringHashMapUnmanaged(void).empty;
+    var reset_syncs = std.StringHashMapUnmanaged(void).empty;
     for (mod.cells) |c| {
         const q = portBits(c, "Q") orelse continue;
         for (q) |b| {
@@ -125,6 +147,7 @@ pub fn collect(parent: std.mem.Allocator, mod: *const ir.types.Module) error{Out
             if (static_bits.contains(b.sig)) try statics.put(alloc, c.name, {});
             if (handshake_bits.contains(b.sig)) try handshakes.put(alloc, c.name, {});
             if (gray_bits.contains(b.sig)) try grays.put(alloc, c.name, {});
+            if (reset_sync_bits.contains(b.sig)) try reset_syncs.put(alloc, c.name, {});
         }
     }
     return .{
@@ -134,7 +157,38 @@ pub fn collect(parent: std.mem.Allocator, mod: *const ir.types.Module) error{Out
         .handshakes = handshakes,
         .grays = grays,
         .glitchless_bits = glitchless_bits,
+        .reset_syncs = reset_syncs,
+        .reset_polarities = try polarityOverrides(alloc, mod),
     };
+}
+
+// Port-level reset polarity declarations: only netnames that ARE
+// top-level input ports count, and only high/low values decode.
+// Anything else stays out rather than failing the run.
+fn polarityOverrides(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+) error{OutOfMemory}!std.StringHashMapUnmanaged(reset.trace.Polarity) {
+    var out = std.StringHashMapUnmanaged(reset.trace.Polarity).empty;
+    var it = mod.netnames.iterator();
+    while (it.next()) |nn| {
+        if (!isInputPort(mod, nn.key_ptr.*)) continue;
+        for (nn.value_ptr.attrs) |a| {
+            if (reset_polarity_names.get(a.name) == null) continue;
+            if (a.value != .str) continue;
+            const v = std.mem.trim(u8, a.value.str, " \t\r\n");
+            if (std.ascii.eqlIgnoreCase(v, "high")) try out.put(alloc, nn.key_ptr.*, .high);
+            if (std.ascii.eqlIgnoreCase(v, "low")) try out.put(alloc, nn.key_ptr.*, .low);
+        }
+    }
+    return out;
+}
+
+fn isInputPort(mod: *const ir.types.Module, name: []const u8) bool {
+    for (mod.ports) |p| {
+        if (std.mem.eql(u8, p.name, name)) return p.direction == .input;
+    }
+    return false;
 }
 
 fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {

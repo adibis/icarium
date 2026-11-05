@@ -11,6 +11,10 @@ pub const AsyncReset = struct {
     pin: []const u8,
     origin: Origin,
     ref: []const u8,
+    // Inversions between source and pin: chain recognition folds
+    // them into the shared-reset signature, so opposite-polarity
+    // legs never count as one reset.
+    flips: u32,
     polarity: Polarity,
     notes: [][]const u8,
 };
@@ -82,6 +86,7 @@ pub fn assign(
                     .pin = try alloc.dupe(u8, ap.pin),
                     .origin = res.origin,
                     .ref = try alloc.dupe(u8, res.ref),
+                    .flips = res.flips,
                     .polarity = pol.value,
                     .notes = try notes.toOwnedSlice(alloc),
                 });

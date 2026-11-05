@@ -72,6 +72,8 @@ fn knownAttr(name: []const u8) bool {
         .{ .m = &sync.attrs.handshake_names, .ci = false },
         .{ .m = &sync.attrs.gray_names, .ci = false },
         .{ .m = &sync.attrs.glitchless_names, .ci = false },
+        .{ .m = &sync.attrs.reset_sync_names, .ci = false },
+        .{ .m = &sync.attrs.reset_polarity_names, .ci = false },
     }) |t| {
         if (t.ci) {
             for (t.m.keys()) |k| {

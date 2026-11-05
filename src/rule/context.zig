@@ -2,6 +2,7 @@ const std = @import("std");
 const clock = @import("../clock.zig");
 const crossing = @import("../crossing.zig");
 const ir = @import("../ir.zig");
+const reset = @import("../reset.zig");
 const sdc = @import("../sdc.zig");
 const sync = @import("../sync.zig");
 
@@ -20,6 +21,8 @@ pub const Context = struct {
     report: *const crossing.enumerate.Report,
     table: *sync.table.Table,
     marks: *const sync.attrs.Marks,
+    reset_view: *const reset.trace.View,
+    reset_syncs: *const reset.chains.Syncs,
     buses: []const crossing.enumerate.Crossing,
     cfg: Config,
     alloc: std.mem.Allocator,
@@ -102,6 +105,45 @@ const FaninBit = struct { bit: u32, depth: u8 };
 
 // Flop cells whose Q feeds the bits through combinational logic.
 // Ports and constants end the walk; twelve hops bound it.
+// Backward BFS through combinational cells, collecting the
+// top-level input ports reached. Flop Q stops the walk: a
+// flopped source belongs to RDC-004's case, never this one.
+pub fn backwardPortFanin(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    start: []ir.bits.Bit,
+) error{OutOfMemory}![][]const u8 {
+    var ports = std.StringHashMapUnmanaged(void).empty;
+    var seen = std.AutoHashMapUnmanaged(u32, void).empty;
+    var frontier = std.ArrayListUnmanaged(FaninBit).empty;
+    for (start) |b| {
+        if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = 0 });
+    }
+    var head: usize = 0;
+    while (head < frontier.items.len) : (head += 1) {
+        const fb = frontier.items[head];
+        if (seen.contains(fb.bit)) continue;
+        try seen.put(alloc, fb.bit, {});
+        const drv = mod.driver_of.get(fb.bit) orelse continue;
+        const ci = drv.cell orelse {
+            try ports.put(alloc, drv.port, {});
+            continue;
+        };
+        if (std.mem.eql(u8, drv.port, "Q")) continue;
+        if (fb.depth >= 12) continue;
+        for (mod.cells[ci].ports) |p| {
+            if (p.direction == .output) continue;
+            for (p.bits) |b| {
+                if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = fb.depth + 1 });
+            }
+        }
+    }
+    var out = std.ArrayListUnmanaged([]const u8).empty;
+    var it = ports.iterator();
+    while (it.next()) |e| try out.append(alloc, e.key_ptr.*);
+    return out.toOwnedSlice(alloc);
+}
+
 pub fn backwardFlopFanin(
     alloc: std.mem.Allocator,
     mod: *const ir.types.Module,
