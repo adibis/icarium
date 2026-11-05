@@ -3,6 +3,8 @@ const cdc001 = @import("cdc001.zig");
 const cdc002 = @import("cdc002.zig");
 const cdc003 = @import("cdc003.zig");
 const cdc005 = @import("cdc005.zig");
+const cdc008 = @import("cdc008.zig");
+const cdc011 = @import("cdc011.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -18,7 +20,8 @@ pub const Rule = struct {
     title: []const u8,
     doc: []const u8,
     honors: []const []const u8,
-    check: *const fn (*context.Context, crossing.enumerate.Crossing) error{OutOfMemory}!?finding.Finding,
+    check: ?*const fn (*context.Context, crossing.enumerate.Crossing) error{OutOfMemory}!?finding.Finding = null,
+    check_all: ?*const fn (*context.Context) error{OutOfMemory}![]finding.Finding = null,
 };
 
 pub const rules = [_]Rule{
@@ -26,6 +29,8 @@ pub const rules = [_]Rule{
     cdc002.rule,
     cdc003.rule,
     cdc005.rule,
+    cdc008.rule,
+    cdc011.rule,
 };
 
 fn knownAttr(name: []const u8) bool {
@@ -59,6 +64,8 @@ comptime {
         for (r.honors) |h| {
             if (!knownAttr(h)) @compileError("rule honors unknown attribute");
         }
+        const hooks: u2 = (if (r.check != null) 1 else 0) + (if (r.check_all != null) 1 else 0);
+        if (hooks != 1) @compileError("rule needs exactly one of check/check_all");
     }
 }
 
@@ -96,8 +103,13 @@ pub fn runChecks(
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (rules) |r| {
         if (!enabled(r.id, only, skip)) continue;
-        for (ctx.report.crossings) |x| {
-            if (try r.check(ctx, x)) |f| try out.append(alloc, f);
+        if (r.check_all) |whole| {
+            const fs = try whole(ctx);
+            try out.appendSlice(alloc, fs);
+        } else if (r.check) |one| {
+            for (ctx.report.crossings) |x| {
+                if (try one(ctx, x)) |f| try out.append(alloc, f);
+            }
         }
     }
     return out.toOwnedSlice(alloc);

@@ -1,0 +1,1 @@
+{"bad_clock_as_data.sv": ["CDC-008"], "good_forwarded_clock.sv": [], "good_gated_clock.sv": []}

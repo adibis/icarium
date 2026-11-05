@@ -18,38 +18,50 @@ pub const rule = registry.Rule{
     \\fan out after, or prove the skew harmless.
     ,
     .honors = &.{},
-    .check = check,
+    .check_all = checkAll,
 };
 
-// Group rule on a per-crossing hook: only the canonical first
-// member evaluates, so one finding speaks for the fan-out.
-pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!?finding.Finding {
-    if (!isCandidate(ctx, x)) return null;
-    const sc = x.src.cell.?;
-    const dc = x.dst.cell.?;
-    var members = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
+// Candidates gather by (source, clock); each group of two or
+// more is tested for downstream recombination.
+pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+    var cands = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
     for (ctx.report.crossings) |c| {
-        if (!isCandidate(ctx, c)) continue;
-        if (c.src.cell.? != sc) continue;
-        if (!std.mem.eql(u8, c.dst_clk, x.dst_clk)) continue;
-        try members.append(ctx.alloc, c);
+        if (try isCandidate(ctx, c)) try cands.append(ctx.alloc, c);
     }
-    if (members.items.len < 2) return null;
-    std.mem.sort(crossing.enumerate.Crossing, members.items, ctx.mod, struct {
-        fn less(mod: *const ir.types.Module, a: crossing.enumerate.Crossing, b: crossing.enumerate.Crossing) bool {
-            return std.mem.lessThan(u8, mod.cells[a.dst.cell.?].name, mod.cells[b.dst.cell.?].name);
+    std.mem.sort(crossing.enumerate.Crossing, cands.items, ctx, struct {
+        fn less(cx: *context.Context, a: crossing.enumerate.Crossing, b: crossing.enumerate.Crossing) bool {
+            if (a.src.cell.? != b.src.cell.?) return a.src.cell.? < b.src.cell.?;
+            const ck = std.mem.order(u8, a.dst_clk, b.dst_clk);
+            if (ck != .eq) return ck == .lt;
+            return std.mem.lessThan(u8, cx.mod.cells[a.dst.cell.?].name, cx.mod.cells[b.dst.cell.?].name);
         }
     }.less);
-    if (members.items[0].dst.cell.? != dc) return null;
-    if (!try reconverges(ctx, members.items)) return null;
+    var out = std.ArrayListUnmanaged(finding.Finding).empty;
+    var i: usize = 0;
+    while (i < cands.items.len) {
+        var j = i + 1;
+        while (j < cands.items.len and
+            cands.items[j].src.cell.? == cands.items[i].src.cell.? and
+            std.mem.eql(u8, cands.items[j].dst_clk, cands.items[i].dst_clk)) : (j += 1)
+        {}
+        if (j - i >= 2 and try reconverges(ctx, cands.items[i..j])) {
+            try out.append(ctx.alloc, try fire(ctx, cands.items[i..j]));
+        }
+        i = j;
+    }
+    return out.toOwnedSlice(ctx.alloc);
+}
+
+fn fire(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOfMemory}!finding.Finding {
+    const sc = group[0].src.cell.?;
     var names = std.ArrayListUnmanaged([]const u8).empty;
-    for (members.items) |c| {
+    for (group) |c| {
         try names.append(ctx.alloc, ctx.mod.cells[c.dst.cell.?].name);
     }
     const joined = try std.mem.join(ctx.alloc, ", ", names.items);
     const message = try std.fmt.allocPrint(ctx.alloc,
         "reconvergent synchronizers: source flop {s} drives {d} independent sync chains in domain {s} (dst flops: {s}); independent metastability resolution can produce mismatched synchronized values when these outputs recombine",
-        .{ ctx.mod.cells[sc].name, members.items.len, x.dst_clk, joined });
+        .{ ctx.mod.cells[sc].name, group.len, group[0].dst_clk, joined });
     return .{
         .rule = rule.id,
         .severity = rule.severity,
@@ -58,7 +70,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     };
 }
 
-fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) bool {
+fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!bool {
     if (!x.async_per_sdc) return false;
     if (x.kind != .flop_flop_bit) return false;
     if (ctx.isBusMember(x)) return false;
@@ -67,11 +79,11 @@ fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) bool {
     if (x.src.cell == null) return false;
     const dt = ctx.mod.cells[dc].type;
     if (!clock.cells.isSequential(dt) or clock.cells.isLatch(dt)) return false;
-    const depth = ctx.table.chainDepth(ctx.mod, dc, x.dst_clk) catch return false;
+    const depth = try ctx.table.chainDepth(ctx.mod, dc, x.dst_clk);
     return depth.depth >= 2;
 }
 
-// A cell reached from two terminals outside their own chains
+// A cell reached from two chain terminals outside their own chains
 // is a recombination point. Cones stop twelve hops out.
 fn reconverges(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOfMemory}!bool {
     var counts = std.AutoHashMapUnmanaged(usize, u32).empty;

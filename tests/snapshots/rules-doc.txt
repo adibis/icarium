@@ -31,3 +31,19 @@ fan out after, or prove the skew harmless.
 honors:
 fixtures: fixtures/CDC-005
 
+CDC-008 [err] Clock signal used as data
+A bit that drives a flop clock (or an SDC clock port) also feeds
+a non-clock input: clocks ride low-skew networks and sampling
+them as data breaks STA. Clock-distribution cells, clock pins,
+and off-chip forwarding are exempt; the rest is a wiring bug.
+honors:
+fixtures: fixtures/CDC-008
+
+CDC-011 [warn] Unconstrained primary input captured by clocked logic
+A top input with no set_input_delay clock typing reaches a
+flop D or SRST pin: one domain is a methodology warning, two
+or more an error no typing can silence. Type the port, then
+synchronize the foreign side when the domains disagree.
+honors:
+fixtures: fixtures/CDC-011
+

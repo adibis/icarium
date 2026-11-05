@@ -76,6 +76,13 @@ fn checkAll(l: *Loaded, only: ?[]const []const u8, skip: ?[]const []const u8) ![
     return rule.registry.runChecks(alloc, &ctx, only, skip);
 }
 
+const two_sdc_typed =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+;
+
 const two_sdc =
     \\create_clock -name ca -period 10 [get_ports ca]
     \\create_clock -name cb -period 7 [get_ports cb]
@@ -110,7 +117,7 @@ const bare =
 ;
 
 test "bare async pair fires with depth and endpoints" {
-    var l = try loadAll(bare, two_sdc);
+    var l = try loadAll(bare, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkAll(&l, null, null);
     try std.testing.expectEqual(@as(usize, 1), fs.len);
@@ -154,7 +161,7 @@ const synced =
 ;
 
 test "a second stage silences the rule" {
-    var l = try loadAll(synced, two_sdc);
+    var l = try loadAll(synced, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkAll(&l, null, null);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
@@ -191,7 +198,7 @@ const marked_dst =
 ;
 
 test "a vouched destination silences the rule" {
-    var l = try loadAll(marked_dst, two_sdc);
+    var l = try loadAll(marked_dst, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkAll(&l, null, null);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
@@ -228,7 +235,7 @@ const marked_src =
 ;
 
 test "a held-constant source silences the rule" {
-    var l = try loadAll(marked_src, two_sdc);
+    var l = try loadAll(marked_src, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkAll(&l, null, null);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
@@ -273,11 +280,12 @@ test "typed async ports fire, untyped ports defer to CDC-011" {
     var u = try loadAll(typed_port, two_sdc);
     defer freeAll(&u);
     const ufs = try checkAll(&u, null, null);
-    try std.testing.expectEqual(@as(usize, 0), ufs.len);
+    try std.testing.expectEqual(@as(usize, 1), ufs.len);
+    try std.testing.expectEqualStrings("CDC-011", ufs[0].rule);
 }
 
 test "only and skip filter by rule id" {
-    var l = try loadAll(bare, two_sdc);
+    var l = try loadAll(bare, two_sdc_typed);
     defer freeAll(&l);
     const all = try checkAll(&l, null, null);
     try std.testing.expectEqual(@as(usize, 1), all.len);

@@ -81,6 +81,16 @@ fn onlyRule(fs: []rule.finding.Finding, id: []const u8) bool {
     return std.mem.eql(u8, fs[0].rule, id);
 }
 
+const two_sdc_typed =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+    \\set_input_delay -clock ca 1.0 [get_ports d1]
+    \\set_input_delay -clock ca 1.0 [get_ports d2]
+    \\set_input_delay -clock cb 1.0 [get_ports rst]
+;
+
 const two_sdc =
     \\create_clock -name ca -period 10 [get_ports ca]
     \\create_clock -name cb -period 7 [get_ports cb]
@@ -120,7 +130,7 @@ const two_stage =
 ;
 
 test "two stages fire CDC-002 only when the bar is raised" {
-    var l = try loadAll(two_stage, two_sdc);
+    var l = try loadAll(two_stage, two_sdc_typed);
     defer freeAll(&l);
     const silent = try checkDepth(&l, 2);
     try std.testing.expectEqual(@as(usize, 0), silent.len);
@@ -174,7 +184,7 @@ const gated_sync =
 ;
 
 test "a gate before the chain fires CDC-003, not CDC-001" {
-    var l = try loadAll(gated_sync, two_sdc);
+    var l = try loadAll(gated_sync, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkDepth(&l, 2);
     try std.testing.expectEqual(@as(usize, 2), fs.len);
@@ -220,7 +230,7 @@ const rmx_sync =
 ;
 
 test "a lone reset mux on entry is part of the flop" {
-    var l = try loadAll(rmx_sync, two_sdc);
+    var l = try loadAll(rmx_sync, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkDepth(&l, 2);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
@@ -279,7 +289,7 @@ const reconv =
 ;
 
 test "twin chains recombining fire CDC-005 exactly once" {
-    var l = try loadAll(reconv, two_sdc);
+    var l = try loadAll(reconv, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkDepth(&l, 2);
     try std.testing.expect(onlyRule(fs, "CDC-005"));
@@ -331,7 +341,7 @@ const split =
 ;
 
 test "twin chains without recombination stay silent" {
-    var l = try loadAll(split, two_sdc);
+    var l = try loadAll(split, two_sdc_typed);
     defer freeAll(&l);
     const fs = try checkDepth(&l, 2);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
