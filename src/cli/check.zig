@@ -7,6 +7,7 @@ const findings_json = @import("../report.zig").findings;
 const report_text = @import("../report.zig").text;
 const resetmap = @import("../report.zig").resetmap;
 const sarif = @import("../report.zig").sarif;
+const suppress = @import("../suppress.zig");
 const tool_version = @import("../version.zig").version;
 const reset = @import("../reset.zig");
 const rule = @import("../rule.zig");
@@ -23,6 +24,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var minify = false;
     var domain_map_path: ?[]const u8 = null;
     var reset_map_path: ?[]const u8 = null;
+    var waivers_path: ?[]const u8 = null;
+    var strict_waivers = false;
     var no_findings = false;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
@@ -59,6 +62,11 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         } else if (std.mem.eql(u8, a, "--emit-reset-domain-map") and i + 1 < argv.len) {
             reset_map_path = argv[i + 1];
             i += 1;
+        } else if (std.mem.eql(u8, a, "--waivers") and i + 1 < argv.len) {
+            waivers_path = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--strict-waivers")) {
+            strict_waivers = true;
         } else if (std.mem.eql(u8, a, "--no-findings")) {
             no_findings = true;
         } else if (std.mem.eql(u8, a, "--sync-depth") and i + 1 < argv.len) {
@@ -176,6 +184,33 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     else
         rule.registry.runChecks(scratch, &ctx, only_arg, skip_arg) catch return 3;
 
+    var unmatched: []const []const u8 = &.{};
+    var wbytes: []u8 = &.{};
+    defer if (wbytes.len > 0) init.gpa.free(wbytes);
+    var waived: ?suppress.waivers.Loaded = null;
+    defer if (waived) |*l| l.deinit();
+    if (waivers_path) |wp| {
+        if (no_findings) {
+            err.writeAll("check: --waivers ignored with --no-findings\n") catch {};
+        } else {
+            wbytes = std.Io.Dir.cwd().readFileAlloc(init.io, wp, init.gpa, .limited(1 << 26)) catch {
+                err.print("check: cannot read {s}\n", .{wp}) catch {};
+                return 3;
+            };
+            waived = suppress.waivers.load(init.gpa, wbytes) catch {
+                err.print("check: bad waivers file {s}\n", .{wp}) catch {};
+                return 2;
+            };
+            const applied = suppress.waivers.apply(scratch, &mod, findings, &waived.?, suppress.waivers.today(init.io), wp) catch return 3;
+            for (findings, 0..) |*f, fi| f.waiver = applied.hits[fi];
+            unmatched = applied.unmatched;
+            for (applied.expired) |id| err.print("check: waiver {s} expired: not applied\n", .{id}) catch {};
+            for (unmatched) |id| err.print("check: waiver {s} matched no finding\n", .{id}) catch {};
+        }
+    } else if (strict_waivers) {
+        err.writeAll("check: --strict-waivers without --waivers has no waivers to check\n") catch {};
+    }
+
     if (domain_map_path) |mp| {
         var aw = std.Io.Writer.Allocating.init(scratch);
         clockmap.writeClockMap(scratch, &aw.writer, &mod, &sdc_mod, &clock_asg, &report, &table, &marks, findings, tool_version) catch return 3;
@@ -198,7 +233,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
 
     switch (fmt) {
-        .json => findings_json.writeJsonOptions(scratch, out, &mod, findings, .{ .minify = minify }) catch return 3,
+        .json => findings_json.writeJsonOptions(scratch, out, &mod, findings, unmatched, .{ .minify = minify }) catch return 3,
         .text => report_text.writeText(scratch, out, &mod, findings) catch return 3,
         .sarif => sarif.writeSarif(scratch, out, &mod, findings, tool_version) catch return 3,
         .ids => for (findings) |f| {
@@ -207,8 +242,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
     var failed = false;
     for (findings) |f| {
-        if (f.severity == .err) failed = true;
+        if (f.severity == .err and f.waiver == null) failed = true;
     }
+    if (strict_waivers and unmatched.len > 0) failed = true;
     return if (failed) 1 else 0;
 }
 

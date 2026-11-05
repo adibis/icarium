@@ -55,6 +55,14 @@ pub fn writeSarif(
             try rel.append(try location(tmp, mod, &idx, d));
             try res.put(tmp, "relatedLocations", .{ .array = rel });
         }
+        if (f.waiver) |w| {
+            var sup = std.json.ObjectMap.empty;
+            try sup.put(tmp, "kind", .{ .string = "external" });
+            try sup.put(tmp, "justification", .{ .string = w.reason });
+            var sups = std.json.Array.init(tmp);
+            try sups.append(.{ .object = sup });
+            try res.put(tmp, "suppressions", .{ .array = sups });
+        }
         try results.append(.{ .object = res });
     }
 

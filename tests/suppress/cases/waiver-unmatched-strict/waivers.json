@@ -1,0 +1,1 @@
+{"schema_version": "1.0", "waivers": [{"id": "w-dead", "rules": ["CDC-777"], "reason": "matches nothing"}]}

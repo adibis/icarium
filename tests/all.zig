@@ -21,4 +21,5 @@ test {
     _ = @import("report_sarif_test.zig");
     _ = @import("report_clockmap_test.zig");
     _ = @import("report_resetmap_test.zig");
+    _ = @import("suppress_waivers_test.zig");
 }

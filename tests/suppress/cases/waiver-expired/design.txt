@@ -1,0 +1,2 @@
+fixtures/RDC-008/bad_reset_port_missed_domain.sv
+fixtures/RDC-008/bad_reset_port_missed_domain.sdc

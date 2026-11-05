@@ -43,6 +43,14 @@ pub fn build(b: *std.Build) void {
     fixtures.step.dependOn(b.getInstallStep());
     b.step("fixtures", "Run rule fixtures against manifests (needs yosys)").dependOn(&fixtures.step);
 
+    const schemas = b.addSystemCommand(&.{ "sh", "scripts/validate-schemas.sh" });
+    schemas.step.dependOn(b.getInstallStep());
+    b.step("schemas", "Validate emitted JSON against schema/ (needs yosys, jsonschema)").dependOn(&schemas.step);
+
+    const suppress = b.addSystemCommand(&.{ "sh", "tests/suppress/run.sh" });
+    suppress.step.dependOn(b.getInstallStep());
+    b.step("suppress", "Run suppression CLI suite (needs yosys, jsonschema)").dependOn(&suppress.step);
+
     if (b.option([]const u8, "test-file", "Run one test file, e.g. tests/ir_path_test.zig")) |file| {
         const one_mod = b.createModule(.{
             .root_source_file = b.path(file),

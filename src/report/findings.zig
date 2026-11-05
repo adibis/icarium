@@ -17,8 +17,9 @@ pub fn writeJson(
     writer: *std.Io.Writer,
     mod: *const ir.types.Module,
     findings: []const rule.finding.Finding,
+    unmatched: []const []const u8,
 ) error{ OutOfMemory, WriteFailed }!void {
-    try writeJsonOptions(alloc, writer, mod, findings, .{});
+    try writeJsonOptions(alloc, writer, mod, findings, unmatched, .{});
 }
 
 pub fn writeJsonOptions(
@@ -26,6 +27,7 @@ pub fn writeJsonOptions(
     writer: *std.Io.Writer,
     mod: *const ir.types.Module,
     findings: []const rule.finding.Finding,
+    unmatched: []const []const u8,
     opts: Options,
 ) error{ OutOfMemory, WriteFailed }!void {
     var arena = std.heap.ArenaAllocator.init(alloc);
@@ -61,7 +63,19 @@ pub fn writeJsonOptions(
                 try item.put(tmp, "driver", .null);
             }
             try item.put(tmp, "message", .{ .string = f.message });
-            try item.put(tmp, "waiver", .null);
+            if (f.waiver) |w| {
+                var wo = std.json.ObjectMap.empty;
+                try wo.put(tmp, "waiver_id", .{ .string = w.id });
+                try wo.put(tmp, "reason", .{ .string = w.reason });
+                if (w.location) |l| {
+                    try wo.put(tmp, "location", .{ .string = l });
+                } else {
+                    try wo.put(tmp, "location", .null);
+                }
+                try item.put(tmp, "waiver", .{ .object = wo });
+            } else {
+                try item.put(tmp, "waiver", .null);
+            }
             try items.append(.{ .object = item });
         }
         var g = std.json.ObjectMap.empty;
@@ -81,11 +95,14 @@ pub fn writeJsonOptions(
     var design = std.json.ObjectMap.empty;
     try design.put(tmp, "top", .{ .string = mod.name });
 
+    var unw = std.json.Array.init(tmp);
+    for (unmatched) |id| try unw.append(.{ .string = id });
     var root = std.json.ObjectMap.empty;
     try root.put(tmp, "schema_version", .{ .string = schema_version });
     try root.put(tmp, "design", .{ .object = design });
     try root.put(tmp, "summary", .{ .object = summary });
     try root.put(tmp, "groups", .{ .array = groups });
+    try root.put(tmp, "unmatched_waivers", .{ .array = unw });
 
     const ws: std.json.Stringify.Options = .{ .whitespace = if (opts.minify) .minified else .indent_2 };
     const doc: std.json.Value = .{ .object = root };

@@ -40,7 +40,7 @@ test "findings.json golden" {
     };
     var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
-    try report.findings.writeJson(std.testing.allocator, &aw.writer, &mod, &fs);
+    try report.findings.writeJson(std.testing.allocator, &aw.writer, &mod, &fs, &.{});
     const want = try std.fmt.allocPrint(std.testing.allocator, "{s}\n", .{golden});
     defer std.testing.allocator.free(want);
     try std.testing.expectEqualStrings(want, aw.written());
@@ -54,7 +54,7 @@ test "findings.json minified has no whitespace padding" {
     };
     var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
-    try report.findings.writeJsonOptions(std.testing.allocator, &aw.writer, &mod, &fs, .{ .minify = true });
+    try report.findings.writeJsonOptions(std.testing.allocator, &aw.writer, &mod, &fs, &.{}, .{ .minify = true });
     const out = aw.written();
     try std.testing.expect(std.mem.indexOf(u8, out, "\n") == null);
     try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_version\":\"1.0\"") != null);
@@ -129,6 +129,7 @@ const golden =
     \\        }
     \\      ]
     \\    }
-    \\  ]
+    \\  ],
+    \\  "unmatched_waivers": []
     \\}
 ;

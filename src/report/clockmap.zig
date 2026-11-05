@@ -309,6 +309,7 @@ fn touchingFindings(
     var seen = std.StringHashMapUnmanaged(void).empty;
     var ids = std.ArrayListUnmanaged([]const u8).empty;
     for (findings) |f| {
+        if (f.waiver != null) continue;
         if (!std.mem.eql(u8, f.dst, want)) continue;
         if (seen.contains(f.rule)) continue;
         try seen.put(tmp, f.rule, {});

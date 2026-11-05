@@ -192,6 +192,20 @@ else
     grep -E 'FAIL' /tmp/precommit-schemas.log | sed 's/^/    /'
 fi
 
+# Suppression CLI suite; same safe-skip contract.
+set +e
+sh tests/suppress/run.sh >/tmp/precommit-suppress.log 2>&1
+sp_code=$?
+set -e
+if [[ $sp_code -eq 0 ]]; then
+    pass "suppression suite"
+elif [[ $sp_code -eq 3 ]]; then
+    warn "suppression suite skipped (yosys/python3/jsonschema missing)"
+else
+    fail "suppression suite — see /tmp/precommit-suppress.log"
+    grep -E 'FAIL' /tmp/precommit-suppress.log | sed 's/^/    /'
+fi
+
 # --- Summary ---------------------------------------------------------------
 
 echo

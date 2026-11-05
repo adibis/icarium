@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.dev/schema/waivers-1.0.json",
+  "title": "icarium native waivers",
+  "description": "Suppression entries keyed by rule plus driver/receiver globs. First matching waiver wins, in file order. Additive evolution within major version 1.",
+  "type": "object",
+  "required": ["schema_version", "waivers"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "rules", "reason"],
+        "properties": {
+          "id": {
+            "description": "Stable waiver identifier, unique within the file.",
+            "type": "string"
+          },
+          "rules": {
+            "description": "Rule IDs this waiver excuses; \"*\" matches every rule.",
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"}
+          },
+          "dst": {
+            "description": "Glob over the receiver cell/port name, or over the slash-joined instance path when prefixed with \"inst:\". Null matches any receiver.",
+            "type": ["string", "null"]
+          },
+          "driver": {
+            "description": "Glob over the driver name or \"inst:\"-prefixed instance path. Null matches any driver; findings without a driver never match a driver pattern.",
+            "type": ["string", "null"]
+          },
+          "reason": {
+            "description": "Human justification, recorded on every finding this waiver excuses.",
+            "type": "string"
+          },
+          "expires": {
+            "description": "Strict YYYY-MM-DD expiry. Expired waivers warn and never match.",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

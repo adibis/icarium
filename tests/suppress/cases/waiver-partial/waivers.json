@@ -1,0 +1,1 @@
+{"schema_version": "1.0", "waivers": [{"id": "w-cdc1", "rules": ["CDC-001"], "dst": "inst:", "reason": "top-level control reviewed"}]}

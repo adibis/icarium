@@ -6,4 +6,5 @@ pub const report = @import("report.zig");
 pub const reset = @import("reset.zig");
 pub const rule = @import("rule.zig");
 pub const sdc = @import("sdc.zig");
+pub const suppress = @import("suppress.zig");
 pub const sync = @import("sync.zig");

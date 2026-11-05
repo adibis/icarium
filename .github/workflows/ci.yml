@@ -26,6 +26,14 @@ jobs:
           version: ${{ steps.pins.outputs.zig }}
       - name: Install Yosys if packaged
         run: sudo apt-get update -qq && sudo apt-get install -y -qq yosys || echo "yosys unavailable, e2e will skip"
+      - name: Install jsonschema for schema-gated suites
+        run: pip install jsonschema || echo "jsonschema unavailable, schema-gated suites will skip"
       - run: zig build
       - name: End-to-end suite (skips without yosys)
         run: sh tests/e2e/run.sh; code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi
+      - name: Rule fixtures (skips without yosys)
+        run: sh fixtures/run.sh; code=$?; if [ $code -eq 3 ]; then echo "fixtures skipped: yosys not installed"; else exit $code; fi
+      - name: Schema validation (skips without yosys/jsonschema)
+        run: sh scripts/validate-schemas.sh; code=$?; if [ $code -eq 3 ]; then echo "schemas skipped"; else exit $code; fi
+      - name: Suppression suite (skips without yosys/jsonschema)
+        run: sh tests/suppress/run.sh; code=$?; if [ $code -eq 3 ]; then echo "suppress skipped"; else exit $code; fi

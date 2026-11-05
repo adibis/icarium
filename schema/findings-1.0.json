@@ -4,7 +4,7 @@
   "title": "icarium findings",
   "description": "Rule-grouped CDC/RDC verdicts. Additive evolution: new keys may appear; existing keys keep their meaning within major version 1.",
   "type": "object",
-  "required": ["schema_version", "design", "summary", "groups"],
+  "required": ["schema_version", "design", "summary", "groups", "unmatched_waivers"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": "1.0"},
@@ -45,7 +45,7 @@
                 },
                 "message": {"type": "string"},
                 "waiver": {
-                  "description": "Null until suppression lands; then {waiver_id, reason, location}.",
+                  "description": "The suppression excuses this item, or null where the finding stands.",
                   "anyOf": [
                     {"type": "null"},
                     {
@@ -64,6 +64,11 @@
           }
         }
       }
+    },
+    "unmatched_waivers": {
+      "description": "Waiver IDs that matched no finding in this run.",
+      "type": "array",
+      "items": {"type": "string"}
     }
   },
   "$defs": {

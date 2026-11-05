@@ -1,0 +1,2 @@
+fixtures/RDC-003/bad_sync_reset_crossing.sv
+fixtures/RDC-003/bad_sync_reset_crossing.sdc
