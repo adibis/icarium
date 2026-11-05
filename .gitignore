@@ -1,0 +1,7 @@
+# Local planning notes; never part of the shipped tree.
+plan/
+# Zig build outputs.
+zig-out/
+.zig-cache/
+# macOS metadata.
+.DS_Store
