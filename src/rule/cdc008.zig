@@ -49,35 +49,128 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var seen = std.AutoHashMapUnmanaged(Triple, void).empty;
     for (mod.cells, 0..) |c, ci| {
         if (net_cells.contains(ci)) continue;
-        for (c.ports, 0..) |p, pi| {
+        for (c.ports) |p| {
             if (p.direction == .output) continue;
-            if (std.mem.eql(u8, p.name, "CLK")) continue;
-            if (clock.cells.isLatch(c.type) and
-                (std.mem.eql(u8, p.name, "G") or std.mem.eql(u8, p.name, "EN"))) continue;
-            // Clock pins on a recognised macro are clocks, not data:
-            // the macro names its own clock legs, XPM rigidly so.
-            if (c.blackbox and
-                sync.primitives.isSyncPrimitive(c.type, ctx.cfg.sync_primitives) and
-                sync.primitives.isClockPin(p.name)) continue;
-            for (p.bits, 0..) |b, idx| {
+            if (skipPin(ctx, c, p.name)) continue;
+            for (p.bits) |b| {
                 if (b != .sig or !clock_bits.contains(b.sig)) continue;
-                const key = Triple{ .bit = b.sig, .cell = ci, .pin = pi };
-                if (seen.contains(key)) continue;
-                try seen.put(ctx.alloc, key, {});
-                const label = try bitLabel(ctx.alloc, mod, b.sig);
-                const message = try std.fmt.allocPrint(ctx.alloc,
-                    "clock signal {s} used as data: connected to {s}.{s}[{d}] (cell type {s})",
-                    .{ label, c.name, p.name, idx, c.type });
-                try out.append(ctx.alloc, .{
-                    .rule = rule.id,
-                    .severity = rule.severity,
-                    .dst = c.name,
-                    .message = message,
-                });
+                if (clock.cells.isTransparent(c.type)) {
+                    const terms = try terminals(ctx.alloc, mod, ci, &net_cells);
+                    for (terms) |t| {
+                        const tc = mod.cells[t.cell];
+                        if (skipPin(ctx, tc, t.pin)) continue;
+                        try fire(ctx, mod, &seen, &out, b.sig, t.cell, t.pin, t.idx);
+                    }
+                } else {
+                    const idx = pinIndex(c, p.name, b.sig);
+                    try fire(ctx, mod, &seen, &out, b.sig, ci, p.name, idx);
+                }
             }
         }
     }
     return out.toOwnedSlice(ctx.alloc);
+}
+
+fn skipPin(ctx: *context.Context, c: ir.types.Cell, pin: []const u8) bool {
+    if (std.mem.eql(u8, pin, "CLK")) return true;
+    if (clock.cells.isLatch(c.type) and
+        (std.mem.eql(u8, pin, "G") or std.mem.eql(u8, pin, "EN"))) return true;
+    // Clock pins on a recognised macro are clocks, not data:
+    // the macro names its own clock legs, XPM rigidly so.
+    if (c.blackbox and
+        sync.primitives.isSyncPrimitive(c.type, ctx.cfg.sync_primitives) and
+        sync.primitives.isClockPin(pin)) return true;
+    return false;
+}
+
+fn fire(
+    ctx: *context.Context,
+    mod: *const ir.types.Module,
+    seen: *std.AutoHashMapUnmanaged(Triple, void),
+    out: *std.ArrayListUnmanaged(finding.Finding),
+    bit: u32,
+    ci: usize,
+    pin: []const u8,
+    idx: usize,
+) error{OutOfMemory}!void {
+    const c = mod.cells[ci];
+    const key = Triple{ .bit = bit, .cell = ci, .pin = pinIndex(c, pin, null) };
+    if (seen.contains(key)) return;
+    try seen.put(ctx.alloc, key, {});
+    const label = try bitLabel(ctx.alloc, mod, bit);
+    const message = try std.fmt.allocPrint(ctx.alloc,
+        "clock signal {s} used as data: connected to {s}.{s}[{d}] (cell type {s})",
+        .{ label, c.name, pin, idx, c.type });
+    try out.append(ctx.alloc, .{
+        .rule = rule.id,
+        .severity = rule.severity,
+        .dst = c.name,
+        .message = message,
+    });
+}
+
+// Index of the pin holding the bit, or the pin's own index when
+// no bit is given: arrival identity for the dedup key.
+fn pinIndex(c: ir.types.Cell, pin: []const u8, bit: ?u32) usize {
+    for (c.ports, 0..) |p, pi| {
+        if (!std.mem.eql(u8, p.name, pin)) continue;
+        if (bit) |want| {
+            for (p.bits, 0..) |b, i| {
+                if (b == .sig and b.sig == want) return i;
+            }
+            return 0;
+        }
+        return pi;
+    }
+    return 0;
+}
+
+const Terminal = struct { cell: usize, pin: []const u8, idx: usize };
+
+// Transparent cells pass the verdict downstream: a buffer on a
+// clock bit is distribution, and only its first opaque load can
+// sample the clock. Dangling chains end silently, never as bugs.
+fn terminals(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    start: usize,
+    net_cells: *const std.AutoHashMapUnmanaged(usize, void),
+) error{OutOfMemory}![]Terminal {
+    var out = std.ArrayListUnmanaged(Terminal).empty;
+    var seen = std.AutoHashMapUnmanaged(u32, void).empty;
+    var frontier = std.ArrayListUnmanaged(u32).empty;
+    for (mod.cells[start].ports) |p| {
+        if (p.direction != .output) continue;
+        for (p.bits) |b| {
+            if (b == .sig) try frontier.append(alloc, b.sig);
+        }
+    }
+    var head: usize = 0;
+    while (head < frontier.items.len) : (head += 1) {
+        const bit = frontier.items[head];
+        if (seen.contains(bit)) continue;
+        try seen.put(alloc, bit, {});
+        const loads = mod.loads_of.get(bit) orelse continue;
+        for (loads.items) |loc| {
+            const ci = loc.cell orelse continue;
+            if (net_cells.contains(ci)) continue;
+            const c = mod.cells[ci];
+            if (clock.cells.isTransparent(c.type)) {
+                for (c.ports) |p| {
+                    if (p.direction != .output) continue;
+                    for (p.bits) |b| {
+                        if (b == .sig) try frontier.append(alloc, b.sig);
+                    }
+                }
+                continue;
+            }
+            const port = portBits(c, loc.port) orelse continue;
+            for (port, 0..) |b, i| {
+                if (b == .sig and b.sig == bit) try out.append(alloc, .{ .cell = ci, .pin = loc.port, .idx = i });
+            }
+        }
+    }
+    return out.toOwnedSlice(alloc);
 }
 
 const Triple = struct { bit: u32, cell: usize, pin: usize };

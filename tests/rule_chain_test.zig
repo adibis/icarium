@@ -143,6 +143,60 @@ const two_stage =
     \\}
 ;
 
+const two_lane =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d1": {"direction": "input", "bits": [4]},
+    \\        "d2": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [24]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4, 5], "Q": [10, 11]}
+    \\        },
+    \\        "fork": {
+    \\          "type": "$or",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [10, 11], "Y": [12]}
+    \\        },
+    \\        "head": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [12], "Q": [20]}
+    \\        },
+    \\        "gate": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [20], "B": [20], "Y": [22]}
+    \\        },
+    \\        "tail": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [22], "Q": [24]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "identical per-lane findings collapse to one" {
+    var l = try loadAll(two_lane, two_sdc_typed);
+    defer freeAll(&l);
+    const fired = try checkDepth(&l, 2);
+    var n: usize = 0;
+    for (fired) |f| {
+        if (std.mem.eql(u8, f.rule, "CDC-014")) n += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), n);
+}
+
 test "two stages fire CDC-002 only when the bar is raised" {
     var l = try loadAll(two_stage, two_sdc_typed);
     defer freeAll(&l);

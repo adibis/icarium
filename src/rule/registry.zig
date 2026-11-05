@@ -154,22 +154,42 @@ pub fn runChecks(
     skip: ?[]const []const u8,
 ) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
+    var seen = std.StringHashMapUnmanaged(void).empty;
+    defer {
+        var it = seen.iterator();
+        while (it.next()) |e| alloc.free(e.key_ptr.*);
+        seen.deinit(alloc);
+    }
     for (rules) |r| {
         if (!enabled(r.id, only, skip)) continue;
         if (r.check_all) |whole| {
-            const fs = try whole(ctx);
-            try out.appendSlice(alloc, fs);
+            for (try whole(ctx)) |f| {
+                if (try fresh(alloc, &seen, f)) try out.append(alloc, f);
+            }
         } else if (r.check) |one| {
             for (ctx.report.crossings) |x| {
                 if (try one(ctx, x)) |got| {
                     var f = got;
                     if (f.driver == null) f.driver = srcName(ctx, x);
-                    try out.append(alloc, f);
+                    if (try fresh(alloc, &seen, f)) try out.append(alloc, f);
                 }
             }
         }
     }
     return out.toOwnedSlice(alloc);
+}
+
+// Findings deduplicate on their waiver identity: per-crossing rules
+// restate the same fact for every lane, and reporters print each row.
+fn fresh(alloc: std.mem.Allocator, seen: *std.StringHashMapUnmanaged(void), f: finding.Finding) error{OutOfMemory}!bool {
+    const key = try std.fmt.allocPrint(alloc, "{s}\x00{s}\x00{s}\x00{s}", .{ f.rule, f.dst, f.driver orelse "", f.message });
+    const slot = try seen.getOrPut(alloc, key);
+    if (slot.found_existing) {
+        alloc.free(key);
+        return false;
+    }
+    slot.key_ptr.* = key;
+    return true;
 }
 
 // The crossing's own source endpoint: single-crossing rules

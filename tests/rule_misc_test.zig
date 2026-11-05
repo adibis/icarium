@@ -142,6 +142,83 @@ test "a divided clock sampled as data fires CDC-008 alone" {
     try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "used as data") != null);
 }
 
+const buf_as_data =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "buf": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "Y": [10]}
+    \\        },
+    \\        "spy": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [3], "Y": [11]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a buffered clock sampled as data names the terminal load" {
+    var l = try loadAll(buf_as_data, one_sdc_typed);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-008"));
+    try std.testing.expectEqualStrings("spy", fs[0].dst);
+}
+
+const buf_dangle =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "buf1": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "Y": [10]}
+    \\        },
+    \\        "buf2": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "Y": [11]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a dangling buffer chain on a clock stays silent" {
+    var l = try loadAll(buf_dangle, one_sdc_typed);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
 const gated_clean =
     \\{
     \\  "modules": {
