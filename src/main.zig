@@ -85,6 +85,7 @@ fn usage(w: anytype) !void {
         \\      --format FMT        text (default) or ids
         \\      --sync-depth N      required chain depth (default 2)
         \\      --cdc-010-no-heuristic  disable library pin-name guessing
+        \\      --cdc-018-depth-threshold N  cascade warn depth (default 4)
         \\  rules             list rules (--list) or show docs (--doc)
         \\
     );

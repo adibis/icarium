@@ -15,6 +15,9 @@ const cdc014 = @import("cdc014.zig");
 const cdc015 = @import("cdc015.zig");
 const cdc016 = @import("cdc016.zig");
 const cdc017 = @import("cdc017.zig");
+const cdc018 = @import("cdc018.zig");
+const cdc019 = @import("cdc019.zig");
+const cdc020 = @import("cdc020.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -51,6 +54,9 @@ pub const rules = [_]Rule{
     cdc015.rule,
     cdc016.rule,
     cdc017.rule,
+    cdc018.rule,
+    cdc019.rule,
+    cdc020.rule,
 };
 
 fn knownAttr(name: []const u8) bool {
@@ -73,6 +79,9 @@ fn knownAttr(name: []const u8) bool {
 }
 
 comptime {
+    // Twenty rules times map lookups outgrows the default
+    // budget; the loop is finite, so raise the ceiling.
+    @setEvalBranchQuota(10000);
     // Strictly sorted doubles as unique: any duplicate or
     // misordering fails the build at the offending row.
     for (rules[0 .. rules.len - 1], rules[1..]) |a, b| {

@@ -1,6 +1,5 @@
 const std = @import("std");
 const bus = @import("bus.zig");
-const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
@@ -30,7 +29,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         const src_name = ctx.mod.cells[sc].name;
         if (ctx.marks.hasGray(src_name)) return null;
         if (ctx.marks.hasStatic(src_name)) return null;
-        if (isMultibitSyncFirstStage(ctx, dc, x.dst_clk) and
+        if (bus.isMultibitSyncFirstStage(ctx, dc, x.dst_clk) and
             bus.isGrayEncodedSource(ctx, sc)) return null;
     }
     if (try bus.isGatedBusCrossing(ctx, dc, x.dst_clk)) return null;
@@ -48,36 +47,5 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         .dst = ctx.mod.cells[dc].name,
         .message = message,
     };
-}
-
-// Destination Q drives another same-width D lane for lane in the
-// same clock: the async-FIFO pointer shape, gray-friendly.
-fn isMultibitSyncFirstStage(ctx: *context.Context, dst: usize, dst_clock: []const u8) bool {
-    const mod = ctx.mod;
-    const c = mod.cells[dst];
-    const q = bus.portBits(c, "Q") orelse return false;
-    const d = bus.portBits(c, "D") orelse return false;
-    if (q.len < 2 or d.len != q.len) return false;
-    for (q) |qb| {
-        if (qb != .sig) return false;
-    }
-    const loads = mod.loads_of.get(q[0].sig) orelse return false;
-    for (loads.items) |loc| {
-        const nci = loc.cell orelse continue;
-        if (nci == dst) continue;
-        if (!std.mem.eql(u8, loc.port, "D")) continue;
-        const n = mod.cells[nci];
-        if (!clock.cells.isSequential(n.type)) continue;
-        const nd = bus.portBits(n, "D") orelse continue;
-        if (nd.len != q.len) continue;
-        var aligned = true;
-        for (nd, q) |db, qb| {
-            if (db != .sig or db.sig != qb.sig) aligned = false;
-        }
-        if (!aligned) continue;
-        const dom = ctx.table.domainOf(nci) orelse continue;
-        if (std.mem.eql(u8, dom.name, dst_clock)) return true;
-    }
-    return false;
 }
 

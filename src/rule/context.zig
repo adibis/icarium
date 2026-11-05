@@ -10,6 +10,7 @@ const sync = @import("../sync.zig");
 pub const Config = struct {
     sync_depth: u32 = 2,
     cdc010_heuristic: bool = true,
+    cdc018_threshold: u32 = 4,
 };
 
 pub const Context = struct {

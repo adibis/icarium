@@ -127,3 +127,27 @@ time. Replace the latch with a 2FF chain on the dst clock.
 honors: cdc_sync
 fixtures: fixtures/CDC-017
 
+CDC-018 [warn] Cascaded synchronizer chain past the depth threshold
+A destination chain runs deeper than the threshold (default
+4): two stacked 2FF syncs, or a refactor leftover. Extra
+stages add latency without improving resolution. Trim to 2,
+raise the threshold, or vouch the head.
+honors: cdc_sync
+fixtures: fixtures/CDC-018
+
+CDC-019 [warn] Independently-synced one-hot decode across CDC
+One comb decoder fans to two or more 1-bit source flops that
+cross to the same domain: lanes change together upstream but
+resolve apart, so the destination can sample combinations the
+encoder never emits. Gray-code the source or handshake it.
+honors: cdc_gray cdc_static cdc_sync
+fixtures: fixtures/CDC-019
+
+CDC-020 [warn] Sliced-bus reconvergence across CDC
+A multi-bit source register fans lane by lane to two or more
+destinations in one domain: each lane resolves apart, so the
+destination can sample mixes the source never emits. Gray-code
+the source, handshake it, or sync the bus whole.
+honors: cdc_gray cdc_static cdc_handshake
+fixtures: fixtures/CDC-020
+

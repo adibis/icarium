@@ -14,6 +14,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var skip_s: ?[]const u8 = null;
     var format: []const u8 = "text";
     var sync_depth: u32 = 2;
+    var depth_threshold: u32 = 4;
     var heuristic = true;
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
@@ -43,6 +44,16 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 err.print("check: bad --sync-depth: {s}\n", .{argv[i + 1]}) catch {};
                 return 2;
             };
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--cdc-018-depth-threshold") and i + 1 < argv.len) {
+            depth_threshold = std.fmt.parseInt(u32, argv[i + 1], 10) catch {
+                err.print("check: bad --cdc-018-depth-threshold: {s}\n", .{argv[i + 1]}) catch {};
+                return 2;
+            };
+            if (depth_threshold < 2) {
+                err.writeAll("check: --cdc-018-depth-threshold must be >= 2\n") catch {};
+                return 2;
+            }
             i += 1;
         } else {
             err.print("check: bad argument: {s}\n", .{a}) catch {};
@@ -120,7 +131,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         .table = &table,
         .marks = &marks,
         .buses = buses,
-        .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic },
+        .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold },
         .alloc = scratch,
     };
     const only_arg: ?[]const []const u8 = if (only_s == null) null else only;

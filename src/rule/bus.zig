@@ -13,6 +13,37 @@ pub fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
     return null;
 }
 
+// Destination Q drives another same-width D lane for lane in the
+// same clock: the async-FIFO pointer shape, gray-friendly.
+pub fn isMultibitSyncFirstStage(ctx: *context.Context, dst: usize, dst_clock: []const u8) bool {
+    const mod = ctx.mod;
+    const c = mod.cells[dst];
+    const q = portBits(c, "Q") orelse return false;
+    const d = portBits(c, "D") orelse return false;
+    if (q.len < 2 or d.len != q.len) return false;
+    for (q) |qb| {
+        if (qb != .sig) return false;
+    }
+    const loads = mod.loads_of.get(q[0].sig) orelse return false;
+    for (loads.items) |loc| {
+        const nci = loc.cell orelse continue;
+        if (nci == dst) continue;
+        if (!std.mem.eql(u8, loc.port, "D")) continue;
+        const n = mod.cells[nci];
+        if (!clock.cells.isSequential(n.type)) continue;
+        const nd = portBits(n, "D") orelse continue;
+        if (nd.len != q.len) continue;
+        var aligned = true;
+        for (nd, q) |db, qb| {
+            if (db != .sig or db.sig != qb.sig) aligned = false;
+        }
+        if (!aligned) continue;
+        const dom = ctx.table.domainOf(nci) orelse continue;
+        if (std.mem.eql(u8, dom.name, dst_clock)) return true;
+    }
+    return false;
+}
+
 // Canonical gray encode in the source fanin: shifted $xor,
 // found by a bounded walk that never crosses a flop.
 pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
