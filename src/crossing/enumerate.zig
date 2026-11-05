@@ -64,6 +64,10 @@ pub fn sinkClass(cell_type: []const u8, pin: []const u8) ?SinkClass {
     if (!clock.cells.isSequential(cell_type)) return null;
     if (std.mem.eql(u8, pin, "D")) return .d;
     if (std.mem.eql(u8, pin, "CLK") or std.mem.eql(u8, pin, "G")) return .clk;
+    if (clock.cells.isLatch(cell_type) and std.mem.eql(u8, pin, "EN")) return .clk;
+    // Flop clock-enables sink: an async enable is a control
+    // crossing rules must see, not a wall to walk through.
+    if (std.mem.eql(u8, pin, "EN")) return .d;
     if (reset.cells.resetPins(cell_type)) |rp| {
         for (rp.async) |ap| if (std.mem.eql(u8, pin, ap.pin)) return .arst;
         for (rp.sync) |sp| if (std.mem.eql(u8, pin, sp)) return .srst;
@@ -152,10 +156,19 @@ fn isOpaqueMem(cell_type: []const u8) bool {
     return std.mem.startsWith(u8, cell_type, "$mem") and !clock.cells.isMemoryClock(cell_type);
 }
 
-// Control pins carry selection, not data: arrivals there never
-// propagate, or selects would read as dataflow sources.
+// Selects on the mux family broadcast: one select bit steers
+// the whole word, so lane mapping must never apply to S.
+const mux_family = std.StaticStringMap(void).initComptime(.{
+    .{ "$mux", {} },
+    .{ "$pmux", {} },
+    .{ "$ternary", {} },
+    .{ "$bwmux", {} },
+});
+
+// Control pins steer every output bit at once: a toggling
+// select corrupts the whole word, so they always broadcast.
 fn isControlPin(cell_type: []const u8, pin: []const u8) bool {
-    if (std.mem.eql(u8, pin, "S") and (std.mem.eql(u8, cell_type, "$mux") or std.mem.eql(u8, cell_type, "$pmux"))) return true;
+    if (std.mem.eql(u8, pin, "S") and mux_family.get(cell_type) != null) return true;
     return std.mem.eql(u8, pin, "EN");
 }
 
@@ -216,9 +229,11 @@ const Enumerator = struct {
                     // through comb is a counter, not a CDC.
                     if (src_cell != null and src_cell.? == ci) continue;
                     try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ci, loc.port, b, cls, false, &seen);
-                } else if (clock.cells.isMemoryClock(c.type)) {
+                } else if (clock.cells.isSequential(c.type) or clock.cells.isMemoryClock(c.type)) {
+                    // Unclassified sequential inputs end the walk:
+                    // boundaries cut, never go transparent.
                     continue;
-                } else if (!isControlPin(c.type, loc.port)) {
+                } else {
                     try en.propagate(ci, c, loc.port, b, &seen, &queue);
                 }
             }
@@ -530,6 +545,7 @@ fn readEnabled(c: ir.types.Cell) bool {
 // Lane-parallel output for an arrival lane, or null to fan out.
 // $pmux option legs wrap lane-modulo across the output width.
 fn outLane(c: ir.types.Cell, pin: []const u8, lane: usize, out_len: usize) ?usize {
+    if (isControlPin(c.type, pin)) return null;
     if (!laneParallel(c.type)) return null;
     if (std.mem.eql(u8, c.type, "$pmux") and std.mem.eql(u8, pin, "B")) return lane % out_len;
     if (lane < out_len) return lane;
@@ -537,7 +553,7 @@ fn outLane(c: ir.types.Cell, pin: []const u8, lane: usize, out_len: usize) ?usiz
 }
 
 fn laneParallel(cell_type: []const u8) bool {
-    for ([_][]const u8{ "$not", "$and", "$or", "$xor", "$xnor", "$mux", "$pmux", "$tribuf" }) |t| {
+    for ([_][]const u8{ "$not", "$and", "$or", "$xor", "$xnor", "$mux", "$pmux", "$ternary", "$bwmux", "$tribuf" }) |t| {
         if (std.mem.eql(u8, cell_type, t)) return true;
     }
     return false;

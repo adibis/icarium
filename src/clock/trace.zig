@@ -88,9 +88,10 @@ fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
 }
 
 fn clkBits(c: ir.types.Cell) ?[]ir.bits.Bit {
-    // Latches gate on G, flops clock on CLK; same walk either way.
+    // Flops clock on CLK; latches open on G or EN instead.
     if (portBits(c, "CLK")) |b| return b;
-    return portBits(c, "G");
+    if (portBits(c, "G")) |b| return b;
+    return portBits(c, "EN");
 }
 
 // Single declared clocks only: synthetic, unknown, and union

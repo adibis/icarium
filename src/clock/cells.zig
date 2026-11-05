@@ -19,6 +19,16 @@ pub fn isSequential(cell_type: []const u8) bool {
     return sequential.get(cell_type) != null;
 }
 
+// Latches open on EN, not CLK; the enable is their clock leg.
+const latch = std.StaticStringMap(void).initComptime(.{
+    .{ "$dlatch", {} },
+    .{ "$dlatchsr", {} },
+});
+
+pub fn isLatch(cell_type: []const u8) bool {
+    return latch.get(cell_type) != null;
+}
+
 // Transparent on clock paths: the domain passes through unchanged.
 const transparent = std.StaticStringMap(void).initComptime(.{
     .{ "$not", {} },

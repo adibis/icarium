@@ -260,13 +260,139 @@ test "clock sinks and blackbox sources enumerate" {
     try std.testing.expect(bb.async_per_sdc);
 }
 
-test "every sink bit lands in a record or is tied or undriven" {
-    var l = try loadAll(sinks, sinks_sdc);
+const latched =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [4]}
+    \\      },
+    \\      "cells": {
+    \\        "lat": {
+    \\          "type": "$dlatch",
+    \\          "port_directions": {"D": "input", "EN": "input", "Q": "output"},
+    \\          "connections": {"D": [3], "EN": [2], "Q": [10]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [10], "Q": [4]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "latch enables sink like clocks and source like flops" {
+    var l = try loadAll(latched, sinks_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 4), l.report.crossings.len);
+    var en_seen = false;
+    for (l.report.crossings) |x| {
+        if (x.kind == .clock_sink and std.mem.eql(u8, x.dst.port, "EN")) {
+            en_seen = true;
+            try std.testing.expectEqualStrings("clk", x.dst_clk);
+            try std.testing.expect(!x.async_per_sdc);
+        }
+    }
+    try std.testing.expect(en_seen);
+    const q = xFor(&l, .flop_flop_bit, 10, 10).?;
+    try std.testing.expectEqualStrings("clk", q.src_clk);
+    try std.testing.expect(!q.async_per_sdc);
+}
+
+const sliced =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "q": {"direction": "output", "bits": [20, 21]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [30, 31, 32, 33], "Q": [10, 11, 12, 13]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11, 10], "Q": [20, 21]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "sliced buses group with exact lane maps" {
+    var l = try loadAll(sliced, sinks_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 5), l.report.crossings.len);
+    var bus_seen = false;
+    for (l.report.crossings) |x| {
+        if (x.kind != .flop_flop_bus) continue;
+        bus_seen = true;
+        try std.testing.expectEqual(@as(usize, 2), x.lanes.len);
+        try std.testing.expectEqual(@as(usize, 0), x.lanes[0].src_lane);
+        try std.testing.expectEqual(@as(usize, 1), x.lanes[0].dst_lane);
+        try std.testing.expectEqual(@as(usize, 1), x.lanes[1].src_lane);
+        try std.testing.expectEqual(@as(usize, 0), x.lanes[1].dst_lane);
+    }
+    try std.testing.expect(bus_seen);
+}
+
+const clock_en =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "en": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [20]}
+    \\      },
+    \\      "cells": {
+    \\        "gated": {
+    \\          "type": "$dffe",
+    \\          "port_directions": {"CLK": "input", "EN": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "EN": [3], "D": [4], "Q": [10]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [10], "Q": [20]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "flop clock-enables sink instead of going transparent" {
+    var l = try loadAll(clock_en, sinks_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 5), l.report.crossings.len);
+    const x = xFor(&l, .port_flop_untyped, 3, 3).?;
+    try std.testing.expectEqualStrings("EN", x.dst.port);
+    try std.testing.expectEqualStrings("clk", x.dst_clk);
+    try std.testing.expect(x.async_per_sdc);
+}
+
+fn checkComplete(json: []const u8, sdc_text: ?[]const u8, want_tied: usize, want_undriven: usize) !void {
+    var l = try loadAll(json, sdc_text);
     defer freeAll(&l);
     var tied: usize = 0;
     var undriven: usize = 0;
     for (l.mod.cells, 0..) |c, ci| {
         for (c.ports) |p| {
+            // Sinks are inputs: read DATA leaves the cell, so only
+            // the source tests (not this one) cover output pins.
+            if (p.direction == .output) continue;
             if (crossing.enumerate.sinkClass(c.type, p.name) == null) continue;
             for (p.bits) |b| {
                 if (b != .sig) {
@@ -288,8 +414,19 @@ test "every sink bit lands in a record or is tied or undriven" {
             }
         }
     }
-    try std.testing.expectEqual(@as(usize, 1), tied);
-    try std.testing.expectEqual(@as(usize, 1), undriven);
+    try std.testing.expectEqual(want_tied, tied);
+    try std.testing.expectEqual(want_undriven, undriven);
+}
+
+test "every sink bit lands in a record or is tied or undriven" {
+    try checkComplete(sinks, sinks_sdc, 1, 1);
+    try checkComplete(muxed_src, muxed_sdc, 0, 0);
+    try checkComplete(ctl_flop, sinks_sdc, 0, 0);
+    try checkComplete(mems, mems_sdc, 1, 0);
+    try checkComplete(lanewise, sinks_sdc, 0, 2);
+    try checkComplete(latched, sinks_sdc, 0, 0);
+    try checkComplete(sliced, sinks_sdc, 0, 4);
+    try checkComplete(clock_en, sinks_sdc, 0, 0);
 }
 
 test "IDs survive cell reordering" {
@@ -422,11 +559,14 @@ const lanewise =
 test "wide muxes propagate lane to lane, never across" {
     var l = try loadAll(lanewise, sinks_sdc);
     defer freeAll(&l);
-    try std.testing.expectEqual(@as(usize, 5), l.report.crossings.len);
+    try std.testing.expectEqual(@as(usize, 7), l.report.crossings.len);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 12) != null);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 11, 13) != null);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 13) == null);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 11, 12) == null);
+    // The select steers the whole word: one bit fans out to both lanes.
+    try std.testing.expect(xFor(&l, .port_flop_untyped, 4, 12) != null);
+    try std.testing.expect(xFor(&l, .port_flop_untyped, 4, 13) != null);
 }
 
 test "mux selects record control crossings into the union" {
