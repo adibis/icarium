@@ -36,7 +36,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const bits = portBits(c, cp) orelse continue;
             if (bits.len == 0) continue;
             if (anyGlitchless(ctx, bits)) continue;
-            const fanin = try flopFanin(ctx, bits);
+            const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, bits);
             if (fanin.items.len == 0) continue;
             std.mem.sort(usize, fanin.items, {}, struct {
                 fn less(_: void, a: usize, b: usize) bool {
@@ -166,38 +166,6 @@ fn isCtrl(name: []const u8, ctrls: []const []const u8) bool {
         if (std.mem.eql(u8, c, name)) return true;
     }
     return false;
-}
-
-// Flop cells whose Q feeds the control bits through combinational
-// logic. Ports and constants end the walk with no answer.
-fn flopFanin(ctx: *context.Context, start: []ir.bits.Bit) error{OutOfMemory}!std.ArrayListUnmanaged(usize) {
-    const mod = ctx.mod;
-    var flops = std.ArrayListUnmanaged(usize).empty;
-    var seen = std.AutoHashMapUnmanaged(u32, void).empty;
-    var frontier = std.ArrayListUnmanaged(FrontierBit).empty;
-    for (start) |b| {
-        if (b == .sig) try frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = 0 });
-    }
-    var head: usize = 0;
-    while (head < frontier.items.len) : (head += 1) {
-        const fb = frontier.items[head];
-        if (seen.contains(fb.bit)) continue;
-        try seen.put(ctx.alloc, fb.bit, {});
-        const drv = mod.driver_of.get(fb.bit) orelse continue;
-        const sci = drv.cell orelse continue;
-        if (std.mem.eql(u8, drv.port, "Q")) {
-            try flops.append(ctx.alloc, sci);
-            continue;
-        }
-        if (fb.depth >= 12) continue;
-        for (mod.cells[sci].ports) |p| {
-            if (p.direction == .output) continue;
-            for (p.bits) |b| {
-                if (b == .sig) try frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = fb.depth + 1 });
-            }
-        }
-    }
-    return flops;
 }
 
 // Async to every gated clock on every leg: one synchronous pair

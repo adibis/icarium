@@ -1,9 +1,11 @@
 pub const cdc001 = @import("rule/cdc001.zig");
 pub const cdc002 = @import("rule/cdc002.zig");
 pub const cdc003 = @import("rule/cdc003.zig");
+pub const cdc004 = @import("rule/cdc004.zig");
 pub const cdc005 = @import("rule/cdc005.zig");
 pub const cdc006 = @import("rule/cdc006.zig");
 pub const cdc008 = @import("rule/cdc008.zig");
+pub const cdc009 = @import("rule/cdc009.zig");
 pub const cdc010 = @import("rule/cdc010.zig");
 pub const cdc011 = @import("rule/cdc011.zig");
 pub const context = @import("rule/context.zig");

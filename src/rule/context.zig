@@ -23,13 +23,15 @@ pub const Context = struct {
     alloc: std.mem.Allocator,
 
     pub fn isBusMember(ctx: *const Context, x: crossing.enumerate.Crossing) bool {
-        if (x.kind != .flop_flop_bit) return false;
-        const sc = x.src.cell orelse return false;
+        if (x.kind != .flop_flop_bit and x.kind != .port_flop and x.kind != .port_flop_untyped) return false;
         for (ctx.buses) |b| {
-            const bsc = b.src.cell orelse continue;
+            if ((x.src.cell == null) != (b.src.cell == null)) continue;
+            if (x.src.cell) |sc| {
+                if (sc != b.src.cell.?) continue;
+            }
             const bdc = b.dst.cell orelse continue;
             const xdc = x.dst.cell orelse continue;
-            if (bsc == sc and std.mem.eql(u8, b.src.port, x.src.port) and
+            if (std.mem.eql(u8, b.src.port, x.src.port) and
                 bdc == xdc and std.mem.eql(u8, b.dst.port, x.dst.port))
             {
                 return true;
@@ -45,7 +47,7 @@ pub fn collectBuses(
 ) error{OutOfMemory}![]crossing.enumerate.Crossing {
     var out = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
     for (report.crossings) |x| {
-        if (x.kind == .flop_flop_bus) try out.append(alloc, x);
+        if (x.kind == .flop_flop_bus or x.kind == .port_flop_bus) try out.append(alloc, x);
     }
     return out.toOwnedSlice(alloc);
 }
@@ -92,4 +94,41 @@ fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
         if (std.mem.eql(u8, p.name, want)) return p.bits;
     }
     return null;
+}
+
+const FaninBit = struct { bit: u32, depth: u8 };
+
+// Flop cells whose Q feeds the bits through combinational logic.
+// Ports and constants end the walk; twelve hops bound it.
+pub fn backwardFlopFanin(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    start: []ir.bits.Bit,
+) error{OutOfMemory}!std.ArrayListUnmanaged(usize) {
+    var flops = std.ArrayListUnmanaged(usize).empty;
+    var seen = std.AutoHashMapUnmanaged(u32, void).empty;
+    var frontier = std.ArrayListUnmanaged(FaninBit).empty;
+    for (start) |b| {
+        if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = 0 });
+    }
+    var head: usize = 0;
+    while (head < frontier.items.len) : (head += 1) {
+        const fb = frontier.items[head];
+        if (seen.contains(fb.bit)) continue;
+        try seen.put(alloc, fb.bit, {});
+        const drv = mod.driver_of.get(fb.bit) orelse continue;
+        const ci = drv.cell orelse continue;
+        if (std.mem.eql(u8, drv.port, "Q")) {
+            try flops.append(alloc, ci);
+            continue;
+        }
+        if (fb.depth >= 12) continue;
+        for (mod.cells[ci].ports) |p| {
+            if (p.direction == .output) continue;
+            for (p.bits) |b| {
+                if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = fb.depth + 1 });
+            }
+        }
+    }
+    return flops;
 }

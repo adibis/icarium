@@ -559,7 +559,7 @@ const lanewise =
 test "wide muxes propagate lane to lane, never across" {
     var l = try loadAll(lanewise, sinks_sdc);
     defer freeAll(&l);
-    try std.testing.expectEqual(@as(usize, 7), l.report.crossings.len);
+    try std.testing.expectEqual(@as(usize, 8), l.report.crossings.len);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 12) != null);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 11, 13) != null);
     try std.testing.expect(xFor(&l, .flop_flop_bit, 10, 13) == null);
@@ -567,6 +567,9 @@ test "wide muxes propagate lane to lane, never across" {
     // The select steers the whole word: one bit fans out to both lanes.
     try std.testing.expect(xFor(&l, .port_flop_untyped, 4, 12) != null);
     try std.testing.expect(xFor(&l, .port_flop_untyped, 4, 13) != null);
+    // Port-sourced pairs group exactly like flop-sourced ones.
+    const pb = xFor(&l, .port_flop_bus, 4, 12).?;
+    try std.testing.expectEqual(@as(usize, 2), pb.lanes.len);
 }
 
 test "mux selects record control crossings into the union" {

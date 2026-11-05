@@ -536,3 +536,264 @@ test "a port-driven select is not a wrong-domain flop" {
     const fs = try checkAll(&l);
     try std.testing.expectEqual(@as(usize, 0), fs.len);
 }
+
+const fast_pulse =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "fc": {"direction": "input", "bits": [2]},
+    \\        "sc": {"direction": "input", "bits": [3]},
+    \\        "stim": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "req": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [10]}
+    \\        },
+    \\        "reqd": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [10], "Q": [11]}
+    \\        },
+    \\        "inv": {
+    \\          "type": "$not",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [11], "Y": [12]}
+    \\        },
+    \\        "pe": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [12], "Y": [13]}
+    \\        },
+    \\        "pulse": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [13], "Q": [14]}
+    \\        },
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [14], "Q": [15]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [15], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const fast_pulse_sdc =
+    \\create_clock -name fc -period 4 [get_ports fc]
+    \\create_clock -name sc -period 10 [get_ports sc]
+    \\set_clock_groups -asynchronous -group {fc} -group {sc}
+    \\set_input_delay -clock fc 1.0 [get_ports stim]
+;
+
+const slow_ratio_sdc =
+    \\create_clock -name fc -period 8 [get_ports fc]
+    \\create_clock -name sc -period 10 [get_ports sc]
+    \\set_clock_groups -asynchronous -group {fc} -group {sc}
+    \\set_input_delay -clock fc 1.0 [get_ports stim]
+;
+
+test "an edge detector into a slow domain warns CDC-009" {
+    var l = try loadAll(fast_pulse, fast_pulse_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-009"));
+    try std.testing.expectEqual(rule.registry.Severity.warn, fs[0].severity);
+    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "may not be captured") != null);
+
+    var s = try loadAll(fast_pulse, slow_ratio_sdc);
+    defer freeAll(&s);
+    const sfs = try checkAll(&s);
+    try std.testing.expectEqual(@as(usize, 0), sfs.len);
+}
+
+const bare_bus =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4, 5]},
+    \\        "q": {"direction": "output", "bits": [12, 13]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4, 5], "Q": [10, 11]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [10, 11], "Q": [12, 13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const bare_bus_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+;
+
+test "an unprotected bus fires CDC-004 once, never per lane" {
+    var l = try loadAll(bare_bus, bare_bus_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expect(onlyRule(fs, "CDC-004"));
+    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "2-bit path") != null);
+}
+
+const mux_gated =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4, 5]},
+    \\        "go": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [14, 15]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4, 5], "Q": [10, 11]}
+    \\        },
+    \\        "enf": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [6], "Q": [12]}
+    \\        },
+    \\        "gmux": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [14, 15], "B": [10, 11], "S": [12], "Y": [13, 16]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [13, 16], "Q": [14, 15]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mux_gated_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca 1.0 [get_ports d]
+    \\set_input_delay -clock cb 1.0 [get_ports go]
+;
+
+test "a mux-gated bus clears CDC-004" {
+    var l = try loadAll(mux_gated, mux_gated_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
+const gray_bus =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4, 5]},
+    \\        "q": {"direction": "output", "bits": [18, 19]}
+    \\      },
+    \\      "cells": {
+    \\        "bin": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4, 5], "Q": [10, 11]}
+    \\        },
+    \\        "gx": {
+    \\          "type": "$xor",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10, 11], "B": [11, "0"], "Y": [12, 13]}
+    \\        },
+    \\        "g": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [12, 13], "Q": [14, 15]}
+    \\        },
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [14, 15], "Q": [16, 17]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [16, 17], "Q": [18, 19]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a gray-coded bus into a multi-bit chain clears CDC-004" {
+    var l = try loadAll(gray_bus, bare_bus_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}
+
+const marked_gray =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4, 5]},
+    \\        "q": {"direction": "output", "bits": [12, 13]}
+    \\      },
+    \\      "netnames": {
+    \\        "src_q": {"bits": [10, 11], "attributes": {"cdc_gray": 1}}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4, 5], "Q": [10, 11]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [10, 11], "Q": [12, 13]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a user-vouched gray source clears CDC-004" {
+    var l = try loadAll(marked_gray, bare_bus_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+}

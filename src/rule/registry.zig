@@ -2,9 +2,11 @@ const std = @import("std");
 const cdc001 = @import("cdc001.zig");
 const cdc002 = @import("cdc002.zig");
 const cdc003 = @import("cdc003.zig");
+const cdc004 = @import("cdc004.zig");
 const cdc005 = @import("cdc005.zig");
 const cdc006 = @import("cdc006.zig");
 const cdc008 = @import("cdc008.zig");
+const cdc009 = @import("cdc009.zig");
 const cdc010 = @import("cdc010.zig");
 const cdc011 = @import("cdc011.zig");
 const context = @import("context.zig");
@@ -30,9 +32,11 @@ pub const rules = [_]Rule{
     cdc001.rule,
     cdc002.rule,
     cdc003.rule,
+    cdc004.rule,
     cdc005.rule,
     cdc006.rule,
     cdc008.rule,
+    cdc009.rule,
     cdc010.rule,
     cdc011.rule,
 };

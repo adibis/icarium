@@ -22,6 +22,14 @@ first, then combine in the destination domain.
 honors: cdc_static cdc_sync
 fixtures: fixtures/CDC-003
 
+CDC-004 [err] Multi-bit bus crossing without gating or gray-coding
+A multi-bit path crosses domains with no coherence mechanism:
+lanes settle on different cycles, so the destination can sample
+a value never sent. Gate the bus behind a synchronized enable,
+gray-code it into a multi-bit chain, or assert the promise.
+honors: cdc_gray cdc_static
+fixtures: fixtures/CDC-004
+
 CDC-005 [warn] Reconvergent synchronizers
 One source flop fans out to independent synchronizer chains
 whose outputs recombine downstream: each chain resolves
@@ -46,6 +54,14 @@ them as data breaks STA. Clock-distribution cells, clock pins,
 and off-chip forwarding are exempt; the rest is a wiring bug.
 honors:
 fixtures: fixtures/CDC-008
+
+CDC-009 [warn] Pulse-width risk on fast-to-slow data crossings
+A single-bit flop crossing runs fast to slow (source period
+times 1.5 below the destination period) and the source flop
+is an edge detector: a 1-cycle pulse may slip between slow
+edges. Stretch the pulse, toggle it, or handshake it.
+honors:
+fixtures: fixtures/CDC-009
 
 CDC-010 [err] Glitch on the clock network from a wrong-domain control signal
 A clock mux select or gate enable is driven from a domain

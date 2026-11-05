@@ -10,6 +10,7 @@ pub const Kind = enum {
     flop_flop_bus,
     port_flop,
     port_flop_untyped,
+    port_flop_bus,
     clock_sink,
     clock_control,
 };
@@ -398,9 +399,9 @@ const Enumerator = struct {
         };
     }
 
-    // Bus groups cut from key-sorted runs: flop-source pairs
-    // sharing (src cell+pin, dst cell+pin) gain one bus record
-    // beside their bit records. Ports never group (src-reg only).
+    // Bus groups cut from key-sorted runs: pairs sharing (src
+    // cell-or-port + pin, dst cell + pin) gain one bus record
+    // beside their bit records. Ports group by port identity.
     fn appendBusGroups(
         en: *Enumerator,
         pairs: *const std.ArrayListUnmanaged(Pair),
@@ -408,8 +409,9 @@ const Enumerator = struct {
     ) error{OutOfMemory}!void {
         var cand: std.ArrayListUnmanaged(usize) = .empty;
         for (pairs.items, 0..) |pr, i| {
-            const sc = pr.src_cell orelse continue;
-            if (en.mod.cells[sc].blackbox) continue;
+            if (pr.src_cell) |sc| {
+                if (en.mod.cells[sc].blackbox) continue;
+            }
             if (pr.dst_control or pr.dst_class == .clk) continue;
             try cand.append(en.alloc, i);
         }
@@ -417,7 +419,10 @@ const Enumerator = struct {
             fn less(ps: *const std.ArrayListUnmanaged(Pair), a: usize, b: usize) bool {
                 const pa = ps.items[a];
                 const pb = ps.items[b];
-                if (pa.src_cell.? != pb.src_cell.?) return pa.src_cell.? < pb.src_cell.?;
+                if ((pa.src_cell == null) != (pb.src_cell == null)) return pa.src_cell == null;
+                if (pa.src_cell) |sa| {
+                    if (sa != pb.src_cell.?) return sa < pb.src_cell.?;
+                }
                 if (!std.mem.eql(u8, pa.src_port, pb.src_port)) return std.mem.lessThan(u8, pa.src_port, pb.src_port);
                 if (pa.dst_cell != pb.dst_cell) return pa.dst_cell < pb.dst_cell;
                 return std.mem.lessThan(u8, pa.dst_pin, pb.dst_pin);
@@ -441,7 +446,8 @@ const Enumerator = struct {
                 for (run, 0..) |k, n| {
                     lanes[n] = .{ .src_lane = pairs.items[k].src_lane, .dst_lane = pairs.items[k].dst_lane };
                 }
-                var bus = try en.buildCrossing(pairs.items[run[0]], .flop_flop_bus);
+                const bkind: Kind = if (pairs.items[run[0]].src_cell == null) .port_flop_bus else .flop_flop_bus;
+                var bus = try en.buildCrossing(pairs.items[run[0]], bkind);
                 bus.lanes = lanes;
                 bus.hops = try en.alloc.dupe(usize, bus.hops);
                 try out.append(en.alloc, bus);
@@ -593,7 +599,11 @@ fn laneParallel(cell_type: []const u8) bool {
 }
 
 fn sameBusKey(a: Pair, b: Pair) bool {
-    return a.src_cell.? == b.src_cell.? and std.mem.eql(u8, a.src_port, b.src_port) and
+    if ((a.src_cell == null) != (b.src_cell == null)) return false;
+    if (a.src_cell) |sa| {
+        if (sa != b.src_cell.?) return false;
+    }
+    return std.mem.eql(u8, a.src_port, b.src_port) and
         a.dst_cell == b.dst_cell and std.mem.eql(u8, a.dst_pin, b.dst_pin);
 }
 
