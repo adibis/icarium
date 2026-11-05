@@ -113,6 +113,44 @@ test "top selection rules" {
     }
 }
 
+test "wide fanout indexes completely" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var doc: std.ArrayListUnmanaged(u8) = .empty;
+    try doc.appendSlice(alloc, "{\"modules\": {\"top\": {\"ports\": {\"clk\": {\"direction\": \"input\", \"bits\": [1]}}, \"cells\": {");
+    var bit: u32 = 2;
+    for (0..2000) |i| {
+        const piece = try std.fmt.allocPrint(alloc, "\"u.r{d}\": {{\"type\": \"$dff\", \"port_directions\": {{\"CLK\": \"input\", \"D\": \"input\", \"Q\": \"output\"}}, \"connections\": {{\"CLK\": [1], \"D\": [{d}], \"Q\": [{d}]}}, \"parameters\": {{}}, \"attributes\": {{}}}}", .{ i, bit, bit + 1 });
+        try doc.appendSlice(alloc, piece);
+        if (i < 1999) try doc.appendSlice(alloc, ", ");
+        bit += 1;
+    }
+    try doc.appendSlice(alloc, "}}}}");
+    var mod = try load.loadFromSlice(std.testing.allocator, doc.items, null);
+    defer mod.deinit();
+    try std.testing.expectEqual(@as(usize, 2000), mod.cells.len);
+    try std.testing.expect(mod.loads_of.get(1).?.items.len == 2000);
+    try std.testing.expect(mod.driver_of.get(bit) != null);
+}
+
+// Exact bytes matter: this shape forces an arena chunk to be
+// allocated after the Module takes shape, which a by-value arena
+// would orphan from deinit. Deterministic for the pinned toolchain.
+test "real yosys output frees post-copy chunks" {
+    const bytes = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        "tests/fixtures/yosys-tiny.json",
+        std.testing.allocator,
+        .limited(1 << 20),
+    );
+    defer std.testing.allocator.free(bytes);
+    var mod = try load.loadFromSlice(std.testing.allocator, bytes, null);
+    defer mod.deinit();
+    try std.testing.expectEqual(@as(usize, 2), mod.cells.len);
+    try std.testing.expectEqualStrings("$dff", mod.cells[0].type);
+}
+
 test "malformed input fails, never half-loads" {
     if (load.loadFromSlice(std.testing.allocator, "not json", null)) |m| {
         var mm = m;

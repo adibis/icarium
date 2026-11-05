@@ -49,7 +49,9 @@ pub const DriverMap = std.AutoHashMapUnmanaged(u32, Loc);
 pub const LoadsMap = std.AutoHashMapUnmanaged(u32, std.ArrayListUnmanaged(Loc));
 
 pub const Module = struct {
-    backing: std.heap.ArenaAllocator,
+    // Heap-owned: ArenaAllocator captures its own address, so a
+    // by-value copy would orphan later allocations from deinit.
+    backing: *std.heap.ArenaAllocator,
     name: []const u8,
     cells: []Cell,
     ports: []ModulePort,
@@ -57,6 +59,8 @@ pub const Module = struct {
     loads_of: LoadsMap,
 
     pub fn deinit(self: *Module) void {
+        const parent = self.backing.child_allocator;
         self.backing.deinit();
+        parent.destroy(self.backing);
     }
 };

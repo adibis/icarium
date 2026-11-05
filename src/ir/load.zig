@@ -5,7 +5,9 @@ const types = @import("types.zig");
 
 // Everything lands in one arena: a Module frees with a single deinit.
 pub fn loadFromSlice(parent: std.mem.Allocator, bytes: []const u8, top_name: ?[]const u8) !types.Module {
-    var backing = std.heap.ArenaAllocator.init(parent);
+    const backing = try parent.create(std.heap.ArenaAllocator);
+    errdefer parent.destroy(backing);
+    backing.* = std.heap.ArenaAllocator.init(parent);
     errdefer backing.deinit();
     const alloc = backing.allocator();
 

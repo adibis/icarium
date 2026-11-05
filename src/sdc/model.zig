@@ -23,7 +23,9 @@ pub const FalsePath = struct {
 };
 
 pub const Model = struct {
-    backing: std.heap.ArenaAllocator,
+    // Heap-owned, matching Module: copying a live arena orphans
+    // later allocations from deinit (see ir/types.zig).
+    backing: *std.heap.ArenaAllocator,
     clocks: std.StringHashMapUnmanaged(Clock),
     groups: []Group,
     false_paths: []FalsePath,
@@ -31,7 +33,9 @@ pub const Model = struct {
     warnings: []tokens.Warning,
 
     pub fn deinit(self: *Model) void {
+        const parent = self.backing.child_allocator;
         self.backing.deinit();
+        parent.destroy(self.backing);
     }
 
     pub fn areAsync(self: *const Model, a: []const u8, b: []const u8) bool {
@@ -135,7 +139,9 @@ pub fn portClock(self: *const Model, port: []const u8) ?[]const u8 {
 }
 
 pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model {
-    var backing = std.heap.ArenaAllocator.init(parent);
+    const backing = try parent.create(std.heap.ArenaAllocator);
+    errdefer parent.destroy(backing);
+    backing.* = std.heap.ArenaAllocator.init(parent);
     errdefer backing.deinit();
     const alloc = backing.allocator();
 
