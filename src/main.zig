@@ -1,5 +1,6 @@
 const std = @import("std");
 const args = @import("cli/args.zig");
+const stats = @import("cli/stats.zig");
 
 const version = "0.1.0-dev";
 
@@ -13,11 +14,14 @@ pub fn main(init: std.process.Init) !u8 {
 
     var it = try std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa);
     defer it.deinit();
-    _ = it.skip();
-    const cmd = it.next() orelse {
+    var argv: std.ArrayListUnmanaged([]const u8) = .empty;
+    while (it.next()) |a| try argv.append(init.arena.allocator(), a);
+    if (argv.items.len < 2) {
         try usage(&stderr.interface);
         return 2;
-    };
+    }
+
+    const cmd = argv.items[1];
     if (args.isHelp(cmd)) {
         try usage(&stdout.interface);
         return 0;
@@ -25,6 +29,9 @@ pub fn main(init: std.process.Init) !u8 {
     if (args.isVersion(cmd)) {
         try stdout.interface.print("icarium {s}\n", .{version});
         return 0;
+    }
+    if (std.mem.eql(u8, cmd, "stats")) {
+        return stats.run(init, &stdout.interface, &stderr.interface, argv.items[2..]);
     }
     try stderr.interface.print("unknown command: {s}\n\n", .{cmd});
     try usage(&stderr.interface);
@@ -39,6 +46,9 @@ fn usage(w: anytype) !void {
         \\
         \\  help              show this text
         \\  version           show version
+        \\  stats             summarize a Yosys JSON netlist
+        \\      --yosys-json FILE   input from scripts/elaborate.sh
+        \\      --top TOP           top module (default: single module)
         \\
     );
 }

@@ -22,7 +22,7 @@ Small topic files; unit tests mirror `src` under `tests/`
 
 - `src/main.zig` — CLI entry and dispatch
 - `src/cli/` — argument matching, per-command runners
-- `src/ir/` — elaborated-netlist ingestion (next chunk)
+- `src/ir/` — elaborated-netlist ingestion (Module IR)
 - `src/sdc/` — SDC subset parser and clock model (next chunk)
 - `pins.json` — machine-readable dependency pins
 - `bench/` — benchmark oracle, results, triage log
