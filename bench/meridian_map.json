@@ -1,16 +1,25 @@
 {
+  "_meta": {
+    "status": "signed",
+    "date": "2026-11-05",
+    "source": "hw/top_earlgrey/cdc/cdc_waivers*.tcl",
+    "opentitan": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170",
+    "reserved": ["CDC-024", "CDC-025", "CDC-026", "RDC-009", "RDC-010"]
+  },
   "W_DATA": ["CDC-001", "CDC-004"],
   "DATA": ["CDC-001", "CDC-004"],
   "W_MASYNC": ["CDC-001", "CDC-002", "CDC-004"],
   "W_INTERFACE": ["CDC-001", "CDC-011"],
   "W_RECON_GROUPS": ["CDC-005", "CDC-020"],
-  "MULTCLK_CROSSINGS": ["CDC-001", "CDC-004"],
+  "MULTCLK_CROSSINGS": ["CDC-001", "CDC-004", "CDC-026"],
   "W_CNTL": ["CDC-001", "CDC-009"],
   "CNTL": ["CDC-001", "CDC-009"],
   "W_G_CLK_GLITCH": ["CDC-010"],
-  "W_FANOUT": ["CDC-005"],
-  "W_ASYNC_RST_FLOPS": ["RDC-001", "RDC-008"],
-  "RST_SYNC": ["CDC-001", "RDC-001"],
+  "W_FANOUT": ["CDC-024", "CDC-005", "CDC-020"],
+  "W_ASYNC_RST_FLOPS": ["RDC-001", "RDC-002", "RDC-003", "RDC-004", "RDC-005", "RDC-006", "RDC-007", "RDC-008", "RDC-009"],
+  "RST_SYNC": ["RDC-007", "RDC-010"],
   "SYNCH_RST_CROSSING": ["CDC-015", "RDC-001"],
-  "W_GLITCH": ["CDC-006", "CDC-010"]
+  "W_GLITCH": ["CDC-006", "CDC-010"],
+  "S_NET_NO_WAVE": ["CDC-025"],
+  "N_NET_NO_WAVE": ["CDC-025"]
 }
