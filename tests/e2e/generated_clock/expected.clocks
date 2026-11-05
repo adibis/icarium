@@ -1,0 +1,2 @@
+clock clk period 10
+clock div_clk master clk /2

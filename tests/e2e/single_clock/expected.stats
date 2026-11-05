@@ -1,0 +1,5 @@
+module: single_clock
+cells: 2
+unique bits: 4
+cells with src: 2
+  $dff: 2

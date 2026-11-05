@@ -1,0 +1,61 @@
+#!/bin/sh
+# SystemVerilog end-to-end suite: elaborate each case with Yosys,
+# run icarium over it, diff against hand-written goldens.
+# Case layout: tests/e2e/<top>/design.sv, constraints.sdc (optional),
+# expected.stats, expected.clocks (with constraints.sdc).
+# Goldens were authored against Yosys 0.70 (stock frontend).
+# Exit: 0 all pass, 1 golden mismatch, 3 yosys or binary missing.
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN="${ICARIUM_BIN:-$ROOT/zig-out/bin/icarium}"
+[ -x "$BIN" ] || { echo "e2e: build first (zig build): $BIN missing" >&2; exit 3; }
+command -v yosys >/dev/null 2>&1 || { echo "e2e: SKIP, yosys not on PATH" >&2; exit 3; }
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+fail=0
+ran=0
+
+check() {
+    # check <case> <label> <expected> <actual>: diff, count failures.
+    if cmp -s "$3" "$4"; then
+        echo "PASS $1 $2"
+    else
+        echo "FAIL $1 $2"
+        diff -u "$3" "$4" || true
+        fail=1
+    fi
+}
+
+for case in "$ROOT"/tests/e2e/*/; do
+    [ -f "$case/design.sv" ] || continue
+    name="$(basename "$case")"
+    ran=$((ran + 1))
+    if ! sh "$ROOT/scripts/elaborate.sh" --top "$name" --out "$TMP/$name.json" \
+        "$case/design.sv" >"$TMP/$name.elab.log" 2>&1; then
+        echo "FAIL $name: elaboration failed"
+        tail -5 "$TMP/$name.elab.log"
+        fail=1
+        continue
+    fi
+    if ! "$BIN" stats --yosys-json "$TMP/$name.json" >"$TMP/$name.stats" 2>"$TMP/$name.stats.err"; then
+        echo "FAIL $name: stats exited $?"
+        cat "$TMP/$name.stats.err"
+        fail=1
+        continue
+    fi
+    check "$name" stats "$case/expected.stats" "$TMP/$name.stats"
+    if [ -f "$case/constraints.sdc" ]; then
+        if ! "$BIN" clocks --sdc "$case/constraints.sdc" >"$TMP/$name.clocks" 2>"$TMP/$name.clocks.err"; then
+            echo "FAIL $name: clocks exited $?"
+            cat "$TMP/$name.clocks.err"
+            fail=1
+            continue
+        fi
+        check "$name" clocks "$case/expected.clocks" "$TMP/$name.clocks"
+    fi
+done
+
+echo "e2e: $ran cases, $([ "$fail" -eq 0 ] && echo pass || echo FAIL)"
+exit "$fail"

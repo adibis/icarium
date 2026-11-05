@@ -35,6 +35,10 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
 
+    const e2e = b.addSystemCommand(&.{ "sh", "tests/e2e/run.sh" });
+    e2e.step.dependOn(b.getInstallStep());
+    b.step("e2e", "Run SystemVerilog end-to-end suite (needs yosys)").dependOn(&e2e.step);
+
     if (b.option([]const u8, "test-file", "Run one test file, e.g. tests/ir_path_test.zig")) |file| {
         const one_mod = b.createModule(.{
             .root_source_file = b.path(file),

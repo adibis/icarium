@@ -14,3 +14,18 @@ jobs:
       - run: sh scripts/check-pins.sh
       - run: zig build test --summary all
       - run: zig build
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned Zig version
+        id: pins
+        run: echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ steps.pins.outputs.zig }}
+      - name: Install Yosys if packaged
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq yosys || echo "yosys unavailable, e2e will skip"
+      - run: zig build
+      - name: End-to-end suite (skips without yosys)
+        run: sh tests/e2e/run.sh; code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi

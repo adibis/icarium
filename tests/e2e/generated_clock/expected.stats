@@ -1,0 +1,6 @@
+module: generated_clock
+cells: 4
+unique bits: 6
+cells with src: 4
+  $dff: 3
+  $not: 1

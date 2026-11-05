@@ -1,0 +1,5 @@
+module: two_clock
+cells: 2
+unique bits: 5
+cells with src: 2
+  $dff: 2

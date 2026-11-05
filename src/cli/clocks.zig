@@ -41,9 +41,16 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var mod = sdc.model.build(init.gpa, parsed.items) catch return 3;
     defer mod.deinit();
 
+    // Sorted by name so repeated runs diff cleanly.
+    var list: std.ArrayListUnmanaged(sdc.model.Clock) = .empty;
     var cit = mod.clocks.iterator();
-    while (cit.next()) |entry| {
-        const c = entry.value_ptr.*;
+    while (cit.next()) |entry| list.append(scratch, entry.value_ptr.*) catch return 3;
+    std.mem.sort(sdc.model.Clock, list.items, {}, struct {
+        fn less(_: void, a: sdc.model.Clock, b: sdc.model.Clock) bool {
+            return std.mem.lessThan(u8, a.name, b.name);
+        }
+    }.less);
+    for (list.items) |c| {
         out.print("clock {s}", .{c.name}) catch return 3;
         if (c.period) |p| out.print(" period {d}", .{p}) catch return 3;
         if (c.master) |m| out.print(" master {s} /{d}", .{ m, c.divide_by }) catch return 3;
