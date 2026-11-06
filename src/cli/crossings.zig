@@ -11,7 +11,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var top: ?[]const u8 = null;
     var format: []const u8 = "text";
     var stream = false;
-    var stream_chunk: usize = 2048;
+    var stream_chunk: usize = 256;
+    var progress = false;
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const a = argv[i];
@@ -29,6 +30,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             i += 1;
         } else if (std.mem.eql(u8, a, "--stream")) {
             stream = true;
+        } else if (std.mem.eql(u8, a, "--progress")) {
+            progress = true;
         } else if (std.mem.eql(u8, a, "--stream-chunk") and i + 1 < argv.len) {
             stream_chunk = std.fmt.parseInt(usize, argv[i + 1], 10) catch {
                 err.print("crossings: bad --stream-chunk: {s}\n", .{argv[i + 1]}) catch {};
@@ -89,7 +92,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     defer clock_asg.deinit();
     for (warnings.items) |w| w.print(sdc_path, err);
     if (stream) {
-        var counts = CountState{ .alloc = scratch };
+        var counts = CountState{ .alloc = scratch, .progress = progress };
         crossing.enumerate.streamBatches(init.gpa, &mod, &clock_asg, &sdc_mod, stream_chunk, &counts, CountState.onBatch) catch return 3;
         counts.print(out) catch return 3;
         return 0;
@@ -123,6 +126,8 @@ const CountState = struct {
     kinds: std.StringHashMapUnmanaged(usize) = .empty,
     total: usize = 0,
     async_true: usize = 0,
+    chunks: usize = 0,
+    progress: bool = false,
 
     fn onBatch(st: *CountState, crossings: []crossing.enumerate.Crossing) error{OutOfMemory}!void {
         for (crossings) |x| {
@@ -131,6 +136,8 @@ const CountState = struct {
             const slot = try st.kinds.getOrPut(st.alloc, @tagName(x.kind));
             slot.value_ptr.* = (if (slot.found_existing) slot.value_ptr.* else 0) + 1;
         }
+        st.chunks += 1;
+        if (st.progress) std.debug.print("stream: chunk {d} crossings {d} total {d}\n", .{ st.chunks, crossings.len, st.total });
     }
 
     fn print(st: *CountState, out: anytype) !void {

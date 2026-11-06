@@ -32,7 +32,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var ignore_scan = false;
     var no_findings = false;
     var stream = false;
-    var stream_chunk: usize = 2048;
+    var stream_chunk: usize = 256;
+    var progress = false;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
     var heuristic = true;
@@ -85,6 +86,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             no_findings = true;
         } else if (std.mem.eql(u8, a, "--stream")) {
             stream = true;
+        } else if (std.mem.eql(u8, a, "--progress")) {
+            progress = true;
         } else if (std.mem.eql(u8, a, "--stream-chunk") and i + 1 < argv.len) {
             stream_chunk = std.fmt.parseInt(usize, argv[i + 1], 10) catch {
                 err.print("check: bad --stream-chunk: {s}\n", .{argv[i + 1]}) catch {};
@@ -232,6 +235,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 .alloc = scratch,
                 .only = only_arg,
                 .skip = skip_arg,
+                .progress = progress,
             };
             defer st.run.deinit();
             crossing.enumerate.streamBatches(init.gpa, &mod, &clock_asg, &sdc_mod, stream_chunk, &st, StreamState.onBatch) catch return 3;
@@ -389,8 +393,12 @@ const StreamState = struct {
     alloc: std.mem.Allocator,
     only: ?[]const []const u8,
     skip: ?[]const []const u8,
+    chunks: usize = 0,
+    progress: bool = false,
 
     fn onBatch(st: *StreamState, crossings: []crossing.enumerate.Crossing) error{OutOfMemory}!void {
+        st.chunks += 1;
+        if (st.progress) std.debug.print("stream: chunk {d} crossings {d} findings {d}\n", .{ st.chunks, crossings.len, st.run.out.items.len });
         const buses = try rule.context.collectBuses(st.alloc, crossings);
         var ctx = rule.context.Context{
             .mod = st.mod,
