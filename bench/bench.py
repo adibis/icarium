@@ -260,7 +260,11 @@ def main():
         results.append(bench_design(name, spec["json"], spec["top"],
                                     spec["sdc"], work, icarium,
                                     "rtl-buddy-cdc", reps))
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                cwd=ROOT, capture_output=True,
+                                text=True).stdout.strip()
     entry = {"date": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+             "commit": commit,
              "machine": machine_spec(), "versions": versions(icarium),
              "designs": results}
     path = os.path.join(ROOT, "bench", "results.json")

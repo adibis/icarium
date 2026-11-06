@@ -84,5 +84,5 @@ if fails:
     print("diff-vs-reference: FAIL")
     print("\n".join("  " + f for f in fails))
     sys.exit(1)
-print("diff-vs-reference: match (modulo D1-D5)")
+print("diff-vs-reference: match (modulo D1: muxed-clock union)")
 EOF
