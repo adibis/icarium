@@ -18,7 +18,9 @@ pub const Config = struct {
 pub const Context = struct {
     mod: *const ir.types.Module,
     model: *const sdc.model.Model,
-    report: *const crossing.enumerate.Report,
+    // One batch or the whole report: rules never see past
+    // this slice, so streaming feeds chunks through it.
+    crossings: []const crossing.enumerate.Crossing,
     table: *sync.table.Table,
     marks: *const sync.attrs.Marks,
     reset_view: *const reset.trace.View,
@@ -70,10 +72,10 @@ fn busLess(_: void, a: crossing.enumerate.Crossing, b: crossing.enumerate.Crossi
 
 pub fn collectBuses(
     alloc: std.mem.Allocator,
-    report: *const crossing.enumerate.Report,
+    crossings: []const crossing.enumerate.Crossing,
 ) error{OutOfMemory}![]crossing.enumerate.Crossing {
     var out = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
-    for (report.crossings) |x| {
+    for (crossings) |x| {
         // Null destinations never match a lookup; dropping them
         // here keeps the index total without a null branch.
         if (x.dst.cell == null) continue;

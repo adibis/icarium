@@ -26,7 +26,7 @@ pub const rule = registry.Rule{
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var groups = std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(Dsts)).empty;
-    for (ctx.report.crossings) |x| {
+    for (ctx.crossings) |x| {
         switch (x.kind) {
             .flop_flop_bit, .flop_flop_bus, .port_flop, .port_flop_untyped => {},
             else => continue,

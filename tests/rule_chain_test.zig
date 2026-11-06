@@ -75,11 +75,11 @@ fn freeAll(l: *Loaded) void {
 
 fn checkDepth(l: *Loaded, depth: u32) ![]rule.finding.Finding {
     const alloc = l.arena.allocator();
-    const buses = try rule.context.collectBuses(alloc, &l.report);
+    const buses = try rule.context.collectBuses(alloc, l.report.crossings);
     var ctx = rule.context.Context{
         .mod = &l.mod,
         .model = &l.sdc_mod,
-        .report = &l.report,
+        .crossings = l.report.crossings,
         .table = &l.table,
         .marks = &l.marks,
         .reset_view = &l.reset_view,

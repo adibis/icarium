@@ -25,7 +25,7 @@ pub const rule = registry.Rule{
 // more is tested for downstream recombination.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var cands = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
-    for (ctx.report.crossings) |c| {
+    for (ctx.crossings) |c| {
         if (try isCandidate(ctx, c)) try cands.append(ctx.alloc, c);
     }
     std.mem.sort(crossing.enumerate.Crossing, cands.items, ctx, struct {

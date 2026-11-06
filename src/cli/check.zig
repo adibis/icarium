@@ -195,11 +195,11 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     defer reset_view.deinit();
     var reset_syncs = reset.chains.find(init.gpa, &mod, &reset_view, &table.domains, &marks.reset_syncs) catch return 3;
     defer reset_syncs.deinit();
-    const buses = rule.context.collectBuses(scratch, &report) catch return 3;
+    const buses = rule.context.collectBuses(scratch, report.crossings) catch return 3;
     var ctx = rule.context.Context{
         .mod = &mod,
         .model = &sdc_mod,
-        .report = &report,
+        .crossings = report.crossings,
         .table = &table,
         .marks = &marks,
         .reset_view = &reset_view,

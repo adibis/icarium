@@ -29,7 +29,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var feedback = std.AutoHashMapUnmanaged(usize, bool).empty;
     var fanin = std.AutoHashMapUnmanaged(usize, []usize).empty;
-    for (ctx.report.crossings) |x| {
+    for (ctx.crossings) |x| {
         if (x.kind != .flop_flop_bus) continue;
         if (std.mem.eql(u8, x.src_clk, "unknown")) continue;
         // Unresolved destinations belong to CDC-025: gating and

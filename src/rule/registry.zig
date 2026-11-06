@@ -242,7 +242,7 @@ pub const Run = struct {
             if (!inPass(scope, pass)) continue;
             if (scope == .accum and pass != .all) {
                 switch (pass) {
-                    .batch => for (ctx.report.crossings) |x| try r.accumulateOne(rl.id, ctx, x),
+                    .batch => for (ctx.crossings) |x| try r.accumulateOne(rl.id, ctx, x),
                     .finish => for (try r.finishOne(rl.id, ctx)) |f| {
                         if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
                     },
@@ -255,7 +255,7 @@ pub const Run = struct {
                     if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
                 }
             } else if (rl.check) |one| {
-                for (ctx.report.crossings) |x| {
+                for (ctx.crossings) |x| {
                     // Unknown pairs belong to CDC-025's per-endpoint
                     // ledger, never to per-pair structure rules: a sync
                     // violation on an unclocked endpoint is noise with

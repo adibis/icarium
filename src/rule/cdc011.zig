@@ -22,7 +22,7 @@ pub const rule = registry.Rule{
 // escalating when its destinations span clock domains.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var by_port = std.StringHashMapUnmanaged(PortDsts).empty;
-    for (ctx.report.crossings) |x| {
+    for (ctx.crossings) |x| {
         if (x.kind != .port_flop_untyped) continue;
         if (!std.mem.eql(u8, x.dst.port, "D") and !std.mem.eql(u8, x.dst.port, "SRST")) continue;
         if (std.mem.eql(u8, x.dst_clk, "unknown")) continue;

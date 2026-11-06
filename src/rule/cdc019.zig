@@ -29,7 +29,7 @@ pub const Accum = struct {
 
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var acc = Accum{};
-    for (ctx.report.crossings) |x| try accumulate(&acc, ctx, x);
+    for (ctx.crossings) |x| try accumulate(&acc, ctx, x);
     return finish(&acc, ctx);
 }
 
