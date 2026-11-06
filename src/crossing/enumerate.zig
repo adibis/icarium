@@ -36,6 +36,7 @@ pub const Crossing = struct {
     dst_clk: []const u8,
     async_per_sdc: bool,
     hops: []usize,
+    hop_count: u32,
     lanes: []Lane,
     instance_path: [][]const u8,
     src_loc: []const u8,
@@ -125,6 +126,7 @@ fn walkRanges(
     widx: *const walkidx.Index,
     sources: []const Source,
     ranges: []const [2]usize,
+    stream: bool,
 ) error{OutOfMemory}![]Walked {
     const ws = try tmp.alloc(Walked, ranges.len);
     // Setup errors free the finished prefix; later errors free
@@ -155,6 +157,7 @@ fn walkRanges(
             .bit_domains = bit_domains,
             .idx = widx,
             .visit = &w.visit,
+            .stream = stream,
         };
         nvis += 1;
     }
@@ -348,7 +351,7 @@ pub fn enumerate(
     const nchunks = @max(@min(sources.len, std.Thread.getCpuCount() catch 1), 1);
     const ranges = try tmp.alloc([2]usize, nchunks);
     chunkRanges(sources, ranges);
-    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, sources, ranges);
+    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, sources, ranges, false);
     defer {
         for (walked) |*w| w.deinitTransient(parent);
     }
@@ -462,7 +465,7 @@ fn runGroup(
     bctx: anytype,
     comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
-    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges);
+    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges, true);
     var done: usize = 0;
     errdefer {
         for (walked[done..]) |*w| {
@@ -563,6 +566,7 @@ const Pair = struct {
     dst_class: ?SinkClass,
     dst_control: bool,
     hops: []usize,
+    hops_len: u32 = 0,
 };
 
 const Enumerator = struct {
@@ -575,6 +579,11 @@ const Enumerator = struct {
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
     idx: *const walkidx.Index,
     visit: *walkidx.Visit,
+    // Stream walks count hops instead of storing paths: paths
+    // cost length per pair, and broadcast regions hold more
+    // pairs than memory holds paths. Nothing streamed reads
+    // names, only the count CDC-003 needs.
+    stream: bool,
 
     fn walkFrom(
         en: *Enumerator,
@@ -660,8 +669,26 @@ const Enumerator = struct {
             .hops = &.{},
         };
         if (!en.keepPair(pr)) return;
-        if (en.knownPair(pr)) pr.hops = try en.reconstruct(b);
+        if (en.knownPair(pr)) {
+            if (en.stream) {
+                pr.hops_len = en.countHops(b);
+            } else {
+                pr.hops = try en.reconstruct(b);
+                pr.hops_len = @intCast(pr.hops.len);
+            }
+        }
         try pairs.append(en.pair_alloc, pr);
+    }
+
+    fn countHops(en: *Enumerator, dst: u32) u32 {
+        const vs = en.visit;
+        var n: u32 = 0;
+        var cur: u32 = dst;
+        while (cur != walkidx.Index.none) {
+            if (vs.via[cur] != walkidx.Index.none) n += 1;
+            cur = vs.prev[cur];
+        }
+        return n;
     }
 
     // Both ends resolve to real clocks: the same predicate the
@@ -770,6 +797,7 @@ const Enumerator = struct {
         const dc = en.mod.cells[pr.dst_cell];
         return .{
             .id = ident,
+            .hop_count = pr.hops_len,
             .kind = kind,
             .src = .{
                 .cell = pr.src_cell,
