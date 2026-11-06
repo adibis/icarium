@@ -70,6 +70,13 @@ test "forbidden substitution refused" {
     try std.testing.expectError(error.GluedSubstitution, e3);
 }
 
+test "get_nets splices like other readers" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const r = try parseWithArena(&arena, "create_clock -name c [get_nets clk_net]");
+    try std.testing.expectEqualStrings("clk_net", r.cmds[0].words[3]);
+}
+
 test "bus bit-selects splice, nested commands still refuse" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

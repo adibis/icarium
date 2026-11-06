@@ -173,6 +173,7 @@ fn spliceSubstitution(
     const allowed = std.mem.eql(u8, cmd, "get_ports") or
         std.mem.eql(u8, cmd, "get_clocks") or
         std.mem.eql(u8, cmd, "get_cells") or
+        std.mem.eql(u8, cmd, "get_nets") or
         std.mem.eql(u8, cmd, "get_pins");
     if (!allowed) return error.ForbiddenSubstitution;
     while (it.next()) |w| try words.append(alloc, try alloc.dupe(u8, busStem(w)));

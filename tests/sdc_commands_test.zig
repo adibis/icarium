@@ -42,6 +42,16 @@ test "generated clock ratios" {
     try std.testing.expectEqual(@as(u32, 1), c.multiply_by);
 }
 
+test "combinational generated clock reads as div-by-1" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const r = try parseOne(&arena, "create_generated_clock -name muxo -source clk -combinational [get_pins u_mux/y]");
+    const c = r.parsed.generated_clock;
+    try std.testing.expectEqualStrings("muxo", c.name);
+    try std.testing.expectEqual(@as(u32, 1), c.divide_by);
+    try std.testing.expectEqual(@as(usize, 0), r.warnings.len);
+}
+
 test "clock groups keep sets" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

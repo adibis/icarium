@@ -152,6 +152,10 @@ fn parseGeneratedClock(alloc: std.mem.Allocator, cmd: tokens.Command, warnings: 
             if (master != null) try warn(alloc, warnings, cmd.line, "multiple -source, first kept");
             if (master == null) master = cmd.words[i + 1];
             i += 2;
+        } else if (std.mem.eql(u8, w, "-combinational")) {
+            // Combinational through comb logic: divide_by = 1 is
+            // already the default, so the flag only needs consuming.
+            i += 1;
         } else if ((std.mem.eql(u8, w, "-divide_by") or std.mem.eql(u8, w, "-multiply_by")) and i + 1 < cmd.words.len) {
             const n = std.fmt.parseInt(u32, cmd.words[i + 1], 10) catch {
                 try warn(alloc, warnings, cmd.line, "bad ratio, clock skipped");
