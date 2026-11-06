@@ -136,12 +136,18 @@ def verdict(entry, findings, blob):
                overlap(entry["dst"], f["driver"]):
                 return "modeling-gap", f
         return "missed", None
+    # Single-ended entries can never satisfy d-and-r (a null end
+    # never overlaps), so the given end alone decides full. Weaker
+    # evidence than a two-ended match; documented, not hidden.
+    single = bool(entry["driver"]) != bool(entry["dst"])
     for f in cands:
         d = overlap(entry["driver"], f["driver"]) or \
             overlap(entry["driver"], f["dst"])
         r = overlap(entry["dst"], f["dst"]) or \
             overlap(entry["dst"], f["driver"])
         if d and r:
+            return "full", f
+        if single and (d or r):
             return "full", f
     for f in cands:
         if overlap(entry["driver"], f["driver"]) or \
