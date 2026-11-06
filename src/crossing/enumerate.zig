@@ -207,9 +207,10 @@ fn buildChunk(
         try out.append(alloc, try en.buildCrossing(pr, null));
     }
     try en.appendBusGroups(&plist, &out);
-    // Sort indices, not records: a Crossing spans hundreds of
-    // bytes, so swapping them moves gigabytes. IDs are unique,
-    // so the gathered order matches the in-place sort exactly.
+    // Argsort indices, then permute in place: a Crossing spans
+    // hundreds of bytes, so a gathered copy doubles a vector
+    // already worth gigabytes. IDs are unique, so the order is
+    // total and the permutation applies exactly once per cycle.
     const order = try alloc.alloc(u32, out.items.len);
     for (order, 0..) |*o, i| o.* = @intCast(i);
     std.mem.sort(u32, order, out.items, struct {
@@ -217,9 +218,28 @@ fn buildChunk(
             return std.mem.lessThan(u8, xs[a].id, xs[b].id);
         }
     }.less);
-    const sorted = try alloc.alloc(Crossing, out.items.len);
-    for (order, 0..) |o, i| sorted[i] = out.items[o];
-    return sorted;
+    const seen = try alloc.alloc(u8, (out.items.len + 7) / 8);
+    @memset(seen, 0);
+    var tmpc: Crossing = undefined;
+    var started = false;
+    for (order, 0..) |_, j| {
+        if (seen[j / 8] & (@as(u8, 1) << @intCast(j % 8)) != 0) continue;
+        var cur = j;
+        tmpc = out.items[j];
+        started = true;
+        while (started or cur != j) {
+            started = false;
+            const nxt = order[cur];
+            seen[cur / 8] |= @as(u8, 1) << @intCast(cur % 8);
+            if (nxt == j) {
+                out.items[cur] = tmpc;
+                break;
+            }
+            out.items[cur] = out.items[nxt];
+            cur = nxt;
+        }
+    }
+    return out.items;
 }
 
 // One run feeds one chunk: cells group across their ports,
