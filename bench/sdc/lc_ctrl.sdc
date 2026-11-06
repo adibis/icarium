@@ -1,0 +1,25 @@
+# Bench constraints for OpenTitan lc_ctrl (tier 2). Two unrelated clocks:
+# the bus clock and the KMAC clock each type their own inputs, so
+# untyped-port noise stays out of the head-to-head numbers.
+create_clock -name clk -period 10 [get_ports clk_i]
+create_clock -name clk_kmac -period 10 [get_ports clk_kmac_i]
+set_clock_groups -asynchronous -group {clk} -group {clk_kmac}
+set_input_delay -clock clk [get_ports regs_tl_i]
+set_input_delay -clock clk [get_ports dmi_tl_i]
+set_input_delay -clock clk [get_ports alert_rx_i]
+set_input_delay -clock clk [get_ports esc_scrap_state0_tx_i]
+set_input_delay -clock clk [get_ports esc_scrap_state1_tx_i]
+set_input_delay -clock clk [get_ports jtag_i]
+set_input_delay -clock clk [get_ports lc_clk_byp_ack_i]
+set_input_delay -clock clk [get_ports lc_nvm_rma_ack_i]
+set_input_delay -clock clk [get_ports lc_otp_program_i]
+set_input_delay -clock clk [get_ports lc_otp_vendor_test_i]
+set_input_delay -clock clk [get_ports otp_device_id_i]
+set_input_delay -clock clk [get_ports otp_lc_data_i]
+set_input_delay -clock clk [get_ports otp_manuf_state_i]
+set_input_delay -clock clk [get_ports pwr_lc_i]
+set_input_delay -clock clk [get_ports rst_ni]
+set_input_delay -clock clk [get_ports scan_rst_ni]
+set_input_delay -clock clk [get_ports scanmode_i]
+set_input_delay -clock clk_kmac [get_ports kmac_data_i]
+set_input_delay -clock clk_kmac [get_ports rst_kmac_ni]

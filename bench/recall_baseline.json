@@ -1,5 +1,5 @@
 {
- "blessed_at": "15e4244e12ebafaaf6f33945288d7187891fce5a",
+ "blessed_at": "ec525a5ce96a5340e4bc8724ade4d2e6e453f01a",
  "opentitan": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170",
  "blocks": {
   "uart": {
@@ -33,6 +33,14 @@
    "rule-only": 0,
    "missed": 0,
    "modeling-gap": 0
+  },
+  "lc_ctrl": {
+   "findings": 95,
+   "full": 0,
+   "partial": 0,
+   "rule-only": 1,
+   "missed": 0,
+   "modeling-gap": 0
   }
  },
  "entries": {
@@ -46,6 +54,7 @@
   "spi_device:meridian-0046": "partial",
   "spi_device:meridian-0048": "partial",
   "spi_device:meridian-0049": "partial",
-  "spi_device:meridian-0050": "partial"
+  "spi_device:meridian-0050": "partial",
+  "lc_ctrl:meridian-0001": "rule-only"
  }
 }
