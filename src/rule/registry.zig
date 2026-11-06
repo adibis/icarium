@@ -54,6 +54,39 @@ pub const Rule = struct {
     check_all: ?*const fn (*context.Context) error{OutOfMemory}![]finding.Finding = null,
 };
 
+// Streaming disposition: xing rules ride the per-crossing
+// loop, batch rules see one chunk, once rules see the whole
+// design a single time, accum rules fold chunks into state.
+pub const Scope = enum { xing, batch, once, accum };
+
+pub const Pass = enum { all, batch, once, finish };
+
+const scopes = std.StaticStringMap(Scope).initComptime(.{
+    .{ "CDC-001", .xing }, .{ "CDC-002", .xing },
+    .{ "CDC-003", .xing }, .{ "CDC-004", .xing },
+    .{ "CDC-005", .batch }, .{ "CDC-006", .once },
+    .{ "CDC-008", .once }, .{ "CDC-009", .xing },
+    .{ "CDC-010", .once }, .{ "CDC-011", .batch },
+    .{ "CDC-012", .batch }, .{ "CDC-013", .xing },
+    .{ "CDC-014", .xing }, .{ "CDC-015", .batch },
+    .{ "CDC-016", .batch }, .{ "CDC-017", .once },
+    .{ "CDC-018", .batch }, .{ "CDC-019", .accum },
+    .{ "CDC-020", .batch }, .{ "CDC-021", .once },
+    .{ "CDC-022", .once }, .{ "CDC-023", .once },
+    .{ "CDC-024", .batch }, .{ "CDC-025", .accum },
+    .{ "CDC-026", .accum },
+    .{ "RDC-001", .once }, .{ "RDC-002", .once },
+    .{ "RDC-003", .once }, .{ "RDC-004", .once },
+    .{ "RDC-005", .once }, .{ "RDC-006", .once },
+    .{ "RDC-007", .once }, .{ "RDC-008", .once },
+    .{ "RDC-009", .once }, .{ "RDC-010", .once },
+    .{ "RDC-011", .once },
+});
+
+fn scopeOf(id: []const u8) Scope {
+    return scopes.get(id) orelse unreachable;
+}
+
 pub const rules = [_]Rule{
     cdc001.rule,
     cdc002.rule,
@@ -131,6 +164,12 @@ comptime {
         }
         const hooks: u2 = (if (r.check != null) 1 else 0) + (if (r.check_all != null) 1 else 0);
         if (hooks != 1) @compileError("rule needs exactly one of check/check_all");
+        // Scope must match the hook shape, or streaming would
+        // feed a rule crossings it never asked to see per chunk.
+        switch (scopeOf(r.id)) {
+            .xing => if (r.check == null) @compileError("xing rule needs check"),
+            .batch, .once, .accum => if (r.check_all == null) @compileError("whole rule needs check_all"),
+        }
     }
 }
 
@@ -157,6 +196,66 @@ fn enabled(id: []const u8, only: ?[]const []const u8, skip: ?[]const []const u8)
     return true;
 }
 
+// One run owns the finding list and the waiver-identity
+// set across passes, so streamed batches dedupe globally.
+pub const Run = struct {
+    alloc: std.mem.Allocator,
+    out: std.ArrayListUnmanaged(finding.Finding) = .empty,
+    seen: std.StringHashMapUnmanaged(void) = .empty,
+
+    pub fn init(alloc: std.mem.Allocator) Run {
+        return .{ .alloc = alloc };
+    }
+
+    pub fn deinit(r: *Run) void {
+        var it = r.seen.iterator();
+        while (it.next()) |e| r.alloc.free(e.key_ptr.*);
+        r.seen.deinit(r.alloc);
+    }
+
+    pub fn runPass(
+        r: *Run,
+        ctx: *context.Context,
+        only: ?[]const []const u8,
+        skip: ?[]const []const u8,
+        pass: Pass,
+    ) error{OutOfMemory}!void {
+        for (rules) |rl| {
+            if (!enabled(rl.id, only, skip)) continue;
+            if (!inPass(scopeOf(rl.id), pass)) continue;
+            if (rl.check_all) |whole| {
+                for (try whole(ctx)) |f| {
+                    if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
+                }
+            } else if (rl.check) |one| {
+                for (ctx.report.crossings) |x| {
+                    // Unknown pairs belong to CDC-025's per-endpoint
+                    // ledger, never to per-pair structure rules: a sync
+                    // violation on an unclocked endpoint is noise with
+                    // a confident tone. Matches knownPair in enumerate.
+                    if (unknownSide(x)) continue;
+                    if (try one(ctx, x)) |got| {
+                        var f = got;
+                        if (f.driver == null) f.driver = srcName(ctx, x);
+                        if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
+                    }
+                }
+            }
+        }
+    }
+};
+
+// Batch runs what chunks can answer; once and finish run
+// after the last chunk. All covers the legacy whole-report run.
+fn inPass(scope: Scope, pass: Pass) bool {
+    return switch (pass) {
+        .all => true,
+        .batch => scope == .xing or scope == .batch or scope == .accum,
+        .once => scope == .once,
+        .finish => scope == .accum,
+    };
+}
+
 // Rules outer, crossings inner: registry order is fixed and
 // crossings arrive sorted, so reruns order identically.
 // Cost: O(rules × crossings); per-crossing work is each rule's own.
@@ -166,35 +265,10 @@ pub fn runChecks(
     only: ?[]const []const u8,
     skip: ?[]const []const u8,
 ) error{OutOfMemory}![]finding.Finding {
-    var out = std.ArrayListUnmanaged(finding.Finding).empty;
-    var seen = std.StringHashMapUnmanaged(void).empty;
-    defer {
-        var it = seen.iterator();
-        while (it.next()) |e| alloc.free(e.key_ptr.*);
-        seen.deinit(alloc);
-    }
-    for (rules) |r| {
-        if (!enabled(r.id, only, skip)) continue;
-        if (r.check_all) |whole| {
-            for (try whole(ctx)) |f| {
-                if (try fresh(alloc, &seen, f)) try out.append(alloc, f);
-            }
-        } else if (r.check) |one| {
-            for (ctx.report.crossings) |x| {
-                // Unknown pairs belong to CDC-025's per-endpoint
-                // ledger, never to per-pair structure rules: a sync
-                // violation on an unclocked endpoint is noise with
-                // a confident tone. Matches knownPair in enumerate.
-                if (unknownSide(x)) continue;
-                if (try one(ctx, x)) |got| {
-                    var f = got;
-                    if (f.driver == null) f.driver = srcName(ctx, x);
-                    if (try fresh(alloc, &seen, f)) try out.append(alloc, f);
-                }
-            }
-        }
-    }
-    return out.toOwnedSlice(alloc);
+    var run = Run.init(alloc);
+    defer run.deinit();
+    try run.runPass(ctx, only, skip, .all);
+    return run.out.toOwnedSlice(alloc);
 }
 
 // Findings deduplicate on their waiver identity: per-crossing rules
