@@ -16,9 +16,14 @@ pub const Table = struct {
     alloc: std.mem.Allocator,
     backing: *std.heap.ArenaAllocator,
     domains: std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
+    // Dense per-cell domain index: rules ask per crossing, and a
+    // hash per crossing costs more than the rule itself. Entries
+    // point at the map's values, which never move after build.
+    by_cell: []?*const clock.trace.Domain,
     d_bit_to_flop: std.AutoHashMapUnmanaged(u32, usize),
     srst_data_bit_to_flop: std.AutoHashMapUnmanaged(u32, usize),
-    memo: std.AutoHashMapUnmanaged(usize, Entry),
+    // Dense chain memo for the same reason: one indexed load.
+    memo: []?Entry,
     combines: []clock.trace.Combine,
 
     pub fn deinit(self: *Table) void {
@@ -28,7 +33,8 @@ pub const Table = struct {
     }
 
     pub fn domainOf(self: *const Table, cell: usize) ?clock.trace.Domain {
-        return self.domains.get(cell);
+        if (cell >= self.by_cell.len) return null;
+        return if (self.by_cell[cell]) |d| d.* else null;
     }
 
     fn readers(_: *const Table, mod: *const ir.types.Module, bit: u32) usize {
@@ -46,17 +52,17 @@ pub const Table = struct {
     // read their effective intra-cell depth instead.
     // Cost: O(chain) once per head, memoized; revisits are O(1).
     pub fn chainDepth(t: *Table, mod: *const ir.types.Module, head: usize, head_clock: []const u8) error{OutOfMemory}!Entry {
-        if (t.memo.get(head)) |e| return e;
+        if (t.memo[head]) |e| return e;
         const c = mod.cells[head];
         const d = portBits(c, "D");
         const q = portBits(c, "Q");
         if (d == null or q == null or d.?.len != 1 or q.?.len != 1) {
             if (try t.packedDepth(mod, head)) |e| {
-                try t.memo.put(t.alloc, head, e);
+                t.memo[head] = e;
                 return e;
             }
             const one = Entry{ .depth = 1, .stages = try oneStage(t.alloc, head) };
-            try t.memo.put(t.alloc, head, one);
+            t.memo[head] = one;
             return one;
         }
         var stages = std.ArrayListUnmanaged(usize).empty;
@@ -79,7 +85,7 @@ pub const Table = struct {
             cur = nxt;
         }
         const e = Entry{ .depth = @intCast(stages.items.len), .stages = try stages.toOwnedSlice(t.alloc) };
-        try t.memo.put(t.alloc, head, e);
+        t.memo[head] = e;
         return e;
     }
 
@@ -234,13 +240,20 @@ pub fn build(
         for (cb.clocks) |n| try names.append(alloc, try alloc.dupe(u8, n));
         try combines.append(alloc, .{ .cell = cb.cell, .bit = cb.bit, .clocks = try names.toOwnedSlice(alloc) });
     }
+    const by_cell = try alloc.alloc(?*const clock.trace.Domain, mod.cells.len);
+    @memset(by_cell, null);
+    var dit = domains.iterator();
+    while (dit.next()) |e| by_cell[e.key_ptr.*] = e.value_ptr;
+    const memo = try alloc.alloc(?Entry, mod.cells.len);
+    @memset(memo, null);
     var t = Table{
         .alloc = alloc,
         .backing = backing,
         .domains = domains,
+        .by_cell = by_cell,
         .d_bit_to_flop = d_bit_to_flop,
         .srst_data_bit_to_flop = .{},
-        .memo = .{},
+        .memo = memo,
         .combines = try combines.toOwnedSlice(alloc),
     };
     // First flop wins a shared data bit, in cell order: a shared

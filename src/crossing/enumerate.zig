@@ -120,7 +120,7 @@ fn walkRanges(
     tmp: std.mem.Allocator,
     mod: *const ir.types.Module,
     model: *const sdc.model.Model,
-    clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
+    clock_of: []?*const clock.trace.Domain,
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
     widx: *const walkidx.Index,
     sources: []const Source,
@@ -258,7 +258,9 @@ fn sameRun(a: Source, b: Source) bool {
 // resolved fanout index, and the source list. keep outlives the
 // whole enumeration; tmp dies with it.
 const Prepared = struct {
-    clock_of: std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
+    // Dense per-cell flop domains: the walk and the build ask
+    // per pair, and a hash per pair costs more than the ask.
+    clock_of: []?*const clock.trace.Domain,
     widx: walkidx.Index,
     sources: []Source,
 };
@@ -269,8 +271,13 @@ fn prepare(
     mod: *const ir.types.Module,
     clock_asg: *const clock.trace.Assignment,
 ) error{OutOfMemory}!Prepared {
-    var clock_of = std.AutoHashMapUnmanaged(usize, clock.trace.Domain){};
-    for (clock_asg.flops) |f| try clock_of.put(keep, f.cell, f.domain);
+    const clock_of = try keep.alloc(?*const clock.trace.Domain, mod.cells.len);
+    @memset(clock_of, null);
+    for (clock_asg.flops) |f| {
+        const slot = try keep.create(clock.trace.Domain);
+        slot.* = f.domain;
+        clock_of[f.cell] = slot;
+    }
 
     const controls = try keep.dupe(clock.trace.ControlPin, clock_asg.controls);
     std.mem.sort(clock.trace.ControlPin, controls, {}, struct {
@@ -341,7 +348,7 @@ pub fn enumerate(
     const nchunks = @max(@min(sources.len, std.Thread.getCpuCount() catch 1), 1);
     const ranges = try tmp.alloc([2]usize, nchunks);
     chunkRanges(sources, ranges);
-    const walked = try walkRanges(parent, tmp, mod, model, &prep.clock_of, &clock_asg.bit_domains, &prep.widx, sources, ranges);
+    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, sources, ranges);
     defer {
         for (walked) |*w| w.deinitTransient(parent);
     }
@@ -455,7 +462,7 @@ fn runGroup(
     bctx: anytype,
     comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
-    const walked = try walkRanges(parent, tmp, mod, model, &prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges);
+    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges);
     var done: usize = 0;
     errdefer {
         for (walked[done..]) |*w| {
@@ -564,7 +571,7 @@ const Enumerator = struct {
     alloc: std.mem.Allocator,
     pair_alloc: std.mem.Allocator,
     scratch: *std.heap.ArenaAllocator,
-    clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
+    clock_of: []?*const clock.trace.Domain,
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
     idx: *const walkidx.Index,
     visit: *walkidx.Visit,
@@ -860,10 +867,15 @@ const Enumerator = struct {
 
     // Destination domains come from the flop table, the memory
     // clock, or the controlled output — never guessed.
+    fn clockAt(en: *Enumerator, cell: usize) ?clock.trace.Domain {
+        if (cell >= en.clock_of.len) return null;
+        return if (en.clock_of[cell]) |d| d.* else null;
+    }
+
     fn dstDomain(en: *Enumerator, pr: Pair) ?clock.trace.Domain {
         if (pr.dst_control) return en.controlOutDomain(pr.dst_cell);
         if (clock.cells.isMemoryClock(en.mod.cells[pr.dst_cell].type)) return en.memClockDomain(pr.dst_cell);
-        return en.clock_of.get(pr.dst_cell);
+        return en.clockAt(pr.dst_cell);
     }
 
     fn srcDomain(en: *Enumerator, pr: Pair) ?clock.trace.Domain {
@@ -873,7 +885,7 @@ const Enumerator = struct {
             if (!readEnabled(en.mod.cells[ci])) return null;
             return en.memClockDomain(ci);
         }
-        return en.clock_of.get(ci);
+        return en.clockAt(ci);
     }
 
     // The controlled clock: the domain leaving the mux or gate output.

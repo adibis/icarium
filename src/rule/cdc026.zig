@@ -28,7 +28,7 @@ pub const rule = registry.Rule{
 // silence the ledger: a handled multiclock path is exactly the
 // shape waivers record, so the record fires either way.
 pub const Accum = struct {
-    groups: std.StringHashMapUnmanaged(Group) = .empty,
+    groups: std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(Group)) = .empty,
 };
 
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
@@ -49,9 +49,13 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     else
         Side{ .legs = &.{x.src_clk}, .sels = &.{}, .muxes = &.{} };
     if (src.legs.len < 2 and dst.legs.len < 2) return;
-    const key = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ ctx.mod.cells[dc].name, x.src_clk });
-    const g = try acc.groups.getOrPut(ctx.alloc, key);
+    // Nested by destination, then source clock: formatting a key
+    // per crossing allocs for every probe, not just inserts.
+    const outer = try acc.groups.getOrPut(ctx.alloc, dc);
+    if (!outer.found_existing) outer.value_ptr.* = .empty;
+    const g = try outer.value_ptr.getOrPut(ctx.alloc, x.src_clk);
     if (!g.found_existing) {
+        g.key_ptr.* = try ctx.alloc.dupe(u8, x.src_clk);
         g.value_ptr.* = .{
             .dst = dc,
             .dst_clk = try ctx.alloc.dupe(u8, x.dst_clk),
@@ -78,24 +82,35 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
 pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var scratch = std.heap.ArenaAllocator.init(ctx.alloc);
     defer scratch.deinit();
-    var sit = acc.groups.iterator();
-    while (sit.next()) |e| e.value_ptr.sortAll(ctx);
-    var keys = std.ArrayListUnmanaged([]const u8).empty;
-    var git = acc.groups.iterator();
-    while (git.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
-    std.mem.sort([]const u8, keys.items, {}, struct {
-        fn less(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.lessThan(u8, a, b);
+    var keys = std.ArrayListUnmanaged(Key).empty;
+    var oit = acc.groups.iterator();
+    while (oit.next()) |oe| {
+        var iit = oe.value_ptr.iterator();
+        while (iit.next()) |ie| {
+            ie.value_ptr.sortAll(ctx);
+            // Print order keys on the joined string, formatted
+            // once per group: per-crossing formats were the waste.
+            const joined = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ ctx.mod.cells[oe.key_ptr.*].name, ie.key_ptr.* });
+            try keys.append(ctx.alloc, .{ .order = joined, .group = ie.value_ptr });
+        }
+    }
+    std.mem.sort(Key, keys.items, {}, struct {
+        fn less(_: void, a: Key, b: Key) bool {
+            return std.mem.lessThan(u8, a.order, b.order);
         }
     }.less);
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (keys.items) |k| {
-        const gr = acc.groups.get(k).?;
         _ = scratch.reset(.retain_capacity);
-        try out.append(ctx.alloc, try fire(ctx, scratch.allocator(), gr));
+        try out.append(ctx.alloc, try fire(ctx, scratch.allocator(), k.group.*));
     }
     return out.toOwnedSlice(ctx.alloc);
 }
+
+const Key = struct {
+    order: []const u8,
+    group: *Group,
+};
 
 const Side = struct {
     legs: []const []const u8,
