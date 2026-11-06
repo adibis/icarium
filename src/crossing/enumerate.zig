@@ -2,8 +2,11 @@ const std = @import("std");
 const clock = @import("../clock.zig");
 const id = @import("id.zig");
 const ir = @import("../ir.zig");
-const reset = @import("../reset.zig");
 const sdc = @import("../sdc.zig");
+const walkidx = @import("walkidx.zig");
+
+pub const SinkClass = walkidx.SinkClass;
+pub const sinkClass = walkidx.sinkClass;
 
 pub const Kind = enum {
     flop_flop_bit,
@@ -52,32 +55,9 @@ pub const Report = struct {
     }
 };
 
-pub const SinkClass = enum { d, srst, arst, clk };
-
-// Sink pins by name on sequential cells: D/SRST/async/CLK. Shared
-// with the completeness test, which lists sinks independently.
-pub fn sinkClass(cell_type: []const u8, pin: []const u8) ?SinkClass {
-    if (clock.cells.isMemoryClock(cell_type)) {
-        if (std.mem.eql(u8, pin, "CLK")) return .clk;
-        if (std.mem.eql(u8, pin, "ADDR") or std.mem.eql(u8, pin, "DATA") or std.mem.eql(u8, pin, "EN")) return .d;
-        return null;
-    }
-    if (!clock.cells.isSequential(cell_type)) return null;
-    if (std.mem.eql(u8, pin, "D")) return .d;
-    if (std.mem.eql(u8, pin, "CLK") or std.mem.eql(u8, pin, "G")) return .clk;
-    if (clock.cells.isLatch(cell_type) and std.mem.eql(u8, pin, "EN")) return .clk;
-    // Flop clock-enables sink: an async enable is a control
-    // crossing rules must see, not a wall to walk through.
-    if (std.mem.eql(u8, pin, "EN")) return .d;
-    if (reset.cells.resetPins(cell_type)) |rp| {
-        for (rp.async) |ap| if (std.mem.eql(u8, pin, ap.pin)) return .arst;
-        for (rp.sync) |sp| if (std.mem.eql(u8, pin, sp)) return .srst;
-    }
-    return null;
-}
-
-// Cost: O(sources × cone) walks, each visited-guarded; output
-// pruned to async, unknown, and control arrivals before hashing.
+// Cost: O(sources × cone) visits over a resolved index, each
+// visit array-indexed; output pruned to async, unknown, and
+// control arrivals before hashing.
 pub fn enumerate(
     parent: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -107,6 +87,9 @@ pub fn enumerate(
             return std.mem.lessThan(u8, a.pin, b.pin);
         }
     }.less);
+    var idx_arena = std.heap.ArenaAllocator.init(parent);
+    defer idx_arena.deinit();
+    var widx = try walkidx.Index.build(idx_arena.allocator(), mod, controls);
     var en = Enumerator{
         .mod = mod,
         .model = model,
@@ -115,7 +98,7 @@ pub fn enumerate(
         .scratch = &scratch,
         .clock_of = &clock_of,
         .bit_domains = &clock_asg.bit_domains,
-        .controls = controls,
+        .idx = &widx,
     };
     var pairs: std.ArrayListUnmanaged(Pair) = .empty;
     for (mod.cells, 0..) |c, ci| {
@@ -160,12 +143,19 @@ pub fn enumerate(
         try out.append(alloc, try en.buildCrossing(pr, null));
     }
     try en.appendBusGroups(&pairs, &out);
-    std.mem.sort(Crossing, out.items, {}, struct {
-        fn less(_: void, a: Crossing, b: Crossing) bool {
-            return std.mem.lessThan(u8, a.id, b.id);
+    // Sort indices, not records: a Crossing spans hundreds of
+    // bytes, so swapping them moves gigabytes. IDs are unique,
+    // so the gathered order matches the in-place sort exactly.
+    const order = try alloc.alloc(u32, out.items.len);
+    for (order, 0..) |*o, i| o.* = @intCast(i);
+    std.mem.sort(u32, order, out.items, struct {
+        fn less(xs: []Crossing, a: u32, b: u32) bool {
+            return std.mem.lessThan(u8, xs[a].id, xs[b].id);
         }
     }.less);
-    return .{ .backing = backing, .crossings = try out.toOwnedSlice(alloc) };
+    const sorted = try alloc.alloc(Crossing, out.items.len);
+    for (order, 0..) |o, i| sorted[i] = out.items[o];
+    return .{ .backing = backing, .crossings = sorted };
 }
 
 // Both cells clocked by the identical bit set: same net,
@@ -202,28 +192,6 @@ fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
     return null;
 }
 
-// Memory containers and init data stay opaque; only read/write
-// ports participate, and recognized pins never propagate through.
-fn isOpaqueMem(cell_type: []const u8) bool {
-    return std.mem.startsWith(u8, cell_type, "$mem") and !clock.cells.isMemoryClock(cell_type);
-}
-
-// Selects on the mux family broadcast: one select bit steers
-// the whole word, so lane mapping must never apply to S.
-const mux_family = std.StaticStringMap(void).initComptime(.{
-    .{ "$mux", {} },
-    .{ "$pmux", {} },
-    .{ "$ternary", {} },
-    .{ "$bwmux", {} },
-});
-
-// Control pins steer every output bit at once: a toggling
-// select corrupts the whole word, so they always broadcast.
-fn isControlPin(cell_type: []const u8, pin: []const u8) bool {
-    if (std.mem.eql(u8, pin, "S") and mux_family.get(cell_type) != null) return true;
-    return std.mem.eql(u8, pin, "EN");
-}
-
 const Pair = struct {
     src_cell: ?usize,
     src_port: []const u8,
@@ -238,8 +206,6 @@ const Pair = struct {
     hops: []usize,
 };
 
-const ParentLink = struct { prev: ?u32, via: ?usize };
-
 const Enumerator = struct {
     mod: *const ir.types.Module,
     model: *const sdc.model.Model,
@@ -248,7 +214,7 @@ const Enumerator = struct {
     scratch: *std.heap.ArenaAllocator,
     clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
-    controls: []const clock.trace.ControlPin,
+    idx: *walkidx.Index,
 
     fn walkFrom(
         en: *Enumerator,
@@ -260,63 +226,44 @@ const Enumerator = struct {
     ) error{OutOfMemory}!void {
         // Walk state resets per source, bounding transient memory to
         // one cone; the walk itself costs O(cone) time, visited-guarded.
+        // Visits index the resolved fanout: loads on null cells,
+        // blackboxes, and opaque memories never entered it, matching
+        // the three skips the hash walk applied per visit.
         _ = en.scratch.reset(.retain_capacity);
         const tmp = en.scratch.allocator();
-        var seen = std.AutoHashMapUnmanaged(u32, ParentLink){};
+        const idx = en.idx;
+        idx.nextGen();
+        const gen = idx.gen;
+        idx.stamp[src_bit] = gen;
+        idx.prev[src_bit] = walkidx.Index.none;
+        idx.via[src_bit] = walkidx.Index.none;
         var queue: std.ArrayListUnmanaged(u32) = .empty;
         var head: usize = 0;
-        try seen.put(tmp, src_bit, .{ .prev = null, .via = null });
         try queue.append(tmp, src_bit);
         while (head < queue.items.len) {
             const b = queue.items[head];
             head += 1;
-            const loads = en.mod.loads_of.get(b) orelse continue;
-            for (loads.items) |loc| {
-                const ci = loc.cell orelse continue;
-                const c = en.mod.cells[ci];
-                if (isOpaqueMem(c.type)) continue;
-                if (c.blackbox) continue;
+            for (idx.loads(b)) |ld| {
                 // Control arrivals emit, then keep walking: the value
                 // still reaches the clock, so the glitch path survives.
-                if (en.isControlSink(ci, loc.port)) {
-                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ci, loc.port, b, null, true, &seen);
+                if (ld.control) {
+                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ld.cell, ld.pin, b, ld.lane, null, true);
                 }
-                if (sinkClass(c.type, loc.port)) |cls| {
+                if (ld.sink) |cls| {
                     // Same-cell pairs are self-feedback, never
                     // crossings: a flop's Q reaching its own D
                     // through comb is a counter, not a CDC.
-                    if (src_cell != null and src_cell.? == ci) continue;
-                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ci, loc.port, b, cls, false, &seen);
-                } else if (clock.cells.isSequential(c.type) or clock.cells.isMemoryClock(c.type)) {
+                    if (src_cell != null and src_cell.? == ld.cell) continue;
+                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ld.cell, ld.pin, b, ld.lane, cls, false);
+                } else if (idx.cells[ld.cell].seq_or_memclock) {
                     // Unclassified sequential inputs end the walk:
                     // boundaries cut, never go transparent.
                     continue;
                 } else {
-                    try en.propagate(ci, c, loc.port, b, &seen, &queue);
+                    try en.propagate(ld.cell, ld, b, gen, &queue, tmp);
                 }
             }
         }
-    }
-
-    // Control pins are few (clock-path muxes and gates), so a
-    // linear scan beats a map build in both code and cycles.
-    // Binary search over the sorted control index: this fires per
-    // arrival, so the linear scan it replaced cost O(controls) each.
-    fn isControlSink(en: *Enumerator, ci: usize, pin: []const u8) bool {
-        var lo: usize = 0;
-        var hi: usize = en.controls.len;
-        while (lo < hi) {
-            const mid = lo + (hi - lo) / 2;
-            const cp = en.controls[mid];
-            if (cp.cell < ci or (cp.cell == ci and std.mem.lessThan(u8, cp.pin, pin))) {
-                lo = mid + 1;
-            } else if (cp.cell == ci and std.mem.eql(u8, cp.pin, pin)) {
-                return true;
-            } else {
-                hi = mid;
-            }
-        }
-        return false;
     }
 
     fn emit(
@@ -329,9 +276,9 @@ const Enumerator = struct {
         ci: usize,
         pin: []const u8,
         b: u32,
+        dst_lane: usize,
         cls: ?SinkClass,
         control: bool,
-        seen: *const std.AutoHashMapUnmanaged(u32, ParentLink),
     ) error{OutOfMemory}!void {
         // Sync data pairs die before hop reconstruction: discovery
         // emits millions and no rule consumes them. Unknown pairs
@@ -346,13 +293,13 @@ const Enumerator = struct {
             .dst_cell = ci,
             .dst_pin = pin,
             .dst_bit = b,
-            .dst_lane = laneOf(en.mod.cells[ci], pin, b),
+            .dst_lane = dst_lane,
             .dst_class = cls,
             .dst_control = control,
             .hops = &.{},
         };
         if (!en.keepPair(pr)) return;
-        if (en.knownPair(pr)) pr.hops = try en.reconstruct(seen, b);
+        if (en.knownPair(pr)) pr.hops = try en.reconstruct(b);
         try pairs.append(en.pair_alloc, pr);
     }
 
@@ -377,19 +324,20 @@ const Enumerator = struct {
     fn propagate(
         en: *Enumerator,
         ci: usize,
-        c: ir.types.Cell,
-        pin: []const u8,
+        ld: walkidx.Load,
         bit: u32,
-        seen: *std.AutoHashMapUnmanaged(u32, ParentLink),
+        gen: u32,
         queue: *std.ArrayListUnmanaged(u32),
+        tmp: std.mem.Allocator,
     ) error{OutOfMemory}!void {
-        const lane = laneOf(c, pin, bit);
+        const info = en.idx.cells[ci];
+        const c = en.mod.cells[ci];
         for (c.ports) |p| {
             if (p.direction != .output or p.bits.len == 0) continue;
-            if (outLane(c, pin, lane, p.bits.len)) |ol| {
-                try en.visitBit(p.bits[ol], bit, ci, seen, queue);
+            if (outLaneFast(info, ld, p.bits.len)) |ol| {
+                try en.visitBit(p.bits[ol], bit, ci, gen, queue, tmp);
             } else {
-                for (p.bits) |ob| try en.visitBit(ob, bit, ci, seen, queue);
+                for (p.bits) |ob| try en.visitBit(ob, bit, ci, gen, queue, tmp);
             }
         }
     }
@@ -399,23 +347,27 @@ const Enumerator = struct {
         ob: ir.bits.Bit,
         from: u32,
         via: usize,
-        seen: *std.AutoHashMapUnmanaged(u32, ParentLink),
+        gen: u32,
         queue: *std.ArrayListUnmanaged(u32),
+        tmp: std.mem.Allocator,
     ) error{OutOfMemory}!void {
         if (ob != .sig) return;
-        if (seen.contains(ob.sig)) return;
-        const tmp = en.scratch.allocator();
-        try seen.put(tmp, ob.sig, .{ .prev = from, .via = via });
+        const idx = en.idx;
+        if (idx.stamp[ob.sig] == gen) return;
+        idx.stamp[ob.sig] = gen;
+        idx.prev[ob.sig] = from;
+        idx.via[ob.sig] = @intCast(via);
         try queue.append(tmp, ob.sig);
     }
 
-    fn reconstruct(en: *Enumerator, seen: *const std.AutoHashMapUnmanaged(u32, ParentLink), dst: u32) error{OutOfMemory}![]usize {
+    fn reconstruct(en: *Enumerator, dst: u32) error{OutOfMemory}![]usize {
+        const idx = en.idx;
         var rev: std.ArrayListUnmanaged(usize) = .empty;
-        var cur: ?u32 = dst;
-        while (cur) |b| {
-            const link = seen.get(b) orelse break;
-            if (link.via) |ci| try rev.append(en.alloc, ci);
-            cur = link.prev;
+        var cur: u32 = dst;
+        while (cur != walkidx.Index.none) {
+            const v = idx.via[cur];
+            if (v != walkidx.Index.none) try rev.append(en.alloc, v);
+            cur = idx.prev[cur];
         }
         std.mem.reverse(usize, rev.items);
         return rev.toOwnedSlice(en.alloc);
@@ -658,19 +610,14 @@ fn readEnabled(c: ir.types.Cell) bool {
 
 // Lane-parallel output for an arrival lane, or null to fan out.
 // $pmux option legs wrap lane-modulo across the output width.
-fn outLane(c: ir.types.Cell, pin: []const u8, lane: usize, out_len: usize) ?usize {
-    if (isControlPin(c.type, pin)) return null;
-    if (!laneParallel(c.type)) return null;
-    if (std.mem.eql(u8, c.type, "$pmux") and std.mem.eql(u8, pin, "B")) return lane % out_len;
-    if (lane < out_len) return lane;
+// Integer twin of the retired string-keyed outLane: same
+// lane-or-broadcast verdict from the resolved load and cell.
+fn outLaneFast(info: walkidx.CellInfo, ld: walkidx.Load, out_len: usize) ?usize {
+    if (ld.pin_ctl) return null;
+    if (!info.parallel) return null;
+    if (info.pmux and ld.pin_b) return ld.lane % out_len;
+    if (ld.lane < out_len) return ld.lane;
     return null;
-}
-
-fn laneParallel(cell_type: []const u8) bool {
-    for ([_][]const u8{ "$not", "$and", "$or", "$xor", "$xnor", "$mux", "$pmux", "$ternary", "$bwmux", "$tribuf" }) |t| {
-        if (std.mem.eql(u8, cell_type, t)) return true;
-    }
-    return false;
 }
 
 fn sameBusKey(a: Pair, b: Pair) bool {
@@ -682,11 +629,3 @@ fn sameBusKey(a: Pair, b: Pair) bool {
         a.dst_cell == b.dst_cell and std.mem.eql(u8, a.dst_pin, b.dst_pin);
 }
 
-fn laneOf(c: ir.types.Cell, pin: []const u8, bit: u32) usize {
-    if (portBits(c, pin)) |list| {
-        for (list, 0..) |b, i| {
-            if (b == .sig and b.sig == bit) return i;
-        }
-    }
-    return 0;
-}

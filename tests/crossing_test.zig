@@ -27,7 +27,8 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
         sdc_mod = try sdc.model.build(std.testing.allocator, &[_]sdc.commands.Parsed{});
     }
     errdefer sdc_mod.deinit();
-    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
+    var awarns: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod, &awarns);
     errdefer clock_asg.deinit();
     const report = try crossing.enumerate.enumerate(std.testing.allocator, &mod, &clock_asg, &sdc_mod);
     return .{ .mod = mod, .sdc_mod = sdc_mod, .clock_asg = clock_asg, .report = report };
@@ -725,5 +726,63 @@ test "memory ports sink and source with memory clocks" {
     for (l.report.crossings) |x| {
         if (x.src.cell) |ci| try std.testing.expect(!std.mem.eql(u8, l.mod.cells[ci].name, "blob"));
         try std.testing.expect(!std.mem.eql(u8, l.mod.cells[x.dst.cell.?].name, "blob"));
+    }
+}
+
+// Two sources sharing one gate: the second walk must see the
+// whole cone fresh, not the first walk's visited stamps.
+const shared_gate =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "din": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "s1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [10]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [11]}
+    \\        },
+    \\        "g1": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [11], "Y": [20]}
+    \\        },
+    \\        "d1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [20], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const shared_gate_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+;
+
+test "sources sharing a gate enumerate independently" {
+    var l = try loadAll(shared_gate, shared_gate_sdc);
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 7), l.report.crossings.len);
+    const first = xFor(&l, .flop_flop_bit, 10, 20).?;
+    const second = xFor(&l, .flop_flop_bit, 11, 20).?;
+    for ([_]crossing.enumerate.Crossing{ first, second }) |x| {
+        try std.testing.expect(x.async_per_sdc);
+        try std.testing.expectEqual(@as(usize, 1), x.hops.len);
+        try std.testing.expectEqualStrings("g1", l.mod.cells[x.hops[0]].name);
     }
 }
