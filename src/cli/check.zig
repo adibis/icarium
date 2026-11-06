@@ -31,6 +31,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var strict_waivers = false;
     var ignore_scan = false;
     var no_findings = false;
+    var stream = false;
+    var stream_chunk: usize = 2048;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
     var heuristic = true;
@@ -81,6 +83,18 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             ignore_scan = true;
         } else if (std.mem.eql(u8, a, "--no-findings")) {
             no_findings = true;
+        } else if (std.mem.eql(u8, a, "--stream")) {
+            stream = true;
+        } else if (std.mem.eql(u8, a, "--stream-chunk") and i + 1 < argv.len) {
+            stream_chunk = std.fmt.parseInt(usize, argv[i + 1], 10) catch {
+                err.print("check: bad --stream-chunk: {s}\n", .{argv[i + 1]}) catch {};
+                return 2;
+            };
+            if (stream_chunk == 0) {
+                err.writeAll("check: --stream-chunk must be >= 1\n") catch {};
+                return 2;
+            }
+            i += 1;
         } else if (std.mem.eql(u8, a, "--sync-depth") and i + 1 < argv.len) {
             sync_depth = std.fmt.parseInt(u32, argv[i + 1], 10) catch {
                 err.print("check: bad --sync-depth: {s}\n", .{argv[i + 1]}) catch {};
@@ -169,8 +183,13 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var clock_asg = clock.trace.assign(init.gpa, &mod, &sdc_mod, &warnings) catch return 3;
     defer clock_asg.deinit();
     for (warnings.items) |w| w.print(sdc_path, err);
-    var report = crossing.enumerate.enumerate(init.gpa, &mod, &clock_asg, &sdc_mod) catch return 3;
-    defer report.deinit();
+    // Streamed runs never materialize the report: findings
+    // assemble per chunk, and only they survive the walk.
+    var report: ?crossing.enumerate.Report = null;
+    defer if (report) |*r| r.deinit();
+    if (!stream and (!no_findings or domain_map_path != null)) {
+        report = crossing.enumerate.enumerate(init.gpa, &mod, &clock_asg, &sdc_mod) catch return 3;
+    }
     var table = sync.table.build(init.gpa, &mod, &clock_asg) catch return 3;
     defer table.deinit();
     var marks = sync.attrs.collect(init.gpa, &mod) catch return 3;
@@ -195,25 +214,60 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     defer reset_view.deinit();
     var reset_syncs = reset.chains.find(init.gpa, &mod, &reset_view, &table.domains, &marks.reset_syncs) catch return 3;
     defer reset_syncs.deinit();
-    const buses = rule.context.collectBuses(scratch, report.crossings) catch return 3;
-    var ctx = rule.context.Context{
-        .mod = &mod,
-        .model = &sdc_mod,
-        .crossings = report.crossings,
-        .table = &table,
-        .marks = &marks,
-        .reset_view = &reset_view,
-        .reset_syncs = &reset_syncs,
-        .buses = buses,
-        .cfg = .{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold, .sync_primitives = prims.items },
-        .alloc = scratch,
-    };
     const only_arg: ?[]const []const u8 = if (only_s == null) null else only;
     const skip_arg: ?[]const []const u8 = if (skip_s == null) null else skip;
-    var findings: []rule.finding.Finding = if (no_findings)
-        &.{}
-    else
-        rule.registry.runChecks(scratch, &ctx, only_arg, skip_arg) catch return 3;
+    const cfg = rule.context.Config{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold, .sync_primitives = prims.items };
+    var findings: []rule.finding.Finding = &.{};
+    if (!no_findings) {
+        if (stream) {
+            var st = StreamState{
+                .run = rule.registry.Run.init(scratch),
+                .mod = &mod,
+                .model = &sdc_mod,
+                .table = &table,
+                .marks = &marks,
+                .reset_view = &reset_view,
+                .reset_syncs = &reset_syncs,
+                .cfg = cfg,
+                .alloc = scratch,
+                .only = only_arg,
+                .skip = skip_arg,
+            };
+            defer st.run.deinit();
+            crossing.enumerate.streamBatches(init.gpa, &mod, &clock_asg, &sdc_mod, stream_chunk, &st, StreamState.onBatch) catch return 3;
+            var tail = rule.context.Context{
+                .mod = &mod,
+                .model = &sdc_mod,
+                .crossings = &.{},
+                .table = &table,
+                .marks = &marks,
+                .reset_view = &reset_view,
+                .reset_syncs = &reset_syncs,
+                .buses = &.{},
+                .cfg = cfg,
+                .alloc = scratch,
+            };
+            st.run.runPass(&tail, only_arg, skip_arg, .once) catch return 3;
+            st.run.runPass(&tail, only_arg, skip_arg, .finish) catch return 3;
+            sortFindings(st.run.out.items);
+            findings = st.run.out.toOwnedSlice(scratch) catch return 3;
+        } else {
+            const buses = rule.context.collectBuses(scratch, report.?.crossings) catch return 3;
+            var ctx = rule.context.Context{
+                .mod = &mod,
+                .model = &sdc_mod,
+                .crossings = report.?.crossings,
+                .table = &table,
+                .marks = &marks,
+                .reset_view = &reset_view,
+                .reset_syncs = &reset_syncs,
+                .buses = buses,
+                .cfg = cfg,
+                .alloc = scratch,
+            };
+            findings = rule.registry.runChecks(scratch, &ctx, only_arg, skip_arg) catch return 3;
+        }
+    }
 
     var unmatched: []const []const u8 = &.{};
     var wbytes: []u8 = &.{};
@@ -277,9 +331,13 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         }
     }
 
+    if (stream and domain_map_path != null) {
+        err.writeAll("check: --emit-domain-map needs the materialized report, unsupported with --stream\n") catch {};
+        return 2;
+    }
     if (domain_map_path) |mp| {
         var aw = std.Io.Writer.Allocating.init(scratch);
-        clockmap.writeClockMap(scratch, &aw.writer, &mod, &sdc_mod, &clock_asg, &report, &table, &marks, findings, tool_version) catch return 3;
+        clockmap.writeClockMap(scratch, &aw.writer, &mod, &sdc_mod, &clock_asg, &(report.?), &table, &marks, findings, tool_version) catch return 3;
         std.Io.Dir.cwd().writeFile(init.io, .{ .sub_path = mp, .data = aw.written() }) catch {
             err.print("check: cannot write {s}\n", .{mp}) catch {};
             return 3;
@@ -313,6 +371,57 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
     if (strict_waivers and unmatched.len > 0) failed = true;
     return if (failed) 1 else 0;
+}
+
+// Stream assembly: one batch context per chunk through the
+// batch pass, then the once and finish passes over the
+// accumulated state. Findings sort canonically, since chunk
+// order is not the report order legacy prints.
+const StreamState = struct {
+    run: rule.registry.Run,
+    mod: *const ir.types.Module,
+    model: *const sdc.model.Model,
+    table: *sync.table.Table,
+    marks: *const sync.attrs.Marks,
+    reset_view: *const reset.trace.View,
+    reset_syncs: *const reset.chains.Syncs,
+    cfg: rule.context.Config,
+    alloc: std.mem.Allocator,
+    only: ?[]const []const u8,
+    skip: ?[]const []const u8,
+
+    fn onBatch(st: *StreamState, crossings: []crossing.enumerate.Crossing) error{OutOfMemory}!void {
+        const buses = try rule.context.collectBuses(st.alloc, crossings);
+        var ctx = rule.context.Context{
+            .mod = st.mod,
+            .model = st.model,
+            .crossings = crossings,
+            .table = st.table,
+            .marks = st.marks,
+            .reset_view = st.reset_view,
+            .reset_syncs = st.reset_syncs,
+            .buses = buses,
+            .cfg = st.cfg,
+            .alloc = st.alloc,
+        };
+        try st.run.runPass(&ctx, st.only, st.skip, .batch);
+    }
+};
+
+fn sortFindings(findings: []rule.finding.Finding) void {
+    std.mem.sort(rule.finding.Finding, findings, {}, struct {
+        fn less(_: void, a: rule.finding.Finding, b: rule.finding.Finding) bool {
+            const r = std.mem.order(u8, a.rule, b.rule);
+            if (r != .eq) return r == .lt;
+            const d = std.mem.order(u8, a.dst, b.dst);
+            if (d != .eq) return d == .lt;
+            const da = a.driver orelse "";
+            const db = b.driver orelse "";
+            const v = std.mem.order(u8, da, db);
+            if (v != .eq) return v == .lt;
+            return std.mem.order(u8, a.message, b.message) == .lt;
+        }
+    }.less);
 }
 
 fn splitIds(alloc: std.mem.Allocator, s: ?[]const u8) error{OutOfMemory}![][]const u8 {

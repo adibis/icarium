@@ -10,6 +10,8 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var sdc_path: ?[]const u8 = null;
     var top: ?[]const u8 = null;
     var format: []const u8 = "text";
+    var stream = false;
+    var stream_chunk: usize = 2048;
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const a = argv[i];
@@ -24,6 +26,18 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             i += 1;
         } else if (std.mem.eql(u8, a, "--format") and i + 1 < argv.len) {
             format = argv[i + 1];
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--stream")) {
+            stream = true;
+        } else if (std.mem.eql(u8, a, "--stream-chunk") and i + 1 < argv.len) {
+            stream_chunk = std.fmt.parseInt(usize, argv[i + 1], 10) catch {
+                err.print("crossings: bad --stream-chunk: {s}\n", .{argv[i + 1]}) catch {};
+                return 2;
+            };
+            if (stream_chunk == 0) {
+                err.writeAll("crossings: --stream-chunk must be >= 1\n") catch {};
+                return 2;
+            }
             i += 1;
         } else {
             err.print("crossings: bad argument: {s}\n", .{a}) catch {};
@@ -74,6 +88,12 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var clock_asg = clock.trace.assign(init.gpa, &mod, &sdc_mod, &warnings) catch return 3;
     defer clock_asg.deinit();
     for (warnings.items) |w| w.print(sdc_path, err);
+    if (stream) {
+        var counts = CountState{ .alloc = scratch };
+        crossing.enumerate.streamBatches(init.gpa, &mod, &clock_asg, &sdc_mod, stream_chunk, &counts, CountState.onBatch) catch return 3;
+        counts.print(out) catch return 3;
+        return 0;
+    }
     var report = crossing.enumerate.enumerate(init.gpa, &mod, &clock_asg, &sdc_mod) catch return 3;
     defer report.deinit();
 
@@ -94,3 +114,35 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
     return 0;
 }
+
+// Streamed census: per-kind counts plus the async split, for
+// designs whose pair list no report can hold. Kinds print
+// sorted so reruns diff cleanly.
+const CountState = struct {
+    alloc: std.mem.Allocator,
+    kinds: std.StringHashMapUnmanaged(usize) = .empty,
+    total: usize = 0,
+    async_true: usize = 0,
+
+    fn onBatch(st: *CountState, crossings: []crossing.enumerate.Crossing) error{OutOfMemory}!void {
+        for (crossings) |x| {
+            st.total += 1;
+            if (x.async_per_sdc) st.async_true += 1;
+            const slot = try st.kinds.getOrPut(st.alloc, @tagName(x.kind));
+            slot.value_ptr.* = (if (slot.found_existing) slot.value_ptr.* else 0) + 1;
+        }
+    }
+
+    fn print(st: *CountState, out: anytype) !void {
+        var names = std.ArrayListUnmanaged([]const u8).empty;
+        var it = st.kinds.iterator();
+        while (it.next()) |e| try names.append(st.alloc, e.key_ptr.*);
+        std.mem.sort([]const u8, names.items, {}, struct {
+            fn less(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.lessThan(u8, a, b);
+            }
+        }.less);
+        try out.print("crossings total {d} async {d}\n", .{ st.total, st.async_true });
+        for (names.items) |k| try out.print("crossings {s} {d}\n", .{ k, st.kinds.get(k).? });
+    }
+};

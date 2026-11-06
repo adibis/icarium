@@ -160,7 +160,7 @@ fn walkRanges(
     }
     setup_done = true;
     const RunArg = struct { w: *Walked, sources: []const Source };
-    const runOne = struct {
+    const runRange = struct {
         fn f(a: RunArg) void {
             a.w.run(a.sources);
         }
@@ -173,7 +173,7 @@ fn walkRanges(
         var live: usize = 0;
         for (ws, 0..) |*w, i| {
             args[i] = .{ .w = w, .sources = sources[ranges[i][0]..ranges[i][1]] };
-            threads[i] = std.Thread.spawn(.{}, runOne, .{args[i]}) catch {
+            threads[i] = std.Thread.spawn(.{}, runRange, .{args[i]}) catch {
                 // Thread sandboxes run inline instead: slower,
                 // identical output, no failure to report.
                 for (args[i..]) |a| a.w.run(a.sources);
@@ -230,34 +230,31 @@ fn sameRun(a: Source, b: Source) bool {
     return std.mem.eql(u8, a.port, b.port);
 }
 
-// Cost: O(sources × cone) visits over a resolved index, each
-// visit array-indexed, split across worker threads; output
-// pruned to async, unknown, and control arrivals before hashing.
-pub fn enumerate(
-    parent: std.mem.Allocator,
+// Walk inputs shared by every range: the flop clock map, the
+// resolved fanout index, and the source list. keep outlives the
+// whole enumeration; tmp dies with it.
+const Prepared = struct {
+    clock_of: std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
+    widx: walkidx.Index,
+    sources: []Source,
+};
+
+fn prepare(
+    keep: std.mem.Allocator,
+    tmp: std.mem.Allocator,
     mod: *const ir.types.Module,
     clock_asg: *const clock.trace.Assignment,
-    model: *const sdc.model.Model,
-) error{OutOfMemory}!Report {
-    const backing = try parent.create(std.heap.ArenaAllocator);
-    errdefer parent.destroy(backing);
-    backing.* = std.heap.ArenaAllocator.init(parent);
-    errdefer backing.deinit();
-    const alloc = backing.allocator();
-
+) error{OutOfMemory}!Prepared {
     var clock_of = std.AutoHashMapUnmanaged(usize, clock.trace.Domain){};
-    for (clock_asg.flops) |f| try clock_of.put(alloc, f.cell, f.domain);
+    for (clock_asg.flops) |f| try clock_of.put(keep, f.cell, f.domain);
 
-    const controls = try alloc.dupe(clock.trace.ControlPin, clock_asg.controls);
+    const controls = try keep.dupe(clock.trace.ControlPin, clock_asg.controls);
     std.mem.sort(clock.trace.ControlPin, controls, {}, struct {
         fn less(_: void, a: clock.trace.ControlPin, b: clock.trace.ControlPin) bool {
             if (a.cell != b.cell) return a.cell < b.cell;
             return std.mem.lessThan(u8, a.pin, b.pin);
         }
     }.less);
-    var idx_arena = std.heap.ArenaAllocator.init(parent);
-    defer idx_arena.deinit();
-    const tmp = idx_arena.allocator();
     const widx = try walkidx.Index.build(tmp, mod, controls);
 
     var srclist: std.ArrayListUnmanaged(Source) = .empty;
@@ -293,12 +290,34 @@ pub fn enumerate(
             try srclist.append(tmp, .{ .cell = null, .port = p.name, .bit = b.sig, .lane = lane });
         }
     }
-    const sources = srclist.items;
+    return .{ .clock_of = clock_of, .widx = widx, .sources = srclist.items };
+}
+
+// Cost: O(sources × cone) visits over a resolved index, each
+// visit array-indexed, split across worker threads; output
+// pruned to async, unknown, and control arrivals before hashing.
+pub fn enumerate(
+    parent: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    clock_asg: *const clock.trace.Assignment,
+    model: *const sdc.model.Model,
+) error{OutOfMemory}!Report {
+    const backing = try parent.create(std.heap.ArenaAllocator);
+    errdefer parent.destroy(backing);
+    backing.* = std.heap.ArenaAllocator.init(parent);
+    errdefer backing.deinit();
+    const alloc = backing.allocator();
+
+    var idx_arena = std.heap.ArenaAllocator.init(parent);
+    defer idx_arena.deinit();
+    const tmp = idx_arena.allocator();
+    const prep = try prepare(alloc, tmp, mod, clock_asg);
+    const sources = prep.sources;
 
     const nchunks = @max(@min(sources.len, std.Thread.getCpuCount() catch 1), 1);
     const ranges = try tmp.alloc([2]usize, nchunks);
     chunkRanges(sources, ranges);
-    const walked = try walkRanges(parent, tmp, mod, model, &clock_of, &clock_asg.bit_domains, &widx, sources, ranges);
+    const walked = try walkRanges(parent, tmp, mod, model, &prep.clock_of, &clock_asg.bit_domains, &prep.widx, sources, ranges);
     defer {
         for (walked) |*w| w.deinitTransient(parent);
     }
@@ -330,6 +349,89 @@ pub fn enumerate(
     en.alloc = alloc;
     const sorted = try buildChunk(&en, build_tmp.allocator(), pairs.items, alloc);
     return .{ .backing = backing, .parenas = parenas, .crossings = sorted };
+}
+
+// One walked range built and consumed, then freed: crossings
+// die with the call, so the callback must copy what it keeps.
+fn runOne(
+    parent: std.mem.Allocator,
+    w: *Walked,
+    bctx: anytype,
+    comptime onBatch: fn (@TypeOf(bctx), []Crossing) error{OutOfMemory}!void,
+) error{OutOfMemory}!void {
+    defer {
+        w.deinitTransient(parent);
+        w.parena.deinit();
+    }
+    var chunk_arena = std.heap.ArenaAllocator.init(parent);
+    defer chunk_arena.deinit();
+    var build_tmp = std.heap.ArenaAllocator.init(parent);
+    defer build_tmp.deinit();
+    w.en.alloc = chunk_arena.allocator();
+    const crossings = try buildChunk(&w.en, build_tmp.allocator(), w.pairs.items, chunk_arena.allocator());
+    try onBatch(bctx, crossings);
+}
+
+fn runGroup(
+    parent: std.mem.Allocator,
+    tmp: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    model: *const sdc.model.Model,
+    prep: *const Prepared,
+    clock_asg: *const clock.trace.Assignment,
+    ranges: []const [2]usize,
+    bctx: anytype,
+    comptime onBatch: fn (@TypeOf(bctx), []Crossing) error{OutOfMemory}!void,
+) error{OutOfMemory}!void {
+    const walked = try walkRanges(parent, tmp, mod, model, &prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges);
+    var done: usize = 0;
+    errdefer {
+        for (walked[done..]) |*w| {
+            w.deinitTransient(parent);
+            w.parena.deinit();
+        }
+    }
+    for (walked) |*w| {
+        try runOne(parent, w, bctx, onBatch);
+        done += 1;
+    }
+}
+
+// Chunked enumeration for designs no report can hold: ranges
+// walk in thread-sized groups, each builds its crossings, the
+// callback consumes them, and only findings survive. Peak is
+// one group of pairs plus one chunk of crossings.
+// Cost: same O(sources × cone) walk as enumerate, plus one
+// id sort per chunk; rules run once per chunk.
+pub fn streamBatches(
+    parent: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    clock_asg: *const clock.trace.Assignment,
+    model: *const sdc.model.Model,
+    chunk_sources: usize,
+    bctx: anytype,
+    comptime onBatch: fn (@TypeOf(bctx), []Crossing) error{OutOfMemory}!void,
+) error{OutOfMemory}!void {
+    var setup_arena = std.heap.ArenaAllocator.init(parent);
+    defer setup_arena.deinit();
+    const keep = setup_arena.allocator();
+    var idx_arena = std.heap.ArenaAllocator.init(parent);
+    defer idx_arena.deinit();
+    const tmp = idx_arena.allocator();
+    const prep = try prepare(keep, tmp, mod, clock_asg);
+    const sources = prep.sources;
+
+    const per = @max(chunk_sources, 1);
+    const nchunks = @max((sources.len + per - 1) / per, 1);
+    const ranges = try tmp.alloc([2]usize, nchunks);
+    chunkRanges(sources, ranges);
+    const group = @max(@min(ranges.len, std.Thread.getCpuCount() catch 1), 1);
+    var gi: usize = 0;
+    while (gi < ranges.len) {
+        const gj = @min(gi + group, ranges.len);
+        try runGroup(parent, tmp, mod, model, &prep, clock_asg, ranges[gi..gj], bctx, onBatch);
+        gi = gj;
+    }
 }
 
 // Both cells clocked by the identical bit set: same net,
