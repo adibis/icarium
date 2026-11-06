@@ -23,31 +23,44 @@ pub const rule = registry.Rule{
 // One finding per (source register, dst clock) group reaching
 // two or more destinations. Bus records collapse into the same
 // keys their lanes already hold, so whole buses never fire.
+pub const Accum = struct {
+    groups: std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(Dsts)) = .empty,
+};
+
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var out = std.ArrayListUnmanaged(finding.Finding).empty;
-    var groups = std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(Dsts)).empty;
-    for (ctx.crossings) |x| {
-        switch (x.kind) {
-            .flop_flop_bit, .flop_flop_bus, .port_flop, .port_flop_untyped => {},
-            else => continue,
-        }
-        if (!std.mem.eql(u8, x.dst.port, "D")) continue;
-        const sc = x.src.cell orelse continue;
-        const dc = x.dst.cell orelse continue;
-        if (clock.cells.isLatch(ctx.mod.cells[sc].type)) continue;
-        if (clock.cells.isLatch(ctx.mod.cells[dc].type)) continue;
-        if (std.mem.eql(u8, x.dst_clk, "unknown")) continue;
-        if (std.mem.eql(u8, x.src_clk, x.dst_clk)) continue;
-        const sq = bus.portBits(ctx.mod.cells[sc], "Q") orelse continue;
-        if (sq.len < 2) continue;
-        const outer = try groups.getOrPut(ctx.alloc, sc);
-        if (!outer.found_existing) outer.value_ptr.* = .empty;
-        const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.dst_clk);
-        if (!inner.found_existing) inner.value_ptr.* = .empty;
-        try inner.value_ptr.put(ctx.alloc, ctx.mod.cells[dc].name, dc);
+    var acc = Accum{};
+    for (ctx.crossings) |x| try accumulate(&acc, ctx, x);
+    return finish(&acc, ctx);
+}
+
+pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    switch (x.kind) {
+        .flop_flop_bit, .flop_flop_bus, .port_flop, .port_flop_untyped => {},
+        else => return,
     }
+    if (!std.mem.eql(u8, x.dst.port, "D")) return;
+    const sc = x.src.cell orelse return;
+    const dc = x.dst.cell orelse return;
+    if (clock.cells.isLatch(ctx.mod.cells[sc].type)) return;
+    if (clock.cells.isLatch(ctx.mod.cells[dc].type)) return;
+    if (std.mem.eql(u8, x.dst_clk, "unknown")) return;
+    if (std.mem.eql(u8, x.src_clk, x.dst_clk)) return;
+    const sq = bus.portBits(ctx.mod.cells[sc], "Q") orelse return;
+    if (sq.len < 2) return;
+    const outer = try acc.groups.getOrPut(ctx.alloc, sc);
+    if (!outer.found_existing) outer.value_ptr.* = .empty;
+    const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.dst_clk);
+    if (!inner.found_existing) {
+        inner.value_ptr.* = .empty;
+        inner.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
+    }
+    try inner.value_ptr.put(ctx.alloc, ctx.mod.cells[dc].name, dc);
+}
+
+pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+    var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var keys = std.ArrayListUnmanaged(Key).empty;
-    var oit = groups.iterator();
+    var oit = acc.groups.iterator();
     while (oit.next()) |oe| {
         var iit = oe.value_ptr.iterator();
         while (iit.next()) |ie| {
@@ -85,9 +98,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }.less);
         const sq = bus.portBits(ctx.mod.cells[k.src], "Q").?;
         const desc = try laneDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "sliced-bus reconvergence across CDC: source flop {s} (WIDTH={d}) is sliced into {d} per-lane crossings to clock domain {s} ({s}). Each lane resolves metastability on its own schedule. Fix: gray-code the source, use a req/ack handshake, or replace the per-lane sync chains with a single multi-bit sync chain.",
-            .{ src_name, sq.len, names.items.len, desc, k.clk });
+        const message = try std.fmt.allocPrint(ctx.alloc, "sliced-bus reconvergence across CDC: source flop {s} (WIDTH={d}) is sliced into {d} per-lane crossings to clock domain {s} ({s}). Each lane resolves metastability on its own schedule. Fix: gray-code the source, use a req/ack handshake, or replace the per-lane sync chains with a single multi-bit sync chain.", .{ src_name, sq.len, names.items.len, desc, k.clk });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,

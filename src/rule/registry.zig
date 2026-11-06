@@ -64,16 +64,16 @@ pub const Pass = enum { all, batch, once, finish };
 const scopes = std.StaticStringMap(Scope).initComptime(.{
     .{ "CDC-001", .xing },  .{ "CDC-002", .xing },
     .{ "CDC-003", .xing },  .{ "CDC-004", .xing },
-    .{ "CDC-005", .batch }, .{ "CDC-006", .once },
+    .{ "CDC-005", .accum }, .{ "CDC-006", .once },
     .{ "CDC-008", .once },  .{ "CDC-009", .xing },
-    .{ "CDC-010", .once },  .{ "CDC-011", .batch },
+    .{ "CDC-010", .once },  .{ "CDC-011", .accum },
     .{ "CDC-012", .batch }, .{ "CDC-013", .xing },
     .{ "CDC-014", .xing },  .{ "CDC-015", .batch },
     .{ "CDC-016", .batch }, .{ "CDC-017", .once },
-    .{ "CDC-018", .batch }, .{ "CDC-019", .accum },
-    .{ "CDC-020", .batch }, .{ "CDC-021", .once },
+    .{ "CDC-018", .accum }, .{ "CDC-019", .accum },
+    .{ "CDC-020", .accum }, .{ "CDC-021", .once },
     .{ "CDC-022", .once },  .{ "CDC-023", .once },
-    .{ "CDC-024", .batch }, .{ "CDC-025", .accum },
+    .{ "CDC-024", .accum }, .{ "CDC-025", .accum },
     .{ "CDC-026", .accum }, .{ "RDC-001", .once },
     .{ "RDC-002", .once },  .{ "RDC-003", .once },
     .{ "RDC-004", .once },  .{ "RDC-005", .once },
@@ -201,7 +201,12 @@ pub const Run = struct {
     alloc: std.mem.Allocator,
     out: std.ArrayListUnmanaged(finding.Finding) = .empty,
     seen: std.StringHashMapUnmanaged(void) = .empty,
+    acc005: cdc005.Accum = .{},
+    acc011: cdc011.Accum = .{},
+    acc018: cdc018.Accum = .{},
     acc019: cdc019.Accum = .{},
+    acc020: cdc020.Accum = .{},
+    acc024: cdc024.Accum = .{},
     acc025: cdc025.Accum = .{},
     acc026: cdc026.Accum = .{},
 
@@ -216,14 +221,24 @@ pub const Run = struct {
     }
 
     fn accumulateOne(r: *Run, id: []const u8, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+        if (std.mem.eql(u8, id, "CDC-005")) return cdc005.accumulate(&r.acc005, ctx, x);
+        if (std.mem.eql(u8, id, "CDC-011")) return cdc011.accumulate(&r.acc011, ctx, x);
+        if (std.mem.eql(u8, id, "CDC-018")) return cdc018.accumulate(&r.acc018, ctx, x);
         if (std.mem.eql(u8, id, "CDC-019")) return cdc019.accumulate(&r.acc019, ctx, x);
+        if (std.mem.eql(u8, id, "CDC-020")) return cdc020.accumulate(&r.acc020, ctx, x);
+        if (std.mem.eql(u8, id, "CDC-024")) return cdc024.accumulate(&r.acc024, ctx, x);
         if (std.mem.eql(u8, id, "CDC-025")) return cdc025.accumulate(&r.acc025, ctx, x);
         if (std.mem.eql(u8, id, "CDC-026")) return cdc026.accumulate(&r.acc026, ctx, x);
         unreachable;
     }
 
     fn finishOne(r: *Run, id: []const u8, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+        if (std.mem.eql(u8, id, "CDC-005")) return cdc005.finish(&r.acc005, ctx);
+        if (std.mem.eql(u8, id, "CDC-011")) return cdc011.finish(&r.acc011, ctx);
+        if (std.mem.eql(u8, id, "CDC-018")) return cdc018.finish(&r.acc018, ctx);
         if (std.mem.eql(u8, id, "CDC-019")) return cdc019.finish(&r.acc019, ctx);
+        if (std.mem.eql(u8, id, "CDC-020")) return cdc020.finish(&r.acc020, ctx);
+        if (std.mem.eql(u8, id, "CDC-024")) return cdc024.finish(&r.acc024, ctx);
         if (std.mem.eql(u8, id, "CDC-025")) return cdc025.finish(&r.acc025, ctx);
         if (std.mem.eql(u8, id, "CDC-026")) return cdc026.finish(&r.acc026, ctx);
         unreachable;

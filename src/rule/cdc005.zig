@@ -23,49 +23,81 @@ pub const rule = registry.Rule{
 
 // Candidates gather by (source, clock); each group of two or
 // more is tested for downstream recombination.
+pub const Accum = struct {
+    groups: std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(Group)) = .empty,
+};
+
+const Group = struct {
+    dsts: std.ArrayListUnmanaged(usize) = .empty,
+};
+
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var cands = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
-    for (ctx.crossings) |c| {
-        if (try isCandidate(ctx, c)) try cands.append(ctx.alloc, c);
+    var acc = Accum{};
+    for (ctx.crossings) |x| try accumulate(&acc, ctx, x);
+    return finish(&acc, ctx);
+}
+
+pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    if (!try isCandidate(ctx, x)) return;
+    const sc = x.src.cell.?;
+    const dc = x.dst.cell.?;
+    const outer = try acc.groups.getOrPut(ctx.alloc, sc);
+    if (!outer.found_existing) outer.value_ptr.* = .empty;
+    const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.dst_clk);
+    if (!inner.found_existing) {
+        inner.value_ptr.* = .{};
+        inner.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
     }
-    std.mem.sort(crossing.enumerate.Crossing, cands.items, ctx, struct {
-        fn less(cx: *context.Context, a: crossing.enumerate.Crossing, b: crossing.enumerate.Crossing) bool {
-            if (a.src.cell.? != b.src.cell.?) return a.src.cell.? < b.src.cell.?;
-            const ck = std.mem.order(u8, a.dst_clk, b.dst_clk);
-            if (ck != .eq) return ck == .lt;
-            return std.mem.lessThan(u8, cx.mod.cells[a.dst.cell.?].name, cx.mod.cells[b.dst.cell.?].name);
+    try inner.value_ptr.dsts.append(ctx.alloc, dc);
+}
+
+pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+    var keys = std.ArrayListUnmanaged(Key).empty;
+    var oit = acc.groups.iterator();
+    while (oit.next()) |oe| {
+        var iit = oe.value_ptr.iterator();
+        while (iit.next()) |ie| {
+            if (ie.value_ptr.dsts.items.len < 2) continue;
+            try keys.append(ctx.alloc, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .dsts = ie.value_ptr.dsts.items });
+        }
+    }
+    std.mem.sort(Key, keys.items, {}, struct {
+        fn less(_: void, a: Key, b: Key) bool {
+            if (a.src != b.src) return a.src < b.src;
+            return std.mem.order(u8, a.clk, b.clk) == .lt;
         }
     }.less);
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
-    var i: usize = 0;
-    while (i < cands.items.len) {
-        var j = i + 1;
-        while (j < cands.items.len and
-            cands.items[j].src.cell.? == cands.items[i].src.cell.? and
-            std.mem.eql(u8, cands.items[j].dst_clk, cands.items[i].dst_clk)) : (j += 1)
-        {}
-        if (j - i >= 2 and try reconverges(ctx, cands.items[i..j])) {
-            try out.append(ctx.alloc, try fire(ctx, cands.items[i..j]));
+    for (keys.items) |k| {
+        if (try reconverges(ctx, k.clk, k.dsts)) {
+            try out.append(ctx.alloc, try fire(ctx, k));
         }
-        i = j;
     }
     return out.toOwnedSlice(ctx.alloc);
 }
 
-fn fire(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOfMemory}!finding.Finding {
-    const sc = group[0].src.cell.?;
+const Key = struct {
+    src: usize,
+    clk: []const u8,
+    dsts: []usize,
+};
+
+fn fire(ctx: *context.Context, k: Key) error{OutOfMemory}!finding.Finding {
     var names = std.ArrayListUnmanaged([]const u8).empty;
-    for (group) |c| {
-        try names.append(ctx.alloc, ctx.mod.cells[c.dst.cell.?].name);
+    for (k.dsts) |dc| {
+        try names.append(ctx.alloc, ctx.mod.cells[dc].name);
     }
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.less);
     const joined = try std.mem.join(ctx.alloc, ", ", names.items);
-    const message = try std.fmt.allocPrint(ctx.alloc,
-        "reconvergent synchronizers: source flop {s} drives {d} independent sync chains in domain {s} (dst flops: {s}); independent metastability resolution can produce mismatched synchronized values when these outputs recombine",
-        .{ ctx.mod.cells[sc].name, group.len, group[0].dst_clk, joined });
+    const message = try std.fmt.allocPrint(ctx.alloc, "reconvergent synchronizers: source flop {s} drives {d} independent sync chains in domain {s} (dst flops: {s}); independent metastability resolution can produce mismatched synchronized values when these outputs recombine", .{ ctx.mod.cells[k.src].name, k.dsts.len, k.clk, joined });
     return .{
         .rule = rule.id,
         .severity = rule.severity,
-        .dst = ctx.mod.cells[sc].name,
+        .dst = ctx.mod.cells[k.src].name,
         .message = message,
     };
 }
@@ -86,11 +118,10 @@ fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutO
 
 // A cell reached from two chain terminals outside their own chains
 // is a recombination point. Cones stop twelve hops out.
-fn reconverges(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOfMemory}!bool {
+fn reconverges(ctx: *context.Context, clk: []const u8, dsts: []usize) error{OutOfMemory}!bool {
     var counts = std.AutoHashMapUnmanaged(usize, u32).empty;
-    for (group) |c| {
-        const dc = c.dst.cell.?;
-        const entry = try ctx.table.chainDepth(ctx.mod, dc, c.dst_clk);
+    for (dsts) |dc| {
+        const entry = try ctx.table.chainDepth(ctx.mod, dc, clk);
         const terminal = entry.stages[entry.stages.len - 1];
         var internal = std.AutoHashMapUnmanaged(usize, void).empty;
         for (entry.stages) |s| try internal.put(ctx.alloc, s, {});

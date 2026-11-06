@@ -22,36 +22,64 @@ pub const rule = registry.Rule{
 
 // Candidates mirror CDC-005; they group by source bit alone, since
 // fanout across different domains still resolves independently.
+pub const Accum = struct {
+    groups: std.AutoHashMapUnmanaged(usize, std.AutoHashMapUnmanaged(u32, Group)) = .empty,
+};
+
+const Group = struct {
+    dsts: std.AutoHashMapUnmanaged(usize, void) = .empty,
+    clks: std.StringHashMapUnmanaged(void) = .empty,
+};
+
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var cands = std.ArrayListUnmanaged(crossing.enumerate.Crossing).empty;
-    for (ctx.crossings) |c| {
-        if (try isCandidate(ctx, c)) try cands.append(ctx.alloc, c);
+    var acc = Accum{};
+    for (ctx.crossings) |x| try accumulate(&acc, ctx, x);
+    return finish(&acc, ctx);
+}
+
+pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    if (!try isCandidate(ctx, x)) return;
+    const sc = x.src.cell.?;
+    const dc = x.dst.cell.?;
+    const outer = try acc.groups.getOrPut(ctx.alloc, sc);
+    if (!outer.found_existing) outer.value_ptr.* = .empty;
+    const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.src.bit);
+    if (!inner.found_existing) inner.value_ptr.* = .{};
+    try inner.value_ptr.dsts.put(ctx.alloc, dc, {});
+    const cs = try inner.value_ptr.clks.getOrPut(ctx.alloc, x.dst_clk);
+    // Clock strings copy out on insert: probes borrow the
+    // crossing, but the accumulator outlives the batch.
+    if (!cs.found_existing) cs.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
+}
+
+pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+    var keys = std.ArrayListUnmanaged(Key).empty;
+    var oit = acc.groups.iterator();
+    while (oit.next()) |oe| {
+        var iit = oe.value_ptr.iterator();
+        while (iit.next()) |ie| {
+            if (ie.value_ptr.dsts.count() < 2) continue;
+            try keys.append(ctx.alloc, .{ .src = oe.key_ptr.*, .bit = ie.key_ptr.*, .group = ie.value_ptr });
+        }
     }
-    std.mem.sort(crossing.enumerate.Crossing, cands.items, ctx, struct {
-        fn less(cx: *context.Context, a: crossing.enumerate.Crossing, b: crossing.enumerate.Crossing) bool {
-            if (a.src.cell.? != b.src.cell.?) return a.src.cell.? < b.src.cell.?;
-            if (a.src.bit != b.src.bit) return a.src.bit < b.src.bit;
-            const ck = std.mem.order(u8, a.dst_clk, b.dst_clk);
-            if (ck != .eq) return ck == .lt;
-            return std.mem.lessThan(u8, cx.mod.cells[a.dst.cell.?].name, cx.mod.cells[b.dst.cell.?].name);
+    std.mem.sort(Key, keys.items, {}, struct {
+        fn less(_: void, a: Key, b: Key) bool {
+            if (a.src != b.src) return a.src < b.src;
+            return a.bit < b.bit;
         }
     }.less);
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
-    var i: usize = 0;
-    while (i < cands.items.len) {
-        var j = i + 1;
-        while (j < cands.items.len and
-            cands.items[j].src.cell.? == cands.items[i].src.cell.? and
-            cands.items[j].src.bit == cands.items[i].src.bit) : (j += 1)
-        {}
-        const group = cands.items[i..j];
-        if (try distinctDsts(ctx, group) >= 2) {
-            try out.append(ctx.alloc, try fire(ctx, group));
-        }
-        i = j;
+    for (keys.items) |k| {
+        try out.append(ctx.alloc, try fire(ctx, k));
     }
     return out.toOwnedSlice(ctx.alloc);
 }
+
+const Key = struct {
+    src: usize,
+    bit: u32,
+    group: *Group,
+};
 
 fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!bool {
     if (registry.unknownSide(x)) return false;
@@ -67,26 +95,13 @@ fn isCandidate(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutO
     return depth.depth >= 2;
 }
 
-// Distinct chain heads: two lanes into one flop are one sync.
-fn distinctDsts(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOfMemory}!usize {
-    var seen = std.AutoHashMapUnmanaged(usize, void).empty;
-    for (group) |c| try seen.put(ctx.alloc, c.dst.cell.?, {});
-    return seen.count();
-}
-
-fn fire(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOfMemory}!finding.Finding {
-    const sc = group[0].src.cell.?;
+fn fire(ctx: *context.Context, k: Key) error{OutOfMemory}!finding.Finding {
     var names = std.ArrayListUnmanaged([]const u8).empty;
     var clocks = std.ArrayListUnmanaged([]const u8).empty;
-    var seen_dst = std.AutoHashMapUnmanaged(usize, void).empty;
-    var seen_clk = std.StringHashMapUnmanaged(void).empty;
-    for (group) |c| {
-        const dc = c.dst.cell.?;
-        const ds = try seen_dst.getOrPut(ctx.alloc, dc);
-        if (!ds.found_existing) try names.append(ctx.alloc, ctx.mod.cells[dc].name);
-        const cs = try seen_clk.getOrPut(ctx.alloc, c.dst_clk);
-        if (!cs.found_existing) try clocks.append(ctx.alloc, c.dst_clk);
-    }
+    var dit = k.group.dsts.iterator();
+    while (dit.next()) |e| try names.append(ctx.alloc, ctx.mod.cells[e.key_ptr.*].name);
+    var cit = k.group.clks.iterator();
+    while (cit.next()) |e| try clocks.append(ctx.alloc, e.key_ptr.*);
     std.mem.sort([]const u8, names.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -99,13 +114,11 @@ fn fire(ctx: *context.Context, group: []crossing.enumerate.Crossing) error{OutOf
     }.less);
     const joined_names = try std.mem.join(ctx.alloc, ", ", names.items);
     const joined_clks = try std.mem.join(ctx.alloc, ", ", clocks.items);
-    const message = try std.fmt.allocPrint(ctx.alloc,
-        "fanout to {d} synchronizers: source {s} reaches independent sync chains in domain{s} {s} (chain heads: {s}); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values",
-        .{ names.items.len, ctx.mod.cells[sc].name, if (clocks.items.len == 1) "" else "s", joined_clks, joined_names });
+    const message = try std.fmt.allocPrint(ctx.alloc, "fanout to {d} synchronizers: source {s} reaches independent sync chains in domain{s} {s} (chain heads: {s}); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values", .{ names.items.len, ctx.mod.cells[k.src].name, if (clocks.items.len == 1) "" else "s", joined_clks, joined_names });
     return .{
         .rule = rule.id,
         .severity = rule.severity,
-        .dst = ctx.mod.cells[sc].name,
+        .dst = ctx.mod.cells[k.src].name,
         .message = message,
     };
 }
