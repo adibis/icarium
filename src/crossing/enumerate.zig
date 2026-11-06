@@ -759,4 +759,3 @@ fn sameBusKey(a: Pair, b: Pair) bool {
     return std.mem.eql(u8, a.src_port, b.src_port) and
         a.dst_cell == b.dst_cell and std.mem.eql(u8, a.dst_pin, b.dst_pin);
 }
-
