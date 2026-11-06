@@ -371,25 +371,72 @@ pub fn enumerate(
     return .{ .backing = backing, .parenas = parenas, .crossings = sorted };
 }
 
-// One walked range built and consumed, then freed: crossings
+// One consumable unit: the pair count plus the crossings
+// built from them. Both die with the callback's return.
+pub const Batch = struct {
+    pairs: usize,
+    crossings: []Crossing,
+};
+
+// One pair slice built and consumed, then freed: crossings
 // die with the call, so the callback must copy what it keeps.
+// A null selection takes all pairs without a gather copy.
+fn runSub(
+    parent: std.mem.Allocator,
+    en: *Enumerator,
+    all_pairs: []const Pair,
+    sel: ?[]const usize,
+    bctx: anytype,
+    comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
+) error{OutOfMemory}!void {
+    var chunk_arena = std.heap.ArenaAllocator.init(parent);
+    defer chunk_arena.deinit();
+    var build_tmp = std.heap.ArenaAllocator.init(parent);
+    defer build_tmp.deinit();
+    const pairs = if (sel) |s| blk: {
+        const sub = try chunk_arena.allocator().alloc(Pair, s.len);
+        for (s, 0..) |k, n| sub[n] = all_pairs[k];
+        break :blk sub;
+    } else all_pairs;
+    en.alloc = chunk_arena.allocator();
+    const crossings = try buildChunk(en, build_tmp.allocator(), pairs, chunk_arena.allocator());
+    try onBatch(bctx, .{ .pairs = pairs.len, .crossings = crossings });
+}
+
+// One walked range built and consumed, then freed. Ranges past
+// the pair budget split by destination cell: bus runs share one
+// dst cell, so they survive the split whole, and every rule is
+// per-crossing, per-dst, or a global ledger across sub-batches.
 fn runOne(
     parent: std.mem.Allocator,
     w: *Walked,
+    pair_budget: usize,
     bctx: anytype,
-    comptime onBatch: fn (@TypeOf(bctx), []Crossing) error{OutOfMemory}!void,
+    comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
     defer {
         w.deinitTransient(parent);
         w.parena.deinit();
     }
-    var chunk_arena = std.heap.ArenaAllocator.init(parent);
-    defer chunk_arena.deinit();
-    var build_tmp = std.heap.ArenaAllocator.init(parent);
-    defer build_tmp.deinit();
-    w.en.alloc = chunk_arena.allocator();
-    const crossings = try buildChunk(&w.en, build_tmp.allocator(), w.pairs.items, chunk_arena.allocator());
-    try onBatch(bctx, crossings);
+    if (w.pairs.items.len <= pair_budget) {
+        return runSub(parent, &w.en, w.pairs.items, null, bctx, onBatch);
+    }
+    var idx_arena = std.heap.ArenaAllocator.init(parent);
+    defer idx_arena.deinit();
+    const idx = try idx_arena.allocator().alloc(usize, w.pairs.items.len);
+    for (idx, 0..) |*v, i| v.* = i;
+    std.mem.sort(usize, idx, w.pairs.items, struct {
+        fn less(ps: []Pair, a: usize, b: usize) bool {
+            return ps[a].dst_cell < ps[b].dst_cell;
+        }
+    }.less);
+    var i: usize = 0;
+    while (i < idx.len) {
+        var j = i + 1;
+        while (j < idx.len and w.pairs.items[idx[j]].dst_cell == w.pairs.items[idx[i]].dst_cell) : (j += 1) {}
+        try runSub(parent, &w.en, w.pairs.items, idx[i..j], bctx, onBatch);
+        i = j;
+    }
 }
 
 fn runGroup(
@@ -400,8 +447,9 @@ fn runGroup(
     prep: *const Prepared,
     clock_asg: *const clock.trace.Assignment,
     ranges: []const [2]usize,
+    pair_budget: usize,
     bctx: anytype,
-    comptime onBatch: fn (@TypeOf(bctx), []Crossing) error{OutOfMemory}!void,
+    comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
     const walked = try walkRanges(parent, tmp, mod, model, &prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges);
     var done: usize = 0;
@@ -412,25 +460,28 @@ fn runGroup(
         }
     }
     for (walked) |*w| {
-        try runOne(parent, w, bctx, onBatch);
+        try runOne(parent, w, pair_budget, bctx, onBatch);
         done += 1;
     }
 }
 
 // Chunked enumeration for designs no report can hold: ranges
 // walk in thread-sized groups, each builds its crossings, the
-// callback consumes them, and only findings survive. Peak is
-// one group of pairs plus one chunk of crossings.
+// callback consumes them, and only findings survive. Ranges past
+// the pair budget split by destination cell, so peak memory is
+// one group of pairs plus one budget of crossings, bounded for
+// any input no matter how fanout concentrates.
 // Cost: same O(sources × cone) walk as enumerate, plus one
-// id sort per chunk; rules run once per chunk.
+// id sort per batch; rules run once per batch.
 pub fn streamBatches(
     parent: std.mem.Allocator,
     mod: *const ir.types.Module,
     clock_asg: *const clock.trace.Assignment,
     model: *const sdc.model.Model,
     chunk_sources: usize,
+    pair_budget: usize,
     bctx: anytype,
-    comptime onBatch: fn (@TypeOf(bctx), []Crossing) error{OutOfMemory}!void,
+    comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
     var setup_arena = std.heap.ArenaAllocator.init(parent);
     defer setup_arena.deinit();
@@ -446,10 +497,11 @@ pub fn streamBatches(
     const ranges = try tmp.alloc([2]usize, nchunks);
     chunkRanges(sources, ranges);
     const group = @max(@min(ranges.len, std.Thread.getCpuCount() catch 1), 1);
+    const budget = @max(pair_budget, 1);
     var gi: usize = 0;
     while (gi < ranges.len) {
         const gj = @min(gi + group, ranges.len);
-        try runGroup(parent, tmp, mod, model, &prep, clock_asg, ranges[gi..gj], bctx, onBatch);
+        try runGroup(parent, tmp, mod, model, &prep, clock_asg, ranges[gi..gj], budget, bctx, onBatch);
         gi = gj;
     }
 }

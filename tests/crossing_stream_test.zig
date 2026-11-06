@@ -142,15 +142,19 @@ const Checker = struct {
     batches: usize = 0,
     bad_ids: usize = 0,
     split_runs: usize = 0,
+    want_integrity: bool,
 
-    fn onBatch(c: *Checker, xs: []crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    fn onBatch(c: *Checker, batch: crossing.enumerate.Batch) error{OutOfMemory}!void {
         c.batches += 1;
-        for (xs) |x| {
+        // Every pair builds one bit crossing; bus records add more.
+        if (batch.crossings.len < batch.pairs) c.bad_ids += 1;
+        for (batch.crossings) |x| {
             if (c.want.getPtr(x.id)) |left| {
                 if (left.* == 0) {
                     c.bad_ids += 1;
                 } else left.* -= 1;
             } else c.bad_ids += 1;
+            if (!c.want_integrity) continue;
             if (x.src.cell) |sc| {
                 const slot = try c.seen_cells.getOrPut(std.testing.allocator, sc);
                 if (!slot.found_existing) {
@@ -171,10 +175,10 @@ const Checker = struct {
     }
 };
 
-fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize) !void {
+fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize, budget: usize, want_integrity: bool) !void {
     var l = try loadAll(json, sdc_text);
     defer freeAll(&l);
-    var c = Checker{ .want = .empty, .seen_cells = .empty, .seen_ports = .empty };
+    var c = Checker{ .want = .empty, .seen_cells = .empty, .seen_ports = .empty, .want_integrity = want_integrity };
     defer c.want.deinit(std.testing.allocator);
     defer c.seen_cells.deinit(std.testing.allocator);
     defer {
@@ -186,7 +190,7 @@ fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize) !void {
         const slot = try c.want.getOrPut(std.testing.allocator, x.id);
         slot.value_ptr.* = (if (slot.found_existing) slot.value_ptr.* else 0) + 1;
     }
-    try crossing.enumerate.streamBatches(std.testing.allocator, &l.mod, &l.clock_asg, &l.sdc_mod, chunk, &c, Checker.onBatch);
+    try crossing.enumerate.streamBatches(std.testing.allocator, &l.mod, &l.clock_asg, &l.sdc_mod, chunk, budget, &c, Checker.onBatch);
     try std.testing.expect(c.batches > 0);
     try std.testing.expectEqual(@as(usize, 0), c.bad_ids);
     try std.testing.expectEqual(@as(usize, 0), c.split_runs);
@@ -195,13 +199,21 @@ fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize) !void {
 }
 
 test "streamed batches equal the whole report at one source per chunk" {
-    try checkStream(pairs, pairs_sdc, 1);
+    try checkStream(pairs, pairs_sdc, 1, 1000000, true);
 }
 
 test "streamed batches equal the whole report at full chunk" {
-    try checkStream(pairs, pairs_sdc, 2048);
+    try checkStream(pairs, pairs_sdc, 2048, 1000000, true);
 }
 
 test "streamed bus groups survive one-source chunks" {
-    try checkStream(bus, bus_sdc, 1);
+    try checkStream(bus, bus_sdc, 1, 1000000, true);
+}
+
+test "streamed dst splits keep every crossing" {
+    try checkStream(pairs, pairs_sdc, 2048, 1, false);
+}
+
+test "streamed over-budget single dst keeps every crossing" {
+    try checkStream(bus, bus_sdc, 2048, 1, false);
 }

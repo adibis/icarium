@@ -33,6 +33,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var no_findings = false;
     var stream = false;
     var stream_chunk: usize = 256;
+    var pair_budget: usize = 2000000;
     var progress = false;
     var sync_depth: u32 = 2;
     var depth_threshold: u32 = 4;
@@ -88,6 +89,16 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             stream = true;
         } else if (std.mem.eql(u8, a, "--progress")) {
             progress = true;
+        } else if (std.mem.eql(u8, a, "--pair-budget") and i + 1 < argv.len) {
+            pair_budget = std.fmt.parseInt(usize, argv[i + 1], 10) catch {
+                err.print("check: bad --pair-budget: {s}\n", .{argv[i + 1]}) catch {};
+                return 2;
+            };
+            if (pair_budget == 0) {
+                err.writeAll("check: --pair-budget must be >= 1\n") catch {};
+                return 2;
+            }
+            i += 1;
         } else if (std.mem.eql(u8, a, "--stream-chunk") and i + 1 < argv.len) {
             stream_chunk = std.fmt.parseInt(usize, argv[i + 1], 10) catch {
                 err.print("check: bad --stream-chunk: {s}\n", .{argv[i + 1]}) catch {};
@@ -238,7 +249,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 .progress = progress,
             };
             defer st.run.deinit();
-            crossing.enumerate.streamBatches(init.gpa, &mod, &clock_asg, &sdc_mod, stream_chunk, &st, StreamState.onBatch) catch return 3;
+            crossing.enumerate.streamBatches(init.gpa, &mod, &clock_asg, &sdc_mod, stream_chunk, pair_budget, &st, StreamState.onBatch) catch return 3;
             var tail = rule.context.Context{
                 .mod = &mod,
                 .model = &sdc_mod,
@@ -396,9 +407,10 @@ const StreamState = struct {
     chunks: usize = 0,
     progress: bool = false,
 
-    fn onBatch(st: *StreamState, crossings: []crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    fn onBatch(st: *StreamState, batch: crossing.enumerate.Batch) error{OutOfMemory}!void {
+        const crossings = batch.crossings;
         st.chunks += 1;
-        if (st.progress) std.debug.print("stream: chunk {d} crossings {d} findings {d}\n", .{ st.chunks, crossings.len, st.run.out.items.len });
+        if (st.progress) std.debug.print("stream: chunk {d} pairs {d} crossings {d} findings {d}\n", .{ st.chunks, batch.pairs, crossings.len, st.run.out.items.len });
         const buses = try rule.context.collectBuses(st.alloc, crossings);
         var ctx = rule.context.Context{
             .mod = st.mod,
