@@ -239,7 +239,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         defer tail_arena.deinit();
         if (stream) {
             var st = StreamState{
-                .run = rule.registry.Run.init(scratch),
+                .run = rule.registry.Run.init(scratch, init.gpa),
                 .mod = &mod,
                 .model = &sdc_mod,
                 .table = &table,
@@ -260,6 +260,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 .model = &sdc_mod,
                 .crossings = &.{},
                 .tmp = tail_arena.allocator(),
+                .range_alloc = scratch,
                 .table = &table,
                 .marks = &marks,
                 .reset_view = &reset_view,
@@ -279,6 +280,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 .model = &sdc_mod,
                 .crossings = report.?.crossings,
                 .tmp = tail_arena.allocator(),
+                .range_alloc = scratch,
                 .table = &table,
                 .marks = &marks,
                 .reset_view = &reset_view,
@@ -429,6 +431,7 @@ const StreamState = struct {
             .model = st.model,
             .crossings = crossings,
             .tmp = tmp_arena.allocator(),
+            .range_alloc = st.run.range_arena.allocator(),
             .table = st.table,
             .marks = st.marks,
             .reset_view = st.reset_view,
@@ -438,6 +441,8 @@ const StreamState = struct {
             .alloc = st.alloc,
         };
         try st.run.runPass(&ctx, st.only, st.skip, .batch);
+        try st.run.runRangeBatch(&ctx, st.only, st.skip);
+        if (batch.range_last) try st.run.endRange(&ctx, st.only, st.skip);
     }
 };
 

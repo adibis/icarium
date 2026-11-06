@@ -91,6 +91,7 @@ fn checkAllCfg(l: *Loaded, cfg: rule.context.Config) ![]rule.finding.Finding {
         .buses = buses,
         .cfg = cfg,
         .tmp = alloc,
+        .range_alloc = alloc,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, null, null);

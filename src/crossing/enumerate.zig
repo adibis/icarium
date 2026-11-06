@@ -99,15 +99,16 @@ const Walked = struct {
     }
 };
 
-// Chunk edges snap to source runs (one cell, one port):
-// batch-scoped rules group by source, so a split run
-// would slice their groups. Same pairs, same order.
+// Chunk edges snap to cell boundaries: source-keyed ledger
+// groups complete within one range, so per-range ledgers stay
+// exact. Same pairs, same order; the walk subdivides ranges
+// further, since ledger scope and walk units differ in size.
 fn chunkRanges(sources: []const Source, out: [][2]usize) void {
     var lo: usize = 0;
     for (out, 0..) |*r, i| {
         var hi = sources.len * (i + 1) / out.len;
         if (i + 1 < out.len) {
-            while (hi < sources.len and sameRun(sources[hi - 1], sources[hi])) hi += 1;
+            while (hi < sources.len and sameCell(sources[hi - 1], sources[hi])) hi += 1;
         } else hi = sources.len;
         r.* = .{ lo, hi };
         lo = hi;
@@ -249,11 +250,24 @@ fn buildChunk(
     return out.items;
 }
 
-// One run feeds one chunk: cells group across their ports,
-// ports group by name. Mixed cell/port never shares a run.
-fn sameRun(a: Source, b: Source) bool {
+// One cell feeds one ledger range: source-keyed rules keep
+// exact per-source sets, so a split cell would slice them.
+// Ports group by name; mixed cell/port never shares a cell.
+fn sameCell(a: Source, b: Source) bool {
     if ((a.cell == null) != (b.cell == null)) return false;
     if (a.cell) |ac| return ac == b.cell.?;
+    return std.mem.eql(u8, a.port, b.port);
+}
+
+// One run feeds one walk slice: bus lanes share a cell and
+// port, so a split run would fragment their group record.
+// Runs split cells by port; mixed never shares a run.
+fn sameRun(a: Source, b: Source) bool {
+    if ((a.cell == null) != (b.cell == null)) return false;
+    if (a.cell) |ac| {
+        if (ac != b.cell.?) return false;
+        return std.mem.eql(u8, a.port, b.port);
+    }
     return std.mem.eql(u8, a.port, b.port);
 }
 
@@ -387,9 +401,12 @@ pub fn enumerate(
 
 // One consumable unit: the pair count plus the crossings
 // built from them. Both die with the callback's return.
+// range_last marks the ledger range's final sub-batch, so
+// per-range accumulators know their groups are complete.
 pub const Batch = struct {
     pairs: usize,
     crossings: []Crossing,
+    range_last: bool,
 };
 
 // One pair slice built and consumed, then freed: crossings
@@ -400,6 +417,7 @@ fn runSub(
     en: *Enumerator,
     all_pairs: []const Pair,
     sel: ?[]const usize,
+    range_last: bool,
     bctx: anytype,
     comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
@@ -414,7 +432,7 @@ fn runSub(
     } else all_pairs;
     en.alloc = chunk_arena.allocator();
     const crossings = try buildChunk(en, build_tmp.allocator(), pairs, chunk_arena.allocator(), true);
-    try onBatch(bctx, .{ .pairs = pairs.len, .crossings = crossings });
+    try onBatch(bctx, .{ .pairs = pairs.len, .crossings = crossings, .range_last = range_last });
 }
 
 // One walked range built and consumed, then freed. Ranges past
@@ -425,6 +443,7 @@ fn runOne(
     parent: std.mem.Allocator,
     w: *Walked,
     pair_budget: usize,
+    range_last: bool,
     bctx: anytype,
     comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
@@ -433,7 +452,7 @@ fn runOne(
         w.parena.deinit();
     }
     if (w.pairs.items.len <= pair_budget) {
-        return runSub(parent, &w.en, w.pairs.items, null, bctx, onBatch);
+        return runSub(parent, &w.en, w.pairs.items, null, range_last, bctx, onBatch);
     }
     var idx_arena = std.heap.ArenaAllocator.init(parent);
     defer idx_arena.deinit();
@@ -448,7 +467,7 @@ fn runOne(
     while (i < idx.len) {
         var j = i + 1;
         while (j < idx.len and w.pairs.items[idx[j]].dst_cell == w.pairs.items[idx[i]].dst_cell) : (j += 1) {}
-        try runSub(parent, &w.en, w.pairs.items, idx[i..j], bctx, onBatch);
+        try runSub(parent, &w.en, w.pairs.items, idx[i..j], range_last and j == idx.len, bctx, onBatch);
         i = j;
     }
 }
@@ -460,12 +479,13 @@ fn runGroup(
     model: *const sdc.model.Model,
     prep: *const Prepared,
     clock_asg: *const clock.trace.Assignment,
-    ranges: []const [2]usize,
+    slices: []const [2]usize,
+    ends: []const bool,
     pair_budget: usize,
     bctx: anytype,
     comptime onBatch: fn (@TypeOf(bctx), Batch) error{OutOfMemory}!void,
 ) error{OutOfMemory}!void {
-    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, ranges, true);
+    const walked = try walkRanges(parent, tmp, mod, model, prep.clock_of, &clock_asg.bit_domains, &prep.widx, prep.sources, slices, true);
     var done: usize = 0;
     errdefer {
         for (walked[done..]) |*w| {
@@ -473,20 +493,20 @@ fn runGroup(
             w.parena.deinit();
         }
     }
-    for (walked) |*w| {
-        try runOne(parent, w, pair_budget, bctx, onBatch);
+    for (walked, ends) |*w, last| {
+        try runOne(parent, w, pair_budget, last, bctx, onBatch);
         done += 1;
     }
 }
 
-// Chunked enumeration for designs no report can hold: ranges
-// walk in thread-sized groups, each builds its crossings, the
-// callback consumes them, and only findings survive. Ranges past
-// the pair budget split by destination cell, so peak memory is
-// one group of pairs plus one budget of crossings, bounded for
-// any input no matter how fanout concentrates.
-// Cost: same O(sources × cone) walk as enumerate, plus one
-// id sort per batch; rules run once per batch.
+// Chunked enumeration for designs no report can hold: walk
+// slices run in thread-sized groups, each builds its crossings,
+// the callback consumes them, and only findings survive. Slices
+// past the pair budget split by destination cell, so peak memory
+// is one group of pairs plus one budget of crossings, bounded
+// for any input no matter how fanout concentrates.
+// Cost: same O(sources × cone) walk as enumerate; rules run
+// once per batch, range ledgers finish at range end.
 pub fn streamBatches(
     parent: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -510,12 +530,45 @@ pub fn streamBatches(
     const nchunks = @max((sources.len + per - 1) / per, 1);
     const ranges = try tmp.alloc([2]usize, nchunks);
     chunkRanges(sources, ranges);
-    const group = @max(@min(ranges.len, std.Thread.getCpuCount() catch 1), 1);
+    // Walk slices subdivide ledger ranges: a wide cell owns one
+    // exact range, but the walk materializes per slice, so peak
+    // memory never follows the widest cell. Slices snap to runs,
+    // since bus lanes share a run and split lanes lose their
+    // group record; only ranges carry ledger scope, flagged last.
+    var nslices: usize = 0;
+    for (ranges) |r| {
+        // Snapping overshoots into empty ranges past long cells;
+        // they walk nothing and finish nothing, so they cut out.
+        if (r[0] >= r[1]) continue;
+        var lo = r[0];
+        while (lo < r[1]) {
+            var hi = @min(lo + per, r[1]);
+            while (hi < r[1] and sameRun(sources[hi - 1], sources[hi])) hi += 1;
+            nslices += 1;
+            lo = hi;
+        }
+    }
+    const slices = try tmp.alloc([2]usize, nslices);
+    const ends = try tmp.alloc(bool, nslices);
+    var si: usize = 0;
+    for (ranges) |r| {
+        if (r[0] >= r[1]) continue;
+        var lo = r[0];
+        while (lo < r[1]) {
+            var hi = @min(lo + per, r[1]);
+            while (hi < r[1] and sameRun(sources[hi - 1], sources[hi])) hi += 1;
+            slices[si] = .{ lo, hi };
+            ends[si] = hi == r[1];
+            si += 1;
+            lo = hi;
+        }
+    }
+    const group = @max(@min(slices.len, std.Thread.getCpuCount() catch 1), 1);
     const budget = @max(pair_budget, 1);
     var gi: usize = 0;
-    while (gi < ranges.len) {
-        const gj = @min(gi + group, ranges.len);
-        try runGroup(parent, tmp, mod, model, &prep, clock_asg, ranges[gi..gj], budget, bctx, onBatch);
+    while (gi < slices.len) {
+        const gj = @min(gi + group, slices.len);
+        try runGroup(parent, tmp, mod, model, &prep, clock_asg, slices[gi..gj], ends[gi..gj], budget, bctx, onBatch);
         gi = gj;
     }
 }

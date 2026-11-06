@@ -56,24 +56,25 @@ pub const Rule = struct {
 
 // Streaming disposition: xing rules ride the per-crossing
 // loop, batch rules see one chunk, once rules see the whole
-// design a single time, accum rules fold chunks into state.
-pub const Scope = enum { xing, batch, once, accum };
+// design a single time, accum rules fold chunks into state,
+// range rules fold one ledger range, then finish and reset.
+pub const Scope = enum { xing, batch, once, accum, range };
 
 pub const Pass = enum { all, batch, once, finish };
 
 const scopes = std.StaticStringMap(Scope).initComptime(.{
     .{ "CDC-001", .xing },  .{ "CDC-002", .xing },
     .{ "CDC-003", .xing },  .{ "CDC-004", .xing },
-    .{ "CDC-005", .accum }, .{ "CDC-006", .once },
+    .{ "CDC-005", .range }, .{ "CDC-006", .once },
     .{ "CDC-008", .once },  .{ "CDC-009", .xing },
     .{ "CDC-010", .once },  .{ "CDC-011", .accum },
     .{ "CDC-012", .batch }, .{ "CDC-013", .xing },
     .{ "CDC-014", .xing },  .{ "CDC-015", .batch },
     .{ "CDC-016", .batch }, .{ "CDC-017", .once },
     .{ "CDC-018", .accum }, .{ "CDC-019", .accum },
-    .{ "CDC-020", .accum }, .{ "CDC-021", .once },
+    .{ "CDC-020", .range }, .{ "CDC-021", .once },
     .{ "CDC-022", .once },  .{ "CDC-023", .once },
-    .{ "CDC-024", .accum }, .{ "CDC-025", .accum },
+    .{ "CDC-024", .range }, .{ "CDC-025", .accum },
     .{ "CDC-026", .accum }, .{ "RDC-001", .once },
     .{ "RDC-002", .once },  .{ "RDC-003", .once },
     .{ "RDC-004", .once },  .{ "RDC-005", .once },
@@ -167,7 +168,7 @@ comptime {
         // feed a rule crossings it never asked to see per chunk.
         switch (scopeOf(r.id)) {
             .xing => if (r.check == null) @compileError("xing rule needs check"),
-            .batch, .once, .accum => if (r.check_all == null) @compileError("whole rule needs check_all"),
+            .batch, .once, .accum, .range => if (r.check_all == null) @compileError("whole rule needs check_all"),
         }
     }
 }
@@ -197,51 +198,92 @@ fn enabled(id: []const u8, only: ?[]const []const u8, skip: ?[]const []const u8)
 
 // One run owns the finding list and the waiver-identity
 // set across passes, so streamed batches dedupe globally.
+// Range ledgers ride their own arena: exact per-source sets
+// that finish and free at each range end, never accumulating
+// across the run the way whole-design ledgers must.
 pub const Run = struct {
     alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     out: std.ArrayListUnmanaged(finding.Finding) = .empty,
     seen: std.StringHashMapUnmanaged(void) = .empty,
-    acc005: cdc005.Accum = .{},
     acc011: cdc011.Accum = .{},
     acc018: cdc018.Accum = .{},
     acc019: cdc019.Accum = .{},
-    acc020: cdc020.Accum = .{},
-    acc024: cdc024.Accum = .{},
     acc025: cdc025.Accum = .{},
     acc026: cdc026.Accum = .{},
+    r005: cdc005.Accum = .{},
+    r020: cdc020.Accum = .{},
+    r024: cdc024.Accum = .{},
+    range_arena: std.heap.ArenaAllocator = undefined,
 
-    pub fn init(alloc: std.mem.Allocator) Run {
-        return .{ .alloc = alloc };
+    pub fn init(alloc: std.mem.Allocator, gpa: std.mem.Allocator) Run {
+        return .{ .alloc = alloc, .gpa = gpa, .range_arena = std.heap.ArenaAllocator.init(gpa) };
     }
 
     pub fn deinit(r: *Run) void {
         var it = r.seen.iterator();
         while (it.next()) |e| r.alloc.free(e.key_ptr.*);
         r.seen.deinit(r.alloc);
+        r.range_arena.deinit();
     }
 
     fn accumulateOne(r: *Run, id: []const u8, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
-        if (std.mem.eql(u8, id, "CDC-005")) return cdc005.accumulate(&r.acc005, ctx, x);
         if (std.mem.eql(u8, id, "CDC-011")) return cdc011.accumulate(&r.acc011, ctx, x);
         if (std.mem.eql(u8, id, "CDC-018")) return cdc018.accumulate(&r.acc018, ctx, x);
         if (std.mem.eql(u8, id, "CDC-019")) return cdc019.accumulate(&r.acc019, ctx, x);
-        if (std.mem.eql(u8, id, "CDC-020")) return cdc020.accumulate(&r.acc020, ctx, x);
-        if (std.mem.eql(u8, id, "CDC-024")) return cdc024.accumulate(&r.acc024, ctx, x);
         if (std.mem.eql(u8, id, "CDC-025")) return cdc025.accumulate(&r.acc025, ctx, x);
         if (std.mem.eql(u8, id, "CDC-026")) return cdc026.accumulate(&r.acc026, ctx, x);
         unreachable;
     }
 
     fn finishOne(r: *Run, id: []const u8, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-        if (std.mem.eql(u8, id, "CDC-005")) return cdc005.finish(&r.acc005, ctx);
         if (std.mem.eql(u8, id, "CDC-011")) return cdc011.finish(&r.acc011, ctx);
         if (std.mem.eql(u8, id, "CDC-018")) return cdc018.finish(&r.acc018, ctx);
         if (std.mem.eql(u8, id, "CDC-019")) return cdc019.finish(&r.acc019, ctx);
-        if (std.mem.eql(u8, id, "CDC-020")) return cdc020.finish(&r.acc020, ctx);
-        if (std.mem.eql(u8, id, "CDC-024")) return cdc024.finish(&r.acc024, ctx);
         if (std.mem.eql(u8, id, "CDC-025")) return cdc025.finish(&r.acc025, ctx);
         if (std.mem.eql(u8, id, "CDC-026")) return cdc026.finish(&r.acc026, ctx);
         unreachable;
+    }
+
+    // Range rules fold the batch into the range arena, which the
+    // driver frees at range end. Groups key on source cells, and
+    // ranges never split a cell, so each group lands complete.
+    pub fn runRangeBatch(
+        r: *Run,
+        ctx: *context.Context,
+        only: ?[]const []const u8,
+        skip: ?[]const []const u8,
+    ) error{OutOfMemory}!void {
+        for (ctx.crossings) |x| {
+            if (enabled("CDC-005", only, skip)) try cdc005.accumulate(&r.r005, ctx, x);
+            if (enabled("CDC-020", only, skip)) try cdc020.accumulate(&r.r020, ctx, x);
+            if (enabled("CDC-024", only, skip)) try cdc024.accumulate(&r.r024, ctx, x);
+        }
+    }
+
+    // Range end: finish each rule's groups into findings, then
+    // drop the arena. Findings copy out; the ledger does not
+    // survive, which is what bounds a million-range run.
+    pub fn endRange(
+        r: *Run,
+        ctx: *context.Context,
+        only: ?[]const []const u8,
+        skip: ?[]const []const u8,
+    ) error{OutOfMemory}!void {
+        if (enabled("CDC-005", only, skip)) for (try cdc005.finish(&r.r005, ctx)) |f| {
+            if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
+        };
+        if (enabled("CDC-020", only, skip)) for (try cdc020.finish(&r.r020, ctx)) |f| {
+            if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
+        };
+        if (enabled("CDC-024", only, skip)) for (try cdc024.finish(&r.r024, ctx)) |f| {
+            if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
+        };
+        r.r005 = .{};
+        r.r020 = .{};
+        r.r024 = .{};
+        r.range_arena.deinit();
+        r.range_arena = std.heap.ArenaAllocator.init(r.gpa);
     }
 
     pub fn runPass(
@@ -288,7 +330,8 @@ pub const Run = struct {
 };
 
 // Batch runs what chunks can answer; once and finish run
-// after the last chunk. All covers the legacy whole-report run.
+// after the last chunk. All covers the legacy whole-report run,
+// where range rules ride their check_all whole-report hook.
 fn inPass(scope: Scope, pass: Pass) bool {
     return switch (pass) {
         .all => true,
@@ -307,7 +350,7 @@ pub fn runChecks(
     only: ?[]const []const u8,
     skip: ?[]const []const u8,
 ) error{OutOfMemory}![]finding.Finding {
-    var run = Run.init(alloc);
+    var run = Run.init(alloc, alloc);
     defer run.deinit();
     try run.runPass(ctx, only, skip, .all);
     return run.out.toOwnedSlice(alloc);

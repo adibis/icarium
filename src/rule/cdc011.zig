@@ -63,27 +63,23 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
 }
 
 const PortDsts = struct {
-    clocks: std.ArrayListUnmanaged([]const u8) = .empty,
-    cells: std.ArrayListUnmanaged([]const u8) = .empty,
+    clocks: std.StringHashMapUnmanaged(void) = .empty,
+    best: ?[]const u8 = null,
 
+    // Distinct clocks plus the smallest cell: finish prints the
+    // clock set and names one representative, so the per-pair
+    // lists this replaces kept nothing the verdict can read.
     fn add(self: *PortDsts, alloc: std.mem.Allocator, clk: []const u8, cell: []const u8) error{OutOfMemory}!void {
-        for (self.clocks.items, self.cells.items) |c, n| {
-            if (std.mem.eql(u8, c, clk) and std.mem.eql(u8, n, cell)) return;
-        }
+        const slot = try self.clocks.getOrPut(alloc, clk);
         // Clocks copy out on insert: batch crossings die young.
-        try self.clocks.append(alloc, try alloc.dupe(u8, clk));
-        try self.cells.append(alloc, cell);
+        if (!slot.found_existing) slot.key_ptr.* = try alloc.dupe(u8, clk);
+        if (self.best == null or std.mem.lessThan(u8, cell, self.best.?)) self.best = cell;
     }
 
     fn distinctClocks(self: *const PortDsts, alloc: std.mem.Allocator) error{OutOfMemory}![][]const u8 {
         var out = std.ArrayListUnmanaged([]const u8).empty;
-        for (self.clocks.items) |c| {
-            var seen = false;
-            for (out.items) |o| {
-                if (std.mem.eql(u8, o, c)) seen = true;
-            }
-            if (!seen) try out.append(alloc, c);
-        }
+        var it = self.clocks.iterator();
+        while (it.next()) |e| try out.append(alloc, e.key_ptr.*);
         std.mem.sort([]const u8, out.items, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.lessThan(u8, a, b);
@@ -93,11 +89,7 @@ const PortDsts = struct {
     }
 
     fn reprCell(self: *const PortDsts) []const u8 {
-        var best = self.cells.items[0];
-        for (self.cells.items[1..]) |n| {
-            if (std.mem.lessThan(u8, n, best)) best = n;
-        }
-        return best;
+        return self.best.?;
     }
 };
 

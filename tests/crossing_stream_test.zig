@@ -131,17 +131,20 @@ const bus_sdc =
 ;
 
 // Batch contract: the union of batch crossings is the report,
-// and no source run straddles two batches. IDs compare by
-// content, so batch borrows need no copies to verify. The
-// callback cannot fail a test (fixed error set), so it counts
-// violations and the test asserts zero after the stream.
+// and no source cell straddles two ledger ranges. Walk slices
+// cut anywhere, but ranges never split a cell, so range rules
+// see every group complete. IDs compare by content, so batch
+// borrows need no copies to verify. The callback cannot fail
+// a test (fixed error set), so it counts violations and the
+// test asserts zero after the stream.
 const Checker = struct {
     want: std.StringHashMapUnmanaged(usize),
     seen_cells: std.AutoHashMapUnmanaged(usize, usize),
     seen_ports: std.StringHashMapUnmanaged(usize),
     batches: usize = 0,
+    ranges: usize = 0,
     bad_ids: usize = 0,
-    split_runs: usize = 0,
+    split_ranges: usize = 0,
     want_integrity: bool,
 
     fn contentKey(x: crossing.enumerate.Crossing) error{OutOfMemory}![]const u8 {
@@ -170,20 +173,21 @@ const Checker = struct {
             if (x.src.cell) |sc| {
                 const slot = try c.seen_cells.getOrPut(std.testing.allocator, sc);
                 if (!slot.found_existing) {
-                    slot.value_ptr.* = c.batches;
-                } else if (slot.value_ptr.* != c.batches) {
-                    c.split_runs += 1;
+                    slot.value_ptr.* = c.ranges;
+                } else if (slot.value_ptr.* != c.ranges) {
+                    c.split_ranges += 1;
                 }
             } else {
                 const slot = try c.seen_ports.getOrPut(std.testing.allocator, x.src.port);
                 if (!slot.found_existing) {
                     slot.key_ptr.* = try std.testing.allocator.dupe(u8, x.src.port);
-                    slot.value_ptr.* = c.batches;
-                } else if (slot.value_ptr.* != c.batches) {
-                    c.split_runs += 1;
+                    slot.value_ptr.* = c.ranges;
+                } else if (slot.value_ptr.* != c.ranges) {
+                    c.split_ranges += 1;
                 }
             }
         }
+        if (batch.range_last) c.ranges += 1;
     }
 };
 
@@ -212,7 +216,7 @@ fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize, budget: us
     try crossing.enumerate.streamBatches(std.testing.allocator, &l.mod, &l.clock_asg, &l.sdc_mod, chunk, budget, &c, Checker.onBatch);
     try std.testing.expect(c.batches > 0);
     try std.testing.expectEqual(@as(usize, 0), c.bad_ids);
-    try std.testing.expectEqual(@as(usize, 0), c.split_runs);
+    try std.testing.expectEqual(@as(usize, 0), c.split_ranges);
     var it = c.want.iterator();
     while (it.next()) |e| try std.testing.expectEqual(@as(usize, 0), e.value_ptr.*);
 }

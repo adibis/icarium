@@ -87,6 +87,7 @@ fn checkDepth(l: *Loaded, depth: u32) ![]rule.finding.Finding {
         .buses = buses,
         .cfg = .{ .sync_depth = depth },
         .tmp = alloc,
+        .range_alloc = alloc,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, null, null);

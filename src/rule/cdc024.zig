@@ -41,15 +41,15 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (!try isCandidate(ctx, x)) return;
     const sc = x.src.cell.?;
     const dc = x.dst.cell.?;
-    const outer = try acc.groups.getOrPut(ctx.alloc, sc);
+    const outer = try acc.groups.getOrPut(ctx.range_alloc, sc);
     if (!outer.found_existing) outer.value_ptr.* = .empty;
-    const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.src.bit);
+    const inner = try outer.value_ptr.getOrPut(ctx.range_alloc, x.src.bit);
     if (!inner.found_existing) inner.value_ptr.* = .{};
-    try inner.value_ptr.dsts.put(ctx.alloc, dc, {});
-    const cs = try inner.value_ptr.clks.getOrPut(ctx.alloc, x.dst_clk);
+    try inner.value_ptr.dsts.put(ctx.range_alloc, dc, {});
+    const cs = try inner.value_ptr.clks.getOrPut(ctx.range_alloc, x.dst_clk);
     // Clock strings copy out on insert: probes borrow the
     // crossing, but the accumulator outlives the batch.
-    if (!cs.found_existing) cs.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
+    if (!cs.found_existing) cs.key_ptr.* = try ctx.range_alloc.dupe(u8, x.dst_clk);
 }
 
 pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {

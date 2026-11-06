@@ -47,14 +47,14 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (std.mem.eql(u8, x.src_clk, x.dst_clk)) return;
     const sq = bus.portBits(ctx.mod.cells[sc], "Q") orelse return;
     if (sq.len < 2) return;
-    const outer = try acc.groups.getOrPut(ctx.alloc, sc);
+    const outer = try acc.groups.getOrPut(ctx.range_alloc, sc);
     if (!outer.found_existing) outer.value_ptr.* = .empty;
-    const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.dst_clk);
+    const inner = try outer.value_ptr.getOrPut(ctx.range_alloc, x.dst_clk);
     if (!inner.found_existing) {
         inner.value_ptr.* = .empty;
-        inner.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
+        inner.key_ptr.* = try ctx.range_alloc.dupe(u8, x.dst_clk);
     }
-    try inner.value_ptr.put(ctx.alloc, ctx.mod.cells[dc].name, dc);
+    try inner.value_ptr.put(ctx.range_alloc, ctx.mod.cells[dc].name, dc);
 }
 
 pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {

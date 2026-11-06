@@ -150,7 +150,7 @@ const bare =
 // One batch pass over the report tiled K times: every tile
 // refires the same CDC-001, so K=100 must retain barely more
 // than K=10. Poison proves kept strings left tmp for alloc.
-fn runTiled(l: *Loaded, k: usize) !struct { gross: usize, kept: usize } {
+fn runTiled(l: *Loaded, k: usize, only_rule: ?[]const u8) !struct { gross: usize, kept: usize } {
     const base = l.report.crossings;
     const tiled = try std.testing.allocator.alloc(crossing.enumerate.Crossing, base.len * k);
     defer std.testing.allocator.free(tiled);
@@ -173,12 +173,15 @@ fn runTiled(l: *Loaded, k: usize) !struct { gross: usize, kept: usize } {
         .buses = &.{},
         .cfg = .{},
         .tmp = tmp_fba.allocator(),
+        .range_alloc = gross.allocator(),
         .alloc = gross.allocator(),
     };
-    var run = rule.registry.Run.init(gross.allocator());
+    var run = rule.registry.Run.init(gross.allocator(), std.testing.allocator);
     defer run.deinit();
-    const only = [_][]const u8{"CDC-001"};
-    try run.runPass(&ctx, &only, null, .batch);
+    const only: ?[]const []const u8 = if (only_rule) |r| &[_][]const u8{r} else null;
+    try run.runPass(&ctx, only, null, .batch);
+    try run.runRangeBatch(&ctx, only, null);
+    try run.endRange(&ctx, only, null);
     try std.testing.expectEqual(@as(usize, 1), run.out.items.len);
     const snap = try std.testing.allocator.dupe(u8, run.out.items[0].message);
     defer std.testing.allocator.free(snap);
@@ -190,9 +193,17 @@ fn runTiled(l: *Loaded, k: usize) !struct { gross: usize, kept: usize } {
 test "duplicate fires retain once, not per fire" {
     var l = try loadAll(bare, two_sdc_typed);
     defer freeAll(&l);
-    const small = try runTiled(&l, 10);
-    const big = try runTiled(&l, 100);
+    const small = try runTiled(&l, 10, "CDC-001");
+    const big = try runTiled(&l, 100, "CDC-001");
     try std.testing.expectEqual(@as(usize, 1), small.kept);
     try std.testing.expectEqual(@as(usize, 1), big.kept);
+    try std.testing.expect(big.gross < 3 * small.gross);
+}
+
+test "all rules retain bounded per duplicate tile" {
+    var l = try loadAll(bare, two_sdc_typed);
+    defer freeAll(&l);
+    const small = try runTiled(&l, 10, null);
+    const big = try runTiled(&l, 100, null);
     try std.testing.expect(big.gross < 3 * small.gross);
 }

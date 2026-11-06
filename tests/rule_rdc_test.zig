@@ -87,6 +87,7 @@ fn checkAll(l: *Loaded) ![]rule.finding.Finding {
         .buses = buses,
         .cfg = .{},
         .tmp = alloc,
+        .range_alloc = alloc,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, null, null);

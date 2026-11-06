@@ -24,6 +24,9 @@ pub const Context = struct {
     // Fire strings and probes die here with the batch; the
     // registry copies out kept findings, ledgers keep alloc.
     tmp: std.mem.Allocator,
+    // Range ledgers die here at range end; whole-report runs
+    // point it at alloc, where one range is the whole run.
+    range_alloc: std.mem.Allocator,
     table: *sync.table.Table,
     marks: *const sync.attrs.Marks,
     reset_view: *const reset.trace.View,

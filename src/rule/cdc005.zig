@@ -41,14 +41,14 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (!try isCandidate(ctx, x)) return;
     const sc = x.src.cell.?;
     const dc = x.dst.cell.?;
-    const outer = try acc.groups.getOrPut(ctx.alloc, sc);
+    const outer = try acc.groups.getOrPut(ctx.range_alloc, sc);
     if (!outer.found_existing) outer.value_ptr.* = .empty;
-    const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.dst_clk);
+    const inner = try outer.value_ptr.getOrPut(ctx.range_alloc, x.dst_clk);
     if (!inner.found_existing) {
         inner.value_ptr.* = .{};
-        inner.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
+        inner.key_ptr.* = try ctx.range_alloc.dupe(u8, x.dst_clk);
     }
-    try inner.value_ptr.dsts.append(ctx.alloc, dc);
+    try inner.value_ptr.dsts.append(ctx.range_alloc, dc);
 }
 
 pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
