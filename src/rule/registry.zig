@@ -62,25 +62,24 @@ pub const Scope = enum { xing, batch, once, accum };
 pub const Pass = enum { all, batch, once, finish };
 
 const scopes = std.StaticStringMap(Scope).initComptime(.{
-    .{ "CDC-001", .xing }, .{ "CDC-002", .xing },
-    .{ "CDC-003", .xing }, .{ "CDC-004", .xing },
+    .{ "CDC-001", .xing },  .{ "CDC-002", .xing },
+    .{ "CDC-003", .xing },  .{ "CDC-004", .xing },
     .{ "CDC-005", .batch }, .{ "CDC-006", .once },
-    .{ "CDC-008", .once }, .{ "CDC-009", .xing },
-    .{ "CDC-010", .once }, .{ "CDC-011", .batch },
+    .{ "CDC-008", .once },  .{ "CDC-009", .xing },
+    .{ "CDC-010", .once },  .{ "CDC-011", .batch },
     .{ "CDC-012", .batch }, .{ "CDC-013", .xing },
-    .{ "CDC-014", .xing }, .{ "CDC-015", .batch },
+    .{ "CDC-014", .xing },  .{ "CDC-015", .batch },
     .{ "CDC-016", .batch }, .{ "CDC-017", .once },
     .{ "CDC-018", .batch }, .{ "CDC-019", .accum },
     .{ "CDC-020", .batch }, .{ "CDC-021", .once },
-    .{ "CDC-022", .once }, .{ "CDC-023", .once },
+    .{ "CDC-022", .once },  .{ "CDC-023", .once },
     .{ "CDC-024", .batch }, .{ "CDC-025", .accum },
-    .{ "CDC-026", .accum },
-    .{ "RDC-001", .once }, .{ "RDC-002", .once },
-    .{ "RDC-003", .once }, .{ "RDC-004", .once },
-    .{ "RDC-005", .once }, .{ "RDC-006", .once },
-    .{ "RDC-007", .once }, .{ "RDC-008", .once },
-    .{ "RDC-009", .once }, .{ "RDC-010", .once },
-    .{ "RDC-011", .once },
+    .{ "CDC-026", .accum }, .{ "RDC-001", .once },
+    .{ "RDC-002", .once },  .{ "RDC-003", .once },
+    .{ "RDC-004", .once },  .{ "RDC-005", .once },
+    .{ "RDC-006", .once },  .{ "RDC-007", .once },
+    .{ "RDC-008", .once },  .{ "RDC-009", .once },
+    .{ "RDC-010", .once },  .{ "RDC-011", .once },
 });
 
 fn scopeOf(id: []const u8) Scope {
@@ -202,6 +201,9 @@ pub const Run = struct {
     alloc: std.mem.Allocator,
     out: std.ArrayListUnmanaged(finding.Finding) = .empty,
     seen: std.StringHashMapUnmanaged(void) = .empty,
+    acc019: cdc019.Accum = .{},
+    acc025: cdc025.Accum = .{},
+    acc026: cdc026.Accum = .{},
 
     pub fn init(alloc: std.mem.Allocator) Run {
         return .{ .alloc = alloc };
@@ -213,6 +215,20 @@ pub const Run = struct {
         r.seen.deinit(r.alloc);
     }
 
+    fn accumulateOne(r: *Run, id: []const u8, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+        if (std.mem.eql(u8, id, "CDC-019")) return cdc019.accumulate(&r.acc019, ctx, x);
+        if (std.mem.eql(u8, id, "CDC-025")) return cdc025.accumulate(&r.acc025, ctx, x);
+        if (std.mem.eql(u8, id, "CDC-026")) return cdc026.accumulate(&r.acc026, ctx, x);
+        unreachable;
+    }
+
+    fn finishOne(r: *Run, id: []const u8, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+        if (std.mem.eql(u8, id, "CDC-019")) return cdc019.finish(&r.acc019, ctx);
+        if (std.mem.eql(u8, id, "CDC-025")) return cdc025.finish(&r.acc025, ctx);
+        if (std.mem.eql(u8, id, "CDC-026")) return cdc026.finish(&r.acc026, ctx);
+        unreachable;
+    }
+
     pub fn runPass(
         r: *Run,
         ctx: *context.Context,
@@ -222,7 +238,18 @@ pub const Run = struct {
     ) error{OutOfMemory}!void {
         for (rules) |rl| {
             if (!enabled(rl.id, only, skip)) continue;
-            if (!inPass(scopeOf(rl.id), pass)) continue;
+            const scope = scopeOf(rl.id);
+            if (!inPass(scope, pass)) continue;
+            if (scope == .accum and pass != .all) {
+                switch (pass) {
+                    .batch => for (ctx.report.crossings) |x| try r.accumulateOne(rl.id, ctx, x),
+                    .finish => for (try r.finishOne(rl.id, ctx)) |f| {
+                        if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
+                    },
+                    .all, .once => unreachable,
+                }
+                continue;
+            }
             if (rl.check_all) |whole| {
                 for (try whole(ctx)) |f| {
                     if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);

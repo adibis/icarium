@@ -27,37 +27,47 @@ pub const rule = registry.Rule{
 // reason and fanout. CDC-011 owns untyped inputs into D/SRST of
 // known flops, CDC-021 owns port:-clocked destinations; the rest
 // of the dispatcher's unknown pairs land here, never nowhere.
+pub const Accum = struct {
+    by_key: std.StringHashMapUnmanaged(Group) = .empty,
+};
+
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var by_key = std.StringHashMapUnmanaged(Group).empty;
-    for (ctx.report.crossings) |x| {
-        if (!registry.unknownSide(x)) continue;
-        if (x.kind == .flop_flop_bus or x.kind == .port_flop_bus) continue;
-        if (ownedByCdc011(x)) continue;
-        if (ownedByCdc021(x)) continue;
-        // Reset ports are RDC jurisdiction: an untyped input driving
-        // an async reset pin is reset intent, not a CDC unknown.
-        if (x.src.cell == null and isAsyncResetPin(ctx, x)) continue;
-        // Recognized synchronizer primitives are modeled cells, not
-        // unknown macros: CDC-022 already reads their parameters.
-        if (x.src.cell) |sc| {
-            if (sync.primitives.isSyncPrimitive(ctx.mod.cells[sc].type, ctx.cfg.sync_primitives)) continue;
-        }
-        const key = groupKey(ctx, x) orelse continue;
-        const slot = try by_key.getOrPut(ctx.alloc, key.name);
-        if (!slot.found_existing) slot.value_ptr.* = .{ .cell = key.cell, .port = key.port };
-        try slot.value_ptr.add(ctx.alloc, farName(ctx, x, key));
+    var acc = Accum{};
+    for (ctx.report.crossings) |x| try accumulate(&acc, ctx, x);
+    return finish(&acc, ctx);
+}
+
+pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    if (!registry.unknownSide(x)) return;
+    if (x.kind == .flop_flop_bus or x.kind == .port_flop_bus) return;
+    if (ownedByCdc011(x)) return;
+    if (ownedByCdc021(x)) return;
+    // Reset ports are RDC jurisdiction: an untyped input driving
+    // an async reset pin is reset intent, not a CDC unknown.
+    if (x.src.cell == null and isAsyncResetPin(ctx, x)) return;
+    // Recognized synchronizer primitives are modeled cells, not
+    // unknown macros: CDC-022 already reads their parameters.
+    if (x.src.cell) |sc| {
+        if (sync.primitives.isSyncPrimitive(ctx.mod.cells[sc].type, ctx.cfg.sync_primitives)) return;
     }
+    const key = groupKey(ctx, x) orelse return;
+    const slot = try acc.by_key.getOrPut(ctx.alloc, key.name);
+    if (!slot.found_existing) slot.value_ptr.* = .{ .cell = key.cell, .port = key.port };
+    slot.value_ptr.add(farName(ctx, x, key));
+}
+
+pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+    var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var keys = std.ArrayListUnmanaged([]const u8).empty;
-    var it = by_key.iterator();
+    var it = acc.by_key.iterator();
     while (it.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
     std.mem.sort([]const u8, keys.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.less);
-    var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (keys.items) |k| {
-        const g = by_key.get(k).?;
+        const g = acc.by_key.get(k).?;
         try out.append(ctx.alloc, try fire(ctx, k, g));
     }
     return out.toOwnedSlice(ctx.alloc);
@@ -113,15 +123,25 @@ const Group = struct {
     cell: ?usize,
     port: ?[]const u8,
     count: usize = 0,
-    seen: std.StringHashMapUnmanaged(void) = .empty,
-    sample: std.ArrayListUnmanaged([]const u8) = .empty,
+    sample: [4][]const u8 = undefined,
+    nsample: usize = 0,
 
-    fn add(self: *Group, alloc: std.mem.Allocator, far: []const u8) error{OutOfMemory}!void {
+    // Smallest four far names, sorted: batches arrive in chunk
+    // order, not id order, so first-seen sampling would print
+    // different witnesses per path. Minima are order-free.
+    fn add(self: *Group, far: []const u8) void {
         self.count += 1;
-        if (self.sample.items.len >= 4) return;
-        const slot = try self.seen.getOrPut(alloc, far);
-        if (slot.found_existing) return;
-        try self.sample.append(alloc, far);
+        var pos: usize = 0;
+        while (pos < self.nsample) : (pos += 1) {
+            const ord = std.mem.order(u8, far, self.sample[pos]);
+            if (ord == .eq) return;
+            if (ord == .lt) break;
+        }
+        if (pos >= self.sample.len) return;
+        var j = @min(self.nsample, self.sample.len - 1);
+        while (j > pos) : (j -= 1) self.sample[j] = self.sample[j - 1];
+        self.sample[pos] = far;
+        if (self.nsample < self.sample.len) self.nsample += 1;
     }
 };
 
@@ -143,11 +163,9 @@ fn reason(ctx: *context.Context, g: Group) error{OutOfMemory}![]const u8 {
 
 fn fire(ctx: *context.Context, key: []const u8, g: Group) error{OutOfMemory}!finding.Finding {
     const why = try reason(ctx, g);
-    const sample = try std.mem.join(ctx.alloc, ", ", g.sample.items);
-    const dst = if (g.cell) |ci| ctx.mod.cells[ci].name else g.sample.items[0];
+    const sample = try std.mem.join(ctx.alloc, ", ", g.sample[0..g.nsample]);
+    const dst = if (g.cell) |ci| ctx.mod.cells[ci].name else g.sample[0];
     const what: []const u8 = if (g.cell != null) "endpoint" else "input port";
-    const message = try std.fmt.allocPrint(ctx.alloc,
-        "unresolved clock association on {s} '{s}': {s}; {d} crossings cannot prove synchronicity (sample: {s})",
-        .{ what, key, why, g.count, sample });
+    const message = try std.fmt.allocPrint(ctx.alloc, "unresolved clock association on {s} '{s}': {s}; {d} crossings cannot prove synchronicity (sample: {s})", .{ what, key, why, g.count, sample });
     return .{ .rule = rule.id, .severity = rule.severity, .dst = dst, .message = message };
 }

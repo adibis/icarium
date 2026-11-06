@@ -2,6 +2,7 @@ const std = @import("std");
 const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
+const crossing = @import("../crossing.zig");
 const finding = @import("finding.zig");
 const ir = @import("../ir.zig");
 const registry = @import("registry.zig");
@@ -26,58 +27,61 @@ pub const rule = registry.Rule{
 // fires once with its sets, pairs, and selects. Sync marks never
 // silence the ledger: a handled multiclock path is exactly the
 // shape waivers record, so the record fires either way.
+pub const Accum = struct {
+    groups: std.StringHashMapUnmanaged(Group) = .empty,
+};
+
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var scratch = std.heap.ArenaAllocator.init(ctx.alloc);
-    defer scratch.deinit();
-    var groups = std.StringHashMapUnmanaged(Group).empty;
-    for (ctx.report.crossings) |x| {
-        switch (x.kind) {
-            .flop_flop_bit, .flop_flop_bus, .port_flop, .port_flop_untyped, .port_flop_bus => {},
-            else => continue,
-        }
-        const dc = x.dst.cell orelse continue;
-        const dst = sideOf(ctx, .{ .cell = dc });
-        const src = if (x.src.cell) |sc|
-            sideOf(ctx, .{ .cell = sc })
-        else
-            Side{ .legs = &.{x.src_clk}, .sels = &.{}, .muxes = &.{} };
-        if (src.legs.len < 2 and dst.legs.len < 2) continue;
-        const key = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ ctx.mod.cells[dc].name, x.src_clk });
-        const g = try groups.getOrPut(ctx.alloc, key);
-        if (!g.found_existing) {
-            g.value_ptr.* = .{
-                .dst = dc,
-                .dst_clk = x.dst_clk,
-                .dst_legs = dst.legs,
-                .dst_sels = dst.sels,
-                .dst_muxes = dst.muxes,
-            };
-        }
-        const gr = g.value_ptr;
-        gr.count += 1;
-        for (src.legs) |sl| try pushDistinct(ctx.alloc, &gr.src_legs, sl);
-        for (src.muxes) |m| try pushDistinctUsize(ctx.alloc, &gr.src_muxes, m);
-        const sname = if (x.src.cell) |sc| ctx.mod.cells[sc].name else x.src.port;
-        // Repeat crossings from one flop share a bit, not a
-        // story; the sample names each source only once.
-        var seen = false;
-        for (gr.samples[0..gr.nsamples]) |p| {
-            if (std.mem.eql(u8, p, sname)) seen = true;
-        }
-        if (!seen and gr.nsamples < gr.samples.len) {
-            gr.samples[gr.nsamples] = sname;
-            gr.nsamples += 1;
-        }
-        for (src.legs, 0..) |sl, i| {
-            const ssel: ?clock.trace.LegSel = if (i < src.sels.len) src.sels[i] else null;
-            for (dst.legs, 0..) |dl, j| {
-                const dsel: ?clock.trace.LegSel = if (j < dst.sels.len) dst.sels[j] else null;
-                try pushPair(ctx, gr, sl, dl, ssel, dsel);
-            }
+    var acc = Accum{};
+    for (ctx.report.crossings) |x| try accumulate(&acc, ctx, x);
+    return finish(&acc, ctx);
+}
+
+pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
+    switch (x.kind) {
+        .flop_flop_bit, .flop_flop_bus, .port_flop, .port_flop_untyped, .port_flop_bus => {},
+        else => return,
+    }
+    const dc = x.dst.cell orelse return;
+    const dst = sideOf(ctx, .{ .cell = dc });
+    const src = if (x.src.cell) |sc|
+        sideOf(ctx, .{ .cell = sc })
+    else
+        Side{ .legs = &.{x.src_clk}, .sels = &.{}, .muxes = &.{} };
+    if (src.legs.len < 2 and dst.legs.len < 2) return;
+    const key = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ ctx.mod.cells[dc].name, x.src_clk });
+    const g = try acc.groups.getOrPut(ctx.alloc, key);
+    if (!g.found_existing) {
+        g.value_ptr.* = .{
+            .dst = dc,
+            .dst_clk = x.dst_clk,
+            .dst_legs = dst.legs,
+            .dst_sels = dst.sels,
+            .dst_muxes = dst.muxes,
+        };
+    }
+    const gr = g.value_ptr;
+    gr.count += 1;
+    for (src.legs) |sl| try pushDistinct(ctx.alloc, &gr.src_legs, sl);
+    for (src.muxes) |m| try pushDistinctUsize(ctx.alloc, &gr.src_muxes, m);
+    const sname = if (x.src.cell) |sc| ctx.mod.cells[sc].name else x.src.port;
+    gr.addSample(sname);
+    for (src.legs, 0..) |sl, i| {
+        const ssel: ?clock.trace.LegSel = if (i < src.sels.len) src.sels[i] else null;
+        for (dst.legs, 0..) |dl, j| {
+            const dsel: ?clock.trace.LegSel = if (j < dst.sels.len) dst.sels[j] else null;
+            try pushPair(ctx, gr, sl, dl, ssel, dsel);
         }
     }
+}
+
+pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
+    var scratch = std.heap.ArenaAllocator.init(ctx.alloc);
+    defer scratch.deinit();
+    var sit = acc.groups.iterator();
+    while (sit.next()) |e| e.value_ptr.sortAll(ctx);
     var keys = std.ArrayListUnmanaged([]const u8).empty;
-    var git = groups.iterator();
+    var git = acc.groups.iterator();
     while (git.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
     std.mem.sort([]const u8, keys.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
@@ -86,7 +90,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     }.less);
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (keys.items) |k| {
-        const gr = groups.get(k).?;
+        const gr = acc.groups.get(k).?;
         _ = scratch.reset(.retain_capacity);
         try out.append(ctx.alloc, try fire(ctx, scratch.allocator(), gr));
     }
@@ -118,6 +122,46 @@ const Group = struct {
     samples: [4][]const u8 = undefined,
     nsamples: usize = 0,
     count: usize = 0,
+
+    // Smallest four source names: repeat crossings from one
+    // flop share a bit, not a story, and minima print the
+    // same witnesses whatever order the batches arrive in.
+    fn addSample(self: *Group, sname: []const u8) void {
+        var pos: usize = 0;
+        while (pos < self.nsamples) : (pos += 1) {
+            const ord = std.mem.order(u8, sname, self.samples[pos]);
+            if (ord == .eq) return;
+            if (ord == .lt) break;
+        }
+        if (pos >= self.samples.len) return;
+        var j = @min(self.nsamples, self.samples.len - 1);
+        while (j > pos) : (j -= 1) self.samples[j] = self.samples[j - 1];
+        self.samples[pos] = sname;
+        if (self.nsamples < self.samples.len) self.nsamples += 1;
+    }
+
+    // Canonical print order: legs, muxes, and pairs gather in
+    // arrival order, which differs between the whole-report
+    // run and streamed batches. Sorted, both print alike.
+    fn sortAll(self: *Group, ctx: *context.Context) void {
+        std.mem.sort([]const u8, self.src_legs.items, {}, struct {
+            fn less(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.less);
+        std.mem.sort(usize, self.src_muxes.items, ctx, struct {
+            fn less(c: *context.Context, a: usize, b: usize) bool {
+                return std.mem.order(u8, c.mod.cells[a].name, c.mod.cells[b].name) == .lt;
+            }
+        }.less);
+        std.mem.sort(Pair, self.pairs.items, {}, struct {
+            fn less(_: void, a: Pair, b: Pair) bool {
+                const s = std.mem.order(u8, a.sl, b.sl);
+                if (s != .eq) return s == .lt;
+                return std.mem.order(u8, a.dl, b.dl) == .lt;
+            }
+        }.less);
+    }
 };
 
 const Pair = struct { sl: []const u8, dl: []const u8, rel: Rel };
@@ -279,13 +323,13 @@ fn orConds(
         }
         const je = try joinLegs(alloc, ens.items);
         try parts.append(alloc, try std.fmt.allocPrint(alloc, "{s} via {s} gated by {s}{s}", .{
-            l, gc.name, if (je.len == 0) "nothing" else je,
+            l,                                   gc.name, if (je.len == 0) "nothing" else je,
             if (ens.items.len == 4) "+" else "",
         }));
     }
     const jp = try joinLegs(alloc, parts.items);
     return try std.fmt.allocPrint(alloc, "or-mux {s}: legs independently enabled ({s}){s}", .{
-        c.name, jp,
+        c.name,                                                               jp,
         if (multi_and) " [leg under several ANDs: first gate shown]" else "",
     });
 }
@@ -344,16 +388,12 @@ fn fire(ctx: *context.Context, alloc: std.mem.Allocator, gr: Group) error{OutOfM
     // Source-side unions leave the receiver unmuxed; the via
     // clause then reads empty, so it drops out entirely.
     const via = if (conds.items.len == 0) "" else try std.fmt.allocPrint(alloc, " via {s}", .{jco});
-    const message = try std.fmt.allocPrint(ctx.alloc,
-        "multiclock crossing on '{s}': receiver {{{s}}}{s}; {d} source crossings in {{{s}}} (sample: {s}{s}); {d} leg-pairs: {s}; chain depth {d}{s}{s}",
-        .{
-            dst_name,    jdl,         via,
-            gr.count,    jsl,         jsa,
-            if (gr.count > gr.nsamples) ", +more" else "",
-            gr.pairs.items.len,       jpr,           depth.depth,
-            if (gr.src_muxes.items.len == 0) "" else "; sources via ",
-            jsm,
-        });
+    const message = try std.fmt.allocPrint(ctx.alloc, "multiclock crossing on '{s}': receiver {{{s}}}{s}; {d} source crossings in {{{s}}} (sample: {s}{s}); {d} leg-pairs: {s}; chain depth {d}{s}{s}", .{
+        dst_name,                                      jdl,                                                       via,
+        gr.count,                                      jsl,                                                       jsa,
+        if (gr.count > gr.nsamples) ", +more" else "", gr.pairs.items.len,                                        jpr,
+        depth.depth,                                   if (gr.src_muxes.items.len == 0) "" else "; sources via ", jsm,
+    });
     return .{
         .rule = rule.id,
         .severity = .note,
