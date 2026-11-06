@@ -89,6 +89,14 @@ const Worker = struct {
     }
 };
 
+// One run feeds one chunk: cells group across their ports,
+// ports group by name. Mixed cell/port never shares a run.
+fn sameRun(a: Source, b: Source) bool {
+    if ((a.cell == null) != (b.cell == null)) return false;
+    if (a.cell) |ac| return ac == b.cell.?;
+    return std.mem.eql(u8, a.port, b.port);
+}
+
 // Cost: O(sources × cone) visits over a resolved index, each
 // visit array-indexed, split across worker threads; output
 // pruned to async, unknown, and control arrivals before hashing.
@@ -177,9 +185,15 @@ pub fn enumerate(
                 parent.free(w.visit.via);
             }
         }
+        // Chunk edges snap to source runs (one cell, one port):
+        // batch-scoped rules group by source, so a split run
+        // would slice their groups. Same pairs, same order.
+        var lo: usize = 0;
         for (ws, 0..) |*w, i| {
-            const lo = sources.len * i / ws.len;
-            const hi = sources.len * (i + 1) / ws.len;
+            var hi = sources.len * (i + 1) / ws.len;
+            if (i + 1 < ws.len) {
+                while (hi < sources.len and sameRun(sources[hi - 1], sources[hi])) hi += 1;
+            } else hi = sources.len;
             w.* = .{
                 .en = .{
                     .mod = mod,
@@ -199,6 +213,7 @@ pub fn enumerate(
             w.en.scratch = &w.scratch;
             w.en.visit = &w.visit;
             nvis += 1;
+            lo = hi;
         }
         break :blk ws;
     };
