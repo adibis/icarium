@@ -27,6 +27,8 @@ TIER2 = [
      "sdc": "bench/sdc/uart.sdc"},
     {"name": "spi_device", "core": "lowrisc:ip:spi_device:0.1",
      "top": "spi_device", "sdc": "bench/sdc/spi_device.sdc"},
+    {"name": "gpio", "core": "lowrisc:earlgrey_ip:gpio:0.1",
+     "top": "gpio", "sdc": "bench/sdc/gpio.sdc"},
 ]
 
 

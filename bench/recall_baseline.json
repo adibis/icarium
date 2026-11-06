@@ -1,5 +1,5 @@
 {
- "blessed_at": "c0582527b6fdad8e7bc1681b63c97a398c2cee8a",
+ "blessed_at": "4ed2ea701d0a6373c68310e6523f2f6ffe1ca7c4",
  "opentitan": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170",
  "blocks": {
   "uart": {
@@ -14,6 +14,14 @@
    "findings": 39290,
    "full": 0,
    "partial": 11,
+   "rule-only": 0,
+   "missed": 0,
+   "modeling-gap": 0
+  },
+  "gpio": {
+   "findings": 0,
+   "full": 0,
+   "partial": 0,
    "rule-only": 0,
    "missed": 0,
    "modeling-gap": 0
