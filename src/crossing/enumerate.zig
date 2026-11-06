@@ -67,27 +67,160 @@ const Source = struct {
     lane: usize,
 };
 
-// One walk worker: sources are independent (read-only index,
+// One walked range: sources are independent (read-only index,
 // private visit state and scratch), so threads split them.
 // Pair order stays source order across the join, and the final
 // id sort is total, so threaded output is byte-identical.
-const Worker = struct {
+const Walked = struct {
     en: Enumerator,
     scratch: std.heap.ArenaAllocator,
     visit: walkidx.Visit,
-    sources: []const Source,
     pairs: std.ArrayListUnmanaged(Pair) = .empty,
+    parena: std.heap.ArenaAllocator,
     err: ?error{OutOfMemory} = null,
 
-    fn run(w: *Worker) void {
-        for (w.sources) |s| {
+    fn run(w: *Walked, sources: []const Source) void {
+        for (sources) |s| {
             w.en.walkFrom(s.cell, s.port, s.bit, s.lane, &w.pairs) catch |e| {
                 w.err = e;
                 return;
             };
         }
     }
+
+    // Scratch and visit die after the walk; the pair arena
+    // outlives the build (hop paths borrow it).
+    fn deinitTransient(w: *Walked, parent: std.mem.Allocator) void {
+        w.scratch.deinit();
+        parent.free(w.visit.stamp);
+        parent.free(w.visit.prev);
+        parent.free(w.visit.via);
+    }
 };
+
+// Chunk edges snap to source runs (one cell, one port):
+// batch-scoped rules group by source, so a split run
+// would slice their groups. Same pairs, same order.
+fn chunkRanges(sources: []const Source, out: [][2]usize) void {
+    var lo: usize = 0;
+    for (out, 0..) |*r, i| {
+        var hi = sources.len * (i + 1) / out.len;
+        if (i + 1 < out.len) {
+            while (hi < sources.len and sameRun(sources[hi - 1], sources[hi])) hi += 1;
+        } else hi = sources.len;
+        r.* = .{ lo, hi };
+        lo = hi;
+    }
+}
+
+// Walked ranges in parallel, joined in range order. The pair
+// arenas transfer to the caller; transients die in deinit.
+fn walkRanges(
+    parent: std.mem.Allocator,
+    tmp: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    model: *const sdc.model.Model,
+    clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
+    bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
+    widx: *const walkidx.Index,
+    sources: []const Source,
+    ranges: []const [2]usize,
+) error{OutOfMemory}![]Walked {
+    const ws = try tmp.alloc(Walked, ranges.len);
+    // Setup errors free the finished prefix; later errors free
+    // everything, since the walk borrows nothing unbuilt.
+    var nvis: usize = 0;
+    var setup_done = false;
+    errdefer {
+        const n = if (setup_done) ws.len else nvis;
+        for (ws[0..n]) |*w| {
+            w.deinitTransient(parent);
+            w.parena.deinit();
+        }
+    }
+    for (ws) |*w| {
+        // Full literal: tmp.alloc leaves pairs/err undefined,
+        // and field-by-field assignment never touches them.
+        const pa = std.heap.ArenaAllocator.init(parent);
+        const sc = std.heap.ArenaAllocator.init(parent);
+        const vs = try widx.allocVisit(parent);
+        w.* = .{ .en = undefined, .scratch = sc, .visit = vs, .parena = pa };
+        w.en = .{
+            .mod = mod,
+            .model = model,
+            .alloc = undefined,
+            .pair_alloc = w.parena.allocator(),
+            .scratch = &w.scratch,
+            .clock_of = clock_of,
+            .bit_domains = bit_domains,
+            .idx = widx,
+            .visit = &w.visit,
+        };
+        nvis += 1;
+    }
+    setup_done = true;
+    const RunArg = struct { w: *Walked, sources: []const Source };
+    const runOne = struct {
+        fn f(a: RunArg) void {
+            a.w.run(a.sources);
+        }
+    }.f;
+    if (ws.len == 1) {
+        ws[0].run(sources[ranges[0][0]..ranges[0][1]]);
+    } else {
+        const threads = try tmp.alloc(std.Thread, ws.len);
+        const args = try tmp.alloc(RunArg, ws.len);
+        var live: usize = 0;
+        for (ws, 0..) |*w, i| {
+            args[i] = .{ .w = w, .sources = sources[ranges[i][0]..ranges[i][1]] };
+            threads[i] = std.Thread.spawn(.{}, runOne, .{args[i]}) catch {
+                // Thread sandboxes run inline instead: slower,
+                // identical output, no failure to report.
+                for (args[i..]) |a| a.w.run(a.sources);
+                break;
+            };
+            live += 1;
+        }
+        for (threads[0..live]) |t| t.join();
+    }
+    for (ws) |w| if (w.err) |e| return e;
+    return ws;
+}
+
+// Bit records plus bus groups, id-sorted. The build arena owns
+// the crossings; transients die in build_alloc, never in the
+// retained pair arenas they would bloat.
+fn buildChunk(
+    en: *Enumerator,
+    build_alloc: std.mem.Allocator,
+    pairs: []const Pair,
+    alloc: std.mem.Allocator,
+) error{OutOfMemory}![]Crossing {
+    en.pair_alloc = build_alloc;
+    var plist: std.ArrayListUnmanaged(Pair) = .{ .items = @constCast(pairs), .capacity = pairs.len };
+    var out: std.ArrayListUnmanaged(Crossing) = .empty;
+    // Presized: millions of pairs double the list into gigabytes
+    // of retained arena slack; enumeration holds one vector.
+    try out.ensureTotalCapacity(alloc, pairs.len);
+    // Emit already applied keepPair; every pair here builds.
+    for (plist.items) |pr| {
+        try out.append(alloc, try en.buildCrossing(pr, null));
+    }
+    try en.appendBusGroups(&plist, &out);
+    // Sort indices, not records: a Crossing spans hundreds of
+    // bytes, so swapping them moves gigabytes. IDs are unique,
+    // so the gathered order matches the in-place sort exactly.
+    const order = try alloc.alloc(u32, out.items.len);
+    for (order, 0..) |*o, i| o.* = @intCast(i);
+    std.mem.sort(u32, order, out.items, struct {
+        fn less(xs: []Crossing, a: u32, b: u32) bool {
+            return std.mem.lessThan(u8, xs[a].id, xs[b].id);
+        }
+    }.less);
+    const sorted = try alloc.alloc(Crossing, out.items.len);
+    for (order, 0..) |o, i| sorted[i] = out.items[o];
+    return sorted;
+}
 
 // One run feeds one chunk: cells group across their ports,
 // ports group by name. Mixed cell/port never shares a run.
@@ -162,86 +295,13 @@ pub fn enumerate(
     }
     const sources = srclist.items;
 
-    // Pair arenas outlive the build (hop paths borrow them);
-    // the report owns them, so only errors clean up here.
-    const nworkers = @min(sources.len, std.Thread.getCpuCount() catch 1);
-    const parenas = try parent.alloc(std.heap.ArenaAllocator, @max(nworkers, 1));
-    errdefer parent.free(parenas);
-    for (parenas) |*pa| pa.* = std.heap.ArenaAllocator.init(parent);
-    errdefer {
-        for (parenas) |*pa| pa.deinit();
-    }
-    // Visit allocation can fail mid-loop: the block errdefer
-    // frees exactly the finished prefix and dies with the block,
-    // so later errors never double-free against the full defer.
-    const workers = blk: {
-        const ws = try tmp.alloc(Worker, @max(nworkers, 1));
-        var nvis: usize = 0;
-        errdefer {
-            for (ws[0..nvis]) |*w| {
-                w.scratch.deinit();
-                parent.free(w.visit.stamp);
-                parent.free(w.visit.prev);
-                parent.free(w.visit.via);
-            }
-        }
-        // Chunk edges snap to source runs (one cell, one port):
-        // batch-scoped rules group by source, so a split run
-        // would slice their groups. Same pairs, same order.
-        var lo: usize = 0;
-        for (ws, 0..) |*w, i| {
-            var hi = sources.len * (i + 1) / ws.len;
-            if (i + 1 < ws.len) {
-                while (hi < sources.len and sameRun(sources[hi - 1], sources[hi])) hi += 1;
-            } else hi = sources.len;
-            w.* = .{
-                .en = .{
-                    .mod = mod,
-                    .model = model,
-                    .alloc = alloc,
-                    .pair_alloc = parenas[i].allocator(),
-                    .scratch = undefined,
-                    .clock_of = &clock_of,
-                    .bit_domains = &clock_asg.bit_domains,
-                    .idx = &widx,
-                    .visit = undefined,
-                },
-                .scratch = std.heap.ArenaAllocator.init(parent),
-                .visit = try widx.allocVisit(parent),
-                .sources = sources[lo..hi],
-            };
-            w.en.scratch = &w.scratch;
-            w.en.visit = &w.visit;
-            nvis += 1;
-            lo = hi;
-        }
-        break :blk ws;
-    };
+    const nchunks = @max(@min(sources.len, std.Thread.getCpuCount() catch 1), 1);
+    const ranges = try tmp.alloc([2]usize, nchunks);
+    chunkRanges(sources, ranges);
+    const walked = try walkRanges(parent, tmp, mod, model, &clock_of, &clock_asg.bit_domains, &widx, sources, ranges);
     defer {
-        for (workers) |*w| {
-            w.scratch.deinit();
-            parent.free(w.visit.stamp);
-            parent.free(w.visit.prev);
-            parent.free(w.visit.via);
-        }
+        for (walked) |*w| w.deinitTransient(parent);
     }
-    if (workers.len == 1) {
-        workers[0].run();
-    } else {
-        const threads = try tmp.alloc(std.Thread, workers.len);
-        var live: usize = 0;
-        for (workers, 0..) |*w, i| {
-            threads[i] = std.Thread.spawn(.{}, Worker.run, .{w}) catch {
-                // Thread sandboxes run inline instead: slower,
-                // identical output, no failure to report.
-                for (workers[i..]) |*rest| rest.run();
-                break;
-            };
-            live += 1;
-        }
-        for (threads[0..live]) |t| t.join();
-    }
-    for (workers) |w| if (w.err) |e| return e;
 
     // Concat in chunk order: source order survives the join,
     // so downstream sees the single-threaded sequence.
@@ -249,38 +309,26 @@ pub fn enumerate(
     // the pair structs must not ride the retained backing arena.
     var pairs: std.ArrayListUnmanaged(Pair) = .empty;
     var total: usize = 0;
-    for (workers) |w| total += w.pairs.items.len;
-    try pairs.ensureTotalCapacity(parenas[0].allocator(), total);
-    for (workers) |w| try pairs.appendSlice(parenas[0].allocator(), w.pairs.items);
+    for (walked) |w| total += w.pairs.items.len;
+    try pairs.ensureTotalCapacity(walked[0].parena.allocator(), total);
+    for (walked) |w| try pairs.appendSlice(walked[0].parena.allocator(), w.pairs.items);
+
+    // Pair arenas outlive the build (hop paths borrow them);
+    // the report owns them, so only errors clean up here.
+    const parenas = try parent.alloc(std.heap.ArenaAllocator, walked.len);
+    errdefer parent.free(parenas);
+    for (walked, 0..) |*w, i| parenas[i] = w.parena;
+    errdefer {
+        for (parenas) |*pa| pa.deinit();
+    }
 
     // Build-phase transients (bus-group candidates) die here,
     // not in the retained pair arenas they would bloat.
     var build_tmp = std.heap.ArenaAllocator.init(parent);
     defer build_tmp.deinit();
-    var en = workers[0].en;
-    en.pair_alloc = build_tmp.allocator();
-
-    var out: std.ArrayListUnmanaged(Crossing) = .empty;
-    // Presized: millions of pairs double the list into gigabytes
-    // of retained arena slack; enumeration holds one vector.
-    try out.ensureTotalCapacity(alloc, pairs.items.len);
-    // Emit already applied keepPair; every pair here builds.
-    for (pairs.items) |pr| {
-        try out.append(alloc, try en.buildCrossing(pr, null));
-    }
-    try en.appendBusGroups(&pairs, &out);
-    // Sort indices, not records: a Crossing spans hundreds of
-    // bytes, so swapping them moves gigabytes. IDs are unique,
-    // so the gathered order matches the in-place sort exactly.
-    const order = try alloc.alloc(u32, out.items.len);
-    for (order, 0..) |*o, i| o.* = @intCast(i);
-    std.mem.sort(u32, order, out.items, struct {
-        fn less(xs: []Crossing, a: u32, b: u32) bool {
-            return std.mem.lessThan(u8, xs[a].id, xs[b].id);
-        }
-    }.less);
-    const sorted = try alloc.alloc(Crossing, out.items.len);
-    for (order, 0..) |o, i| sorted[i] = out.items[o];
+    var en = walked[0].en;
+    en.alloc = alloc;
+    const sorted = try buildChunk(&en, build_tmp.allocator(), pairs.items, alloc);
     return .{ .backing = backing, .parenas = parenas, .crossings = sorted };
 }
 
