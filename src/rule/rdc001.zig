@@ -38,14 +38,14 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             if (std.mem.eql(u8, fdom.name, dom.name)) continue;
             if (!ctx.model.areAsync(fdom.name, dom.name)) continue;
             const key = Group{ .src = f, .src_clk = fdom.name, .dst_clk = dom.name };
-            const slot = try groups.getOrPut(ctx.alloc, key);
+            const slot = try groups.getOrPut(ctx.tmp, key);
             if (!slot.found_existing) slot.value_ptr.* = .empty;
-            try slot.value_ptr.put(ctx.alloc, ctx.mod.cells[ci].name, {});
+            try slot.value_ptr.put(ctx.tmp, ctx.mod.cells[ci].name, {});
         }
     }
     var keys = std.ArrayListUnmanaged(Group).empty;
     var git = groups.iterator();
-    while (git.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
+    while (git.next()) |e| try keys.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort(Group, keys.items, ctx, struct {
         fn less(cx: *context.Context, a: Group, b: Group) bool {
             const ak = std.mem.order(u8, cx.mod.cells[a.src].name, cx.mod.cells[b.src].name);
@@ -59,15 +59,15 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const dsts = groups.get(k).?;
         var names = std.ArrayListUnmanaged([]const u8).empty;
         var dit = dsts.iterator();
-        while (dit.next()) |de| try names.append(ctx.alloc, de.key_ptr.*);
+        while (dit.next()) |de| try names.append(ctx.tmp, de.key_ptr.*);
         std.mem.sort([]const u8, names.items, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.order(u8, a, b) == .lt;
             }
         }.less);
         const desc = try dstDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc, "async reset released from a foreign clock domain: ARST of {s} in clock domain '{s}' is driven by flop '{s}' in async clock domain '{s}'. An asynchronously-released reset races the destination clock and can leave the flop metastable coming out of reset. Drive the reset from the destination domain's reset tree, or pass it through a reset synchroniser in '{s}'.", .{ desc, k.dst_clk, ctx.mod.cells[k.src].name, k.src_clk, k.dst_clk });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "async reset released from a foreign clock domain: ARST of {s} in clock domain '{s}' is driven by flop '{s}' in async clock domain '{s}'. An asynchronously-released reset races the destination clock and can leave the flop metastable coming out of reset. Drive the reset from the destination domain's reset tree, or pass it through a reset synchroniser in '{s}'.", .{ desc, k.dst_clk, ctx.mod.cells[k.src].name, k.src_clk, k.dst_clk });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = names.items[0],
@@ -75,7 +75,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Group = struct { src: usize, src_clk: []const u8, dst_clk: []const u8 };
@@ -101,17 +101,17 @@ const GroupCtx = struct {
 
 // One consumer reads bare; crowds read as a count with a sample.
 fn dstDesc(ctx: *context.Context, names: [][]const u8) error{OutOfMemory}![]const u8 {
-    if (names.len == 1) return std.fmt.allocPrint(ctx.alloc, "flop '{s}'", .{names[0]});
+    if (names.len == 1) return std.fmt.allocPrint(ctx.tmp, "flop '{s}'", .{names[0]});
     var buf = std.ArrayListUnmanaged(u8).empty;
-    const head = try std.fmt.allocPrint(ctx.alloc, "{d} flops (", .{names.len});
-    try buf.appendSlice(ctx.alloc, head);
+    const head = try std.fmt.allocPrint(ctx.tmp, "{d} flops (", .{names.len});
+    try buf.appendSlice(ctx.tmp, head);
     const show = @min(names.len, 3);
     for (names[0..show], 0..) |n, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        const one = try std.fmt.allocPrint(ctx.alloc, "'{s}'", .{n});
-        try buf.appendSlice(ctx.alloc, one);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        const one = try std.fmt.allocPrint(ctx.tmp, "'{s}'", .{n});
+        try buf.appendSlice(ctx.tmp, one);
     }
-    if (names.len > 3) try buf.appendSlice(ctx.alloc, ", ...");
-    try buf.appendSlice(ctx.alloc, ")");
-    return buf.toOwnedSlice(ctx.alloc);
+    if (names.len > 3) try buf.appendSlice(ctx.tmp, ", ...");
+    try buf.appendSlice(ctx.tmp, ")");
+    return buf.toOwnedSlice(ctx.tmp);
 }

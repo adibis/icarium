@@ -44,21 +44,21 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const declared = ctx.marks.resetPolarity(drv.port) orelse continue;
             const decl: u8 = if (declared == .high) '1' else '0';
             if (decl == cons) continue;
-            const slot = try port_groups.getOrPut(ctx.alloc, .{ .port = drv.port, .decl = decl, .cons = cons });
+            const slot = try port_groups.getOrPut(ctx.tmp, .{ .port = drv.port, .decl = decl, .cons = cons });
             if (!slot.found_existing) slot.value_ptr.* = .empty;
-            try slot.value_ptr.put(ctx.alloc, c.name, {});
+            try slot.value_ptr.put(ctx.tmp, c.name, {});
             continue;
         };
         if (!std.mem.eql(u8, drv.port, "Q")) continue;
         const prod = producerValue(ctx.mod.cells[di]) orelse continue;
         if (prod == cons) continue;
-        const slot = try groups.getOrPut(ctx.alloc, .{ .producer = di, .prod = prod, .cons = cons });
+        const slot = try groups.getOrPut(ctx.tmp, .{ .producer = di, .prod = prod, .cons = cons });
         if (!slot.found_existing) slot.value_ptr.* = .empty;
-        try slot.value_ptr.put(ctx.alloc, c.name, {});
+        try slot.value_ptr.put(ctx.tmp, c.name, {});
     }
     try emitFlopGroups(ctx, &groups, &out);
     try emitPortGroups(ctx, &port_groups, &out);
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const FGroup = struct { producer: usize, prod: u8, cons: u8 };
@@ -86,7 +86,7 @@ fn emitFlopGroups(
 ) error{OutOfMemory}!void {
     var keys = std.ArrayListUnmanaged(FGroup).empty;
     var git = groups.iterator();
-    while (git.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
+    while (git.next()) |e| try keys.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort(FGroup, keys.items, ctx, struct {
         fn less(cx: *context.Context, a: FGroup, b: FGroup) bool {
             const ak = std.mem.order(u8, cx.mod.cells[a.producer].name, cx.mod.cells[b.producer].name);
@@ -98,10 +98,10 @@ fn emitFlopGroups(
     for (keys.items) |k| {
         const names = try sortedNames(ctx, groups.get(k).?);
         const desc = try dstDesc(ctx, names, "destination flop: {s}", "destination flops share this polarity mismatch from the same source (reset distribution tree): ");
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "reset polarity mismatch: consumer flop(s) expect reset asserted on '{c}' (ARST_POLARITY={c}), but the producer flop {s} drives its reset to '{c}' on assert (ARST_VALUE={c}); consumer(s) will never enter reset when the producer does. Add an inverter between them, or flip the consumer's reset edge sensitivity to match. {s}",
             .{ k.cons, k.cons, ctx.mod.cells[k.producer].name, k.prod, k.prod, desc });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = names[0],
@@ -117,7 +117,7 @@ fn emitPortGroups(
 ) error{OutOfMemory}!void {
     var keys = std.ArrayListUnmanaged(PGroup).empty;
     var git = groups.iterator();
-    while (git.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
+    while (git.next()) |e| try keys.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort(PGroup, keys.items, {}, struct {
         fn less(_: void, a: PGroup, b: PGroup) bool {
             const ak = std.mem.order(u8, a.port, b.port);
@@ -131,10 +131,10 @@ fn emitPortGroups(
         const declared: []const u8 = if (k.decl == '1') "high" else "low";
         const wired: []const u8 = if (k.cons == '1') "high" else "low";
         const desc = try dstDesc(ctx, names, "destination flop: {s}", "destination flops disagree with the port-declared polarity: ");
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "reset polarity mismatch with port-level declaration: port '{s}' is annotated (* reset_polarity = \"{s}\" *) (active-{s}, asserts on '{c}'), but the consumer flop(s) are wired active-{s} (ARST_POLARITY={c}); the declared port polarity disagrees with the flop's reset edge sensitivity. Fix the flop's edge to match the port declaration, or remove the (* reset_polarity *) attribute if the declaration is wrong. {s}",
             .{ k.port, declared, declared, k.decl, wired, k.cons, desc });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = names[0],
@@ -146,29 +146,29 @@ fn emitPortGroups(
 fn sortedNames(ctx: *context.Context, dsts: Dsts) error{OutOfMemory}![][]const u8 {
     var names = std.ArrayListUnmanaged([]const u8).empty;
     var dit = dsts.iterator();
-    while (dit.next()) |de| try names.append(ctx.alloc, de.key_ptr.*);
+    while (dit.next()) |de| try names.append(ctx.tmp, de.key_ptr.*);
     std.mem.sort([]const u8, names.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.order(u8, a, b) == .lt;
         }
     }.less);
-    return names.toOwnedSlice(ctx.alloc);
+    return names.toOwnedSlice(ctx.tmp);
 }
 
 // One consumer reads bare with its prefix; crowds read as a
 // count sharing the group's prefix, then a three-name sample.
 fn dstDesc(ctx: *context.Context, names: [][]const u8, comptime one_fmt: []const u8, group_prefix: []const u8) error{OutOfMemory}![]const u8 {
-    if (names.len == 1) return std.fmt.allocPrint(ctx.alloc, one_fmt, .{names[0]});
+    if (names.len == 1) return std.fmt.allocPrint(ctx.tmp, one_fmt, .{names[0]});
     var buf = std.ArrayListUnmanaged(u8).empty;
-    const head = try std.fmt.allocPrint(ctx.alloc, "{d} {s}", .{ names.len, group_prefix });
-    try buf.appendSlice(ctx.alloc, head);
+    const head = try std.fmt.allocPrint(ctx.tmp, "{d} {s}", .{ names.len, group_prefix });
+    try buf.appendSlice(ctx.tmp, head);
     const show = @min(names.len, 3);
     for (names[0..show], 0..) |n, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        try buf.appendSlice(ctx.alloc, n);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        try buf.appendSlice(ctx.tmp, n);
     }
-    if (names.len > 3) try buf.appendSlice(ctx.alloc, ", ...");
-    return buf.toOwnedSlice(ctx.alloc);
+    if (names.len > 3) try buf.appendSlice(ctx.tmp, ", ...");
+    return buf.toOwnedSlice(ctx.tmp);
 }
 
 // The value a producer flop drives from async reset: ARST_VALUE

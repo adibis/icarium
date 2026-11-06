@@ -259,7 +259,7 @@ pub const Run = struct {
                 switch (pass) {
                     .batch => for (ctx.crossings) |x| try r.accumulateOne(rl.id, ctx, x),
                     .finish => for (try r.finishOne(rl.id, ctx)) |f| {
-                        if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
+                        if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
                     },
                     .all, .once => unreachable,
                 }
@@ -267,7 +267,7 @@ pub const Run = struct {
             }
             if (rl.check_all) |whole| {
                 for (try whole(ctx)) |f| {
-                    if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
+                    if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
                 }
             } else if (rl.check) |one| {
                 for (ctx.crossings) |x| {
@@ -279,7 +279,7 @@ pub const Run = struct {
                     if (try one(ctx, x)) |got| {
                         var f = got;
                         if (f.driver == null) f.driver = try srcName(ctx, x);
-                        if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
+                        if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
                     }
                 }
             }
@@ -313,17 +313,24 @@ pub fn runChecks(
     return run.out.toOwnedSlice(alloc);
 }
 
-// Findings deduplicate on their waiver identity: per-crossing rules
-// restate the same fact for every lane, and reporters print each row.
-fn fresh(alloc: std.mem.Allocator, seen: *std.StringHashMapUnmanaged(void), f: finding.Finding) error{OutOfMemory}!bool {
-    const key = try std.fmt.allocPrint(alloc, "{s}\x00{s}\x00{s}\x00{s}", .{ f.rule, f.dst, f.driver orelse "", f.message });
+// Dedupe probes ride tmp; only novel keys copy to alloc.
+// Arena free is a no-op, so freed probes would still retain.
+fn fresh(tmp: std.mem.Allocator, alloc: std.mem.Allocator, seen: *std.StringHashMapUnmanaged(void), f: finding.Finding) error{OutOfMemory}!bool {
+    const key = try std.fmt.allocPrint(tmp, "{s}\x00{s}\x00{s}\x00{s}", .{ f.rule, f.dst, f.driver orelse "", f.message });
     const slot = try seen.getOrPut(alloc, key);
-    if (slot.found_existing) {
-        alloc.free(key);
-        return false;
-    }
-    slot.key_ptr.* = key;
+    if (slot.found_existing) return false;
+    slot.key_ptr.* = try alloc.dupe(u8, key);
     return true;
+}
+
+// Kept findings copy out of tmp, which dies with the batch.
+// Uniform copies: immortal names duplicate cheaply too.
+fn retain(alloc: std.mem.Allocator, f: finding.Finding) error{OutOfMemory}!finding.Finding {
+    var kept = f;
+    kept.dst = try alloc.dupe(u8, f.dst);
+    if (f.driver) |d| kept.driver = try alloc.dupe(u8, d);
+    kept.message = try alloc.dupe(u8, f.message);
+    return kept;
 }
 
 // Either end unclocked: untyped port sources ride a port: clock
@@ -336,13 +343,11 @@ pub fn unknownSide(x: crossing.enumerate.Crossing) bool {
     return std.mem.eql(u8, x.src_clk, "unknown") or std.mem.eql(u8, x.dst_clk, "unknown");
 }
 
-// The crossing's own source endpoint: single-crossing rules
-// inherit their driver, and only override when they know better.
-// Port names copy out: batch crossings die with their chunk,
-// while findings outlive the run.
+// The crossing's source endpoint for driverless findings.
+// Port names ride tmp; kept findings copy out in retain.
 fn srcName(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}![]const u8 {
     if (x.src.cell) |sc| return ctx.mod.cells[sc].name;
-    return try ctx.alloc.dupe(u8, x.src.port);
+    return try ctx.tmp.dupe(u8, x.src.port);
 }
 
 pub fn renderList(out: anytype) !void {

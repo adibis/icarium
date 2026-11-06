@@ -36,7 +36,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (dsts.count() == 0) continue;
         var dbits = std.ArrayListUnmanaged(ir.bits.Bit).empty;
         for (d) |b| {
-            if (b == .sig) try dbits.append(ctx.alloc, b);
+            if (b == .sig) try dbits.append(ctx.tmp, b);
         }
         if (dbits.items.len == 0) continue;
         const srcs = try srcByClock(ctx, dbits.items);
@@ -48,9 +48,9 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                 if (std.mem.eql(u8, se.key_ptr.*, de.key_ptr.*)) continue;
                 const key = Triple{ .latch = ci, .src = se.key_ptr.*, .dst = de.key_ptr.* };
                 if (seen.contains(key)) continue;
-                try seen.put(ctx.alloc, key, {});
-                const message = try std.fmt.allocPrint(ctx.alloc, "transparent latch in CDC path {s} -> {s}: latch {s} feeds destination flop {s} (in {s}) from source flop {s} (in {s}). During the latch's enable-active phase the foreign-domain signal propagates transparently to the destination, with no metastability resolution. Replace the latch with a 2FF synchroniser flop chain on {s}.", .{ se.key_ptr.*, de.key_ptr.*, c.name, ctx.mod.cells[de.value_ptr.*].name, de.key_ptr.*, ctx.mod.cells[se.value_ptr.*].name, se.key_ptr.*, de.key_ptr.* });
-                try out.append(ctx.alloc, .{
+                try seen.put(ctx.tmp, key, {});
+                const message = try std.fmt.allocPrint(ctx.tmp, "transparent latch in CDC path {s} -> {s}: latch {s} feeds destination flop {s} (in {s}) from source flop {s} (in {s}). During the latch's enable-active phase the foreign-domain signal propagates transparently to the destination, with no metastability resolution. Replace the latch with a 2FF synchroniser flop chain on {s}.", .{ se.key_ptr.*, de.key_ptr.*, c.name, ctx.mod.cells[de.value_ptr.*].name, de.key_ptr.*, ctx.mod.cells[se.value_ptr.*].name, se.key_ptr.*, de.key_ptr.* });
+                try out.append(ctx.tmp, .{
                     .rule = rule.id,
                     .severity = rule.severity,
                     .dst = c.name,
@@ -59,7 +59,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Triple = struct { latch: usize, src: []const u8, dst: []const u8 };
@@ -104,7 +104,7 @@ fn dstByClock(
         if (ctx.marks.hasSync(ctx.mod.cells[dst].name)) continue;
         const dom = ctx.table.domainOf(dst) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
-        const slot = try dsts.getOrPut(ctx.alloc, dom.name);
+        const slot = try dsts.getOrPut(ctx.tmp, dom.name);
         if (!slot.found_existing) slot.value_ptr.* = dst;
     }
     return dsts;
@@ -121,7 +121,7 @@ fn srcByClock(
     for (fanin.items) |f| {
         const dom = ctx.table.domainOf(f) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
-        const slot = try srcs.getOrPut(ctx.alloc, dom.name);
+        const slot = try srcs.getOrPut(ctx.tmp, dom.name);
         if (!slot.found_existing) slot.value_ptr.* = f;
     }
     return srcs;

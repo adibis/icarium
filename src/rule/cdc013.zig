@@ -41,7 +41,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (ctx.marks.hasHandshake(ctx.mod.cells[sc].name)) return null;
     if (!isToggleD(ctx, d[0].sig, q[0].sig)) return null;
     if (try hasXorTail(ctx, dc, x.dst_clk)) return null;
-    const message = try std.fmt.allocPrint(ctx.alloc, "toggle-synchronizer event-loss risk on '{s}' -> '{s}': src clock '{s}' (period {d}) is faster than dst clock '{s}' (period {d}); the src flop toggles on an enable and two events between dst samples cancel to zero edges. Use a req/ack handshake or an event counter with backpressure.", .{ ctx.mod.cells[sc].name, ctx.mod.cells[dc].name, x.src_clk, sp, x.dst_clk, dp });
+    const message = try std.fmt.allocPrint(ctx.tmp, "toggle-synchronizer event-loss risk on '{s}' -> '{s}': src clock '{s}' (period {d}) is faster than dst clock '{s}' (period {d}); the src flop toggles on an enable and two events between dst samples cancel to zero edges. Use a req/ack handshake or an event counter with backpressure.", .{ ctx.mod.cells[sc].name, ctx.mod.cells[dc].name, x.src_clk, sp, x.dst_clk, dp });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

@@ -42,21 +42,21 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const tar = asyncOf(ctx.mod.cells[tail], tfr) orelse continue;
         const consumers = try reset.chains.asyncLoads(alloc, ctx.mod, tail);
         sortLoads(ctx.mod, consumers);
-        try out.append(ctx.alloc, try noteChain(ctx, ch, dom.name, tar, consumers.len));
+        try out.append(ctx.tmp, try noteChain(ctx, ch, dom.name, tar, consumers.len));
         var cset = std.AutoHashMapUnmanaged(usize, void).empty;
         for (consumers) |cl| {
             try cset.put(alloc, cl.cell, {});
-            if (cl.via_comb) try out.append(ctx.alloc, try fireComb(ctx, tail, cl));
+            if (cl.via_comb) try out.append(ctx.tmp, try fireComb(ctx, tail, cl));
             const cdom = ctx.table.domainOf(cl.cell) orelse continue;
             if (std.mem.eql(u8, cdom.name, "unknown")) continue;
-            if (!std.mem.eql(u8, cdom.name, dom.name)) try out.append(ctx.alloc, try fireClock(ctx, tail, cl.cell, dom.name, cdom.name));
+            if (!std.mem.eql(u8, cdom.name, dom.name)) try out.append(ctx.tmp, try fireClock(ctx, tail, cl.cell, dom.name, cdom.name));
         }
         for (ch.flops[1..]) |stage| {
             const taps = try reset.chains.asyncLoads(alloc, ctx.mod, stage);
             sortLoads(ctx.mod, taps);
             for (taps) |tap| {
                 if (ctx.reset_syncs.isMember(ctx.mod.cells[tap.cell].name)) continue;
-                try out.append(ctx.alloc, try fireTap(ctx, tail, stage, tap.cell));
+                try out.append(ctx.tmp, try fireTap(ctx, tail, stage, tap.cell));
             }
         }
         if (tar.origin == .port) {
@@ -66,11 +66,11 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                 if (!std.mem.eql(u8, fr.clock.name, dom.name)) continue;
                 const far = asyncOf(ctx.mod.cells[fr.cell], fr) orelse continue;
                 if (far.origin != .port or !std.mem.eql(u8, far.ref, tar.ref)) continue;
-                try out.append(ctx.alloc, try fireRaw(ctx, tail, fr.cell, dom.name, tar.ref));
+                try out.append(ctx.tmp, try fireRaw(ctx, tail, fr.cell, dom.name, tar.ref));
             }
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 fn sortLoads(mod: *const ir.types.Module, loads: []reset.chains.Load) void {
@@ -104,7 +104,7 @@ fn noteChain(
         .zero => '0',
         else => '?',
     };
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "reset synchronizer {s} <- {s} ({d} stages) on {s}, {s}, head D '{c}', async root {s}; serves {d} on-chip consumer{s}",
         .{ tail, head, ch.flops.len, clk, word, dc, tar.ref, ncon, if (ncon == 1) "" else "s" });
     return .{
@@ -122,7 +122,7 @@ fn fireClock(
     clk: []const u8,
     cclk: []const u8,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "reset synchronizer {s} runs on {s} but drives the async reset of {s} on {s}: the release edge arrives in the wrong clock domain and races the consumer clock",
         .{ ctx.mod.cells[tail].name, clk, ctx.mod.cells[consumer].name, cclk });
     return .{
@@ -140,7 +140,7 @@ fn fireTap(
     stage: usize,
     consumer: usize,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "consumer {s} takes its async reset from internal tap {s} of reset synchronizer {s} instead of the final stage: the tap releases early with less settling time",
         .{ ctx.mod.cells[consumer].name, ctx.mod.cells[stage].name, ctx.mod.cells[tail].name });
     return .{
@@ -157,7 +157,7 @@ fn fireComb(
     tail: usize,
     cl: reset.chains.Load,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "combinational {s} sits between reset synchronizer {s} and consumer {s}: the gate can glitch or skew the release edge the chain shaped",
         .{ ctx.mod.cells[cl.comb].name, ctx.mod.cells[tail].name, ctx.mod.cells[cl.cell].name });
     return .{
@@ -176,7 +176,7 @@ fn fireRaw(
     clk: []const u8,
     root: []const u8,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "consumer {s} on {s} uses raw reset {s} while reset synchronizer {s} serves the same root and clock: its release runs ahead of the synchronized consumers",
         .{ ctx.mod.cells[consumer].name, clk, root, ctx.mod.cells[tail].name });
     return .{

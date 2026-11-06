@@ -36,7 +36,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (ctx.marks.hasSync(head_name)) return null;
     if (ctx.marks.hasHandshake(head_name)) return null;
     const nxt = ctx.table.hasInterStageComb(ctx.mod, dc) orelse return null;
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "combinational logic between synchronizer stages on {s} -> {s}: head {s} feeds a comb cell whose output reaches {s} (same clock domain). The gate's propagation delay can sample a metastable head output. Remove the gate and place it after the chain's final stage.",
         .{ x.src_clk, x.dst_clk, head_name, ctx.mod.cells[nxt].name });
     return .{

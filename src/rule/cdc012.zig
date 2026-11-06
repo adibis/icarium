@@ -58,15 +58,15 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const gop = try fop.value_ptr.getOrPut(ctx.tmp, fkey);
         if (!gop.found_existing) gop.value_ptr.* = try hasFeedback(ctx, &fanin, sc, x.src_clk, x.dst_clk);
         if (gop.value_ptr.*) continue;
-        const message = try std.fmt.allocPrint(ctx.alloc, "functional data-hold risk on '{s}' -> '{s}': {d}-bit gated bus crossing from '{s}' to '{s}' has no synced-back handshake between the two domains. The destination's enable is synchronised, but nothing keeps the source payload stable while the enable is in flight. Add a req/ack handshake: hold the source payload until an ack from the destination confirms the sample.", .{ src_name, ctx.mod.cells[dc].name, x.lanes.len, x.src_clk, x.dst_clk });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "functional data-hold risk on '{s}' -> '{s}': {d}-bit gated bus crossing from '{s}' to '{s}' has no synced-back handshake between the two domains. The destination's enable is synchronised, but nothing keeps the source payload stable while the enable is in flight. Add a req/ack handshake: hold the source payload until an ack from the destination confirms the sample.", .{ src_name, ctx.mod.cells[dc].name, x.lanes.len, x.src_clk, x.dst_clk });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = src_name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 // Register-neighbourhood walk from the source, hopping through

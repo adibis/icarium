@@ -59,7 +59,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         var iit = oe.value_ptr.iterator();
         while (iit.next()) |ie| {
             if (ie.value_ptr.dsts.count() < 2) continue;
-            try keys.append(ctx.alloc, .{ .src = oe.key_ptr.*, .bit = ie.key_ptr.*, .group = ie.value_ptr });
+            try keys.append(ctx.tmp, .{ .src = oe.key_ptr.*, .bit = ie.key_ptr.*, .group = ie.value_ptr });
         }
     }
     std.mem.sort(Key, keys.items, {}, struct {
@@ -70,9 +70,9 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     }.less);
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (keys.items) |k| {
-        try out.append(ctx.alloc, try fire(ctx, k));
+        try out.append(ctx.tmp, try fire(ctx, k));
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Key = struct {
@@ -99,9 +99,9 @@ fn fire(ctx: *context.Context, k: Key) error{OutOfMemory}!finding.Finding {
     var names = std.ArrayListUnmanaged([]const u8).empty;
     var clocks = std.ArrayListUnmanaged([]const u8).empty;
     var dit = k.group.dsts.iterator();
-    while (dit.next()) |e| try names.append(ctx.alloc, ctx.mod.cells[e.key_ptr.*].name);
+    while (dit.next()) |e| try names.append(ctx.tmp, ctx.mod.cells[e.key_ptr.*].name);
     var cit = k.group.clks.iterator();
-    while (cit.next()) |e| try clocks.append(ctx.alloc, e.key_ptr.*);
+    while (cit.next()) |e| try clocks.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort([]const u8, names.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -112,9 +112,9 @@ fn fire(ctx: *context.Context, k: Key) error{OutOfMemory}!finding.Finding {
             return std.mem.lessThan(u8, a, b);
         }
     }.less);
-    const joined_names = try std.mem.join(ctx.alloc, ", ", names.items);
-    const joined_clks = try std.mem.join(ctx.alloc, ", ", clocks.items);
-    const message = try std.fmt.allocPrint(ctx.alloc, "fanout to {d} synchronizers: source {s} reaches independent sync chains in domain{s} {s} (chain heads: {s}); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values", .{ names.items.len, ctx.mod.cells[k.src].name, if (clocks.items.len == 1) "" else "s", joined_clks, joined_names });
+    const joined_names = try std.mem.join(ctx.tmp, ", ", names.items);
+    const joined_clks = try std.mem.join(ctx.tmp, ", ", clocks.items);
+    const message = try std.fmt.allocPrint(ctx.tmp, "fanout to {d} synchronizers: source {s} reaches independent sync chains in domain{s} {s} (chain heads: {s}); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values", .{ names.items.len, ctx.mod.cells[k.src].name, if (clocks.items.len == 1) "" else "s", joined_clks, joined_names });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

@@ -46,8 +46,8 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const b = entry.stages[i + 1];
             if (isPosedge(ctx.mod.cells[a]) == isPosedge(ctx.mod.cells[b])) continue;
             try seen.put(ctx.tmp, dc, {});
-            const message = try std.fmt.allocPrint(ctx.alloc, "opposite-edge synchroniser on {s} -> {s}: chain stage {s} ({s}) and {s} ({s}) sample on different edges of {s}, which halves MTBF", .{ x.src_clk, x.dst_clk, ctx.mod.cells[a].name, edgeName(ctx.mod.cells[a]), ctx.mod.cells[b].name, edgeName(ctx.mod.cells[b]), x.dst_clk });
-            try out.append(ctx.alloc, .{
+            const message = try std.fmt.allocPrint(ctx.tmp, "opposite-edge synchroniser on {s} -> {s}: chain stage {s} ({s}) and {s} ({s}) sample on different edges of {s}, which halves MTBF", .{ x.src_clk, x.dst_clk, ctx.mod.cells[a].name, edgeName(ctx.mod.cells[a]), ctx.mod.cells[b].name, edgeName(ctx.mod.cells[b]), x.dst_clk });
+            try out.append(ctx.tmp, .{
                 .rule = rule.id,
                 .severity = rule.severity,
                 .dst = ctx.mod.cells[dc].name,
@@ -56,7 +56,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             break;
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 fn edgeName(c: ir.types.Cell) []const u8 {

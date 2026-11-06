@@ -90,8 +90,8 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
             ie.value_ptr.sortAll(ctx);
             // Print order keys on the joined string, formatted
             // once per group: per-crossing formats were the waste.
-            const joined = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ ctx.mod.cells[oe.key_ptr.*].name, ie.key_ptr.* });
-            try keys.append(ctx.alloc, .{ .order = joined, .group = ie.value_ptr });
+            const joined = try std.fmt.allocPrint(ctx.tmp, "{s}|{s}", .{ ctx.mod.cells[oe.key_ptr.*].name, ie.key_ptr.* });
+            try keys.append(ctx.tmp, .{ .order = joined, .group = ie.value_ptr });
         }
     }
     std.mem.sort(Key, keys.items, {}, struct {
@@ -102,9 +102,9 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (keys.items) |k| {
         _ = scratch.reset(.retain_capacity);
-        try out.append(ctx.alloc, try fire(ctx, scratch.allocator(), k.group.*));
+        try out.append(ctx.tmp, try fire(ctx, scratch.allocator(), k.group.*));
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Key = struct {
@@ -411,7 +411,7 @@ fn fire(ctx: *context.Context, alloc: std.mem.Allocator, gr: Group) error{OutOfM
     // Source-side unions leave the receiver unmuxed; the via
     // clause then reads empty, so it drops out entirely.
     const via = if (conds.items.len == 0) "" else try std.fmt.allocPrint(alloc, " via {s}", .{jco});
-    const message = try std.fmt.allocPrint(ctx.alloc, "multiclock crossing on '{s}': receiver {{{s}}}{s}; {d} source crossings in {{{s}}} (sample: {s}{s}); {d} leg-pairs: {s}; chain depth {d}{s}{s}", .{
+    const message = try std.fmt.allocPrint(ctx.tmp, "multiclock crossing on '{s}': receiver {{{s}}}{s}; {d} source crossings in {{{s}}} (sample: {s}{s}); {d} leg-pairs: {s}; chain depth {d}{s}{s}", .{
         dst_name,                                      jdl,                                                       via,
         gr.count,                                      jsl,                                                       jsa,
         if (gr.count > gr.nsamples) ", +more" else "", gr.pairs.items.len,                                        jpr,

@@ -27,21 +27,21 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const name = ctx.mod.cells[fr.cell].name;
         for (fr.async) |ar| {
             if (!isNet(ar.origin)) continue;
-            const g = try groups.getOrPut(ctx.alloc, try keyFor(ctx.alloc, ar.origin, ar.ref));
+            const g = try groups.getOrPut(ctx.tmp, try keyFor(ctx.tmp, ar.origin, ar.ref));
             if (!g.found_existing) g.value_ptr.* = .{};
-            try pushDistinct(ctx.alloc, &g.value_ptr.async_users, name);
+            try pushDistinct(ctx.tmp, &g.value_ptr.async_users, name);
         }
         if (fr.sync.kind != .none and isNet(fr.sync.origin)) {
-            const g = try groups.getOrPut(ctx.alloc, try keyFor(ctx.alloc, fr.sync.origin, fr.sync.origin_ref));
+            const g = try groups.getOrPut(ctx.tmp, try keyFor(ctx.tmp, fr.sync.origin, fr.sync.origin_ref));
             if (!g.found_existing) g.value_ptr.* = .{};
-            try pushDistinct(ctx.alloc, &g.value_ptr.sync_users, name);
+            try pushDistinct(ctx.tmp, &g.value_ptr.sync_users, name);
         }
     }
     var keys = std.ArrayListUnmanaged([]const u8).empty;
     var git = groups.iterator();
     while (git.next()) |e| {
         if (e.value_ptr.async_users.items.len > 0 and e.value_ptr.sync_users.items.len > 0)
-            try keys.append(ctx.alloc, e.key_ptr.*);
+            try keys.append(ctx.tmp, e.key_ptr.*);
     }
     std.mem.sort([]const u8, keys.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
@@ -52,21 +52,21 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     for (keys.items) |k| {
         const sides = groups.get(k).?;
         const cut = std.mem.indexOfScalar(u8, k, 0).?;
-        const ja = try joinNames(ctx.alloc, sides.async_users.items);
-        const js = try joinNames(ctx.alloc, sides.sync_users.items);
+        const ja = try joinNames(ctx.tmp, sides.async_users.items);
+        const js = try joinNames(ctx.tmp, sides.sync_users.items);
         const both = overlap(sides);
-        const both_clause = if (both == 0) "" else try std.fmt.allocPrint(ctx.alloc, "; {d} flop{s} take it both ways", .{ both, if (both == 1) "" else "s" });
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const both_clause = if (both == 0) "" else try std.fmt.allocPrint(ctx.tmp, "; {d} flop{s} take it both ways", .{ both, if (both == 1) "" else "s" });
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "net '{s}' ({s}) drives async reset of {s} and sync reset of {s}{s}. Async users leave reset on the net's edge while sync users wait for a clock edge, so the two groups never leave reset together; split the net or qualify one side.",
             .{ k[cut + 1 ..], k[0..cut], ja, js, both_clause });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = sides.async_users.items[0],
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Sides = struct {

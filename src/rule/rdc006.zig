@@ -35,17 +35,17 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const dc = ctx.mod.cells[di];
         if (!std.mem.eql(u8, dc.type, "$mux") and !std.mem.eql(u8, dc.type, "$pmux")) continue;
         const phrase = try sourcesPhrase(ctx, dc);
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "muxed async reset without local synchronizer: flop '{s}' reset pin is driven by a {s} selecting between {s}. The mux makes source selection explicit (why RDC-005 stays silent), but the selected reset's deassertion edge is still asynchronous to this flop's clock. Add a 2FF reset synchronizer in the consumer clock domain between the mux and this flop's reset pin.",
             .{ c.name, dc.type, phrase });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = ctx.mod.cells[ci].name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 // Data legs only: the select is control, not a reset source,
@@ -53,9 +53,9 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
 fn sourcesPhrase(ctx: *context.Context, mux: @import("../ir.zig").types.Cell) error{OutOfMemory}![]const u8 {
     var legs = std.ArrayListUnmanaged(@import("../ir.zig").bits.Bit).empty;
     for ([_][]const u8{ "A", "B" }) |pin| {
-        if (bus.portBits(mux, pin)) |bits| try legs.appendSlice(ctx.alloc, bits);
+        if (bus.portBits(mux, pin)) |bits| try legs.appendSlice(ctx.tmp, bits);
     }
-    const ports = try context.backwardPortFanin(ctx.alloc, ctx.mod, legs.items);
+    const ports = try context.backwardPortFanin(ctx.tmp, ctx.mod, legs.items);
     std.mem.sort([]const u8, ports, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.order(u8, a, b) == .lt;
@@ -63,14 +63,14 @@ fn sourcesPhrase(ctx: *context.Context, mux: @import("../ir.zig").types.Cell) er
     }.less);
     if (ports.len == 0) return "multiple reset sources";
     var buf = std.ArrayListUnmanaged(u8).empty;
-    const head = try std.fmt.allocPrint(ctx.alloc, "{d} reset sources (", .{ports.len});
-    try buf.appendSlice(ctx.alloc, head);
+    const head = try std.fmt.allocPrint(ctx.tmp, "{d} reset sources (", .{ports.len});
+    try buf.appendSlice(ctx.tmp, head);
     const show = @min(ports.len, 3);
     for (ports[0..show], 0..) |p, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        try buf.appendSlice(ctx.alloc, p);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        try buf.appendSlice(ctx.tmp, p);
     }
-    if (ports.len > 3) try buf.appendSlice(ctx.alloc, "...");
-    try buf.appendSlice(ctx.alloc, ")");
-    return buf.toOwnedSlice(ctx.alloc);
+    if (ports.len > 3) try buf.appendSlice(ctx.tmp, "...");
+    try buf.appendSlice(ctx.tmp, ")");
+    return buf.toOwnedSlice(ctx.tmp);
 }

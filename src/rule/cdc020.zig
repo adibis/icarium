@@ -65,7 +65,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         var iit = oe.value_ptr.iterator();
         while (iit.next()) |ie| {
             if (ie.value_ptr.count() < 2) continue;
-            try keys.append(ctx.alloc, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .dsts = ie.value_ptr.* });
+            try keys.append(ctx.tmp, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .dsts = ie.value_ptr.* });
         }
     }
     std.mem.sort(Key, keys.items, ctx, struct {
@@ -90,7 +90,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         }
         var names = std.ArrayListUnmanaged([]const u8).empty;
         var dit = k.dsts.iterator();
-        while (dit.next()) |de| try names.append(ctx.alloc, de.key_ptr.*);
+        while (dit.next()) |de| try names.append(ctx.tmp, de.key_ptr.*);
         std.mem.sort([]const u8, names.items, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.order(u8, a, b) == .lt;
@@ -98,15 +98,15 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         }.less);
         const sq = bus.portBits(ctx.mod.cells[k.src], "Q").?;
         const desc = try laneDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc, "sliced-bus reconvergence across CDC: source flop {s} (WIDTH={d}) is sliced into {d} per-lane crossings to clock domain {s} ({s}). Each lane resolves metastability on its own schedule. Fix: gray-code the source, use a req/ack handshake, or replace the per-lane sync chains with a single multi-bit sync chain.", .{ src_name, sq.len, names.items.len, desc, k.clk });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "sliced-bus reconvergence across CDC: source flop {s} (WIDTH={d}) is sliced into {d} per-lane crossings to clock domain {s} ({s}). Each lane resolves metastability on its own schedule. Fix: gray-code the source, use a req/ack handshake, or replace the per-lane sync chains with a single multi-bit sync chain.", .{ src_name, sq.len, names.items.len, desc, k.clk });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = src_name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Dsts = std.StringHashMapUnmanaged(usize);
@@ -123,12 +123,12 @@ fn laneDesc(ctx: *context.Context, names: [][]const u8) error{OutOfMemory}![]con
     var buf = std.ArrayListUnmanaged(u8).empty;
     const show = @min(names.len, 4);
     for (names[0..show], 0..) |n, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        try buf.appendSlice(ctx.alloc, n);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        try buf.appendSlice(ctx.tmp, n);
     }
     if (names.len > 4) {
-        const tail = try std.fmt.allocPrint(ctx.alloc, ", ... ({d} lanes total)", .{names.len});
-        try buf.appendSlice(ctx.alloc, tail);
+        const tail = try std.fmt.allocPrint(ctx.tmp, ", ... ({d} lanes total)", .{names.len});
+        try buf.appendSlice(ctx.tmp, tail);
     }
-    return buf.toOwnedSlice(ctx.alloc);
+    return buf.toOwnedSlice(ctx.tmp);
 }

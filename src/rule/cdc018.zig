@@ -76,7 +76,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     while (oit.next()) |oe| {
         var iit = oe.value_ptr.iterator();
         while (iit.next()) |ie| {
-            try keys.append(ctx.alloc, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .best = ie.value_ptr.* });
+            try keys.append(ctx.tmp, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .best = ie.value_ptr.* });
         }
     }
     std.mem.sort(Key, keys.items, ctx, struct {
@@ -87,15 +87,15 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         }
     }.less);
     for (keys.items) |k| {
-        const message = try std.fmt.allocPrint(ctx.alloc, "cascaded synchroniser chain: {d}-flop chain in {s} starting at {s} (source: {s}). The textbook 2FF sync is sufficient; every flop beyond the first 2 adds latency without improving metastability resolution. Trim the chain to 2 flops, or mark the chain head (* cdc_sync *) if the depth is intentional.", .{ k.best.depth, k.clk, ctx.mod.cells[k.best.head].name, ctx.mod.cells[k.src].name });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "cascaded synchroniser chain: {d}-flop chain in {s} starting at {s} (source: {s}). The textbook 2FF sync is sufficient; every flop beyond the first 2 adds latency without improving metastability resolution. Trim the chain to 2 flops, or mark the chain head (* cdc_sync *) if the depth is intentional.", .{ k.best.depth, k.clk, ctx.mod.cells[k.best.head].name, ctx.mod.cells[k.src].name });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = ctx.mod.cells[k.best.head].name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Best = struct { depth: u32, head: usize };

@@ -68,7 +68,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var keys = std.ArrayListUnmanaged([]const u8).empty;
     var it = acc.by_key.iterator();
-    while (it.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
+    while (it.next()) |e| try keys.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort([]const u8, keys.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -76,9 +76,9 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     }.less);
     for (keys.items) |k| {
         const g = acc.by_key.get(k).?;
-        try out.append(ctx.alloc, try fire(ctx, k, g));
+        try out.append(ctx.tmp, try fire(ctx, k, g));
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 fn ownedByCdc011(x: crossing.enumerate.Crossing) bool {
@@ -159,23 +159,23 @@ const Group = struct {
 // output whatever the clock walk concluded about its driver.
 fn reason(ctx: *context.Context, g: Group) error{OutOfMemory}![]const u8 {
     if (g.port) |p| {
-        return std.fmt.allocPrint(ctx.alloc, "untyped input port '{s}': no set_input_delay clock typing", .{p});
+        return std.fmt.allocPrint(ctx.tmp, "untyped input port '{s}': no set_input_delay clock typing", .{p});
     }
     const ci = g.cell.?;
     const c = ctx.mod.cells[ci];
-    if (c.blackbox) return std.fmt.allocPrint(ctx.alloc, "macro output '{s}': blackbox has no clock association", .{c.name});
-    if (clock.cells.isMemRead(c.type)) return std.fmt.allocPrint(ctx.alloc, "memory read output '{s}': no clock association", .{c.name});
+    if (c.blackbox) return std.fmt.allocPrint(ctx.tmp, "macro output '{s}': blackbox has no clock association", .{c.name});
+    if (clock.cells.isMemRead(c.type)) return std.fmt.allocPrint(ctx.tmp, "memory read output '{s}': no clock association", .{c.name});
     if (ctx.table.domainOf(ci)) |d| {
-        if (d.notes.len > 0) return std.mem.join(ctx.alloc, "; ", d.notes);
+        if (d.notes.len > 0) return std.mem.join(ctx.tmp, "; ", d.notes);
     }
-    return std.fmt.allocPrint(ctx.alloc, "endpoint '{s}': clock association unresolved", .{c.name});
+    return std.fmt.allocPrint(ctx.tmp, "endpoint '{s}': clock association unresolved", .{c.name});
 }
 
 fn fire(ctx: *context.Context, key: []const u8, g: Group) error{OutOfMemory}!finding.Finding {
     const why = try reason(ctx, g);
-    const sample = try std.mem.join(ctx.alloc, ", ", g.sample[0..g.nsample]);
+    const sample = try std.mem.join(ctx.tmp, ", ", g.sample[0..g.nsample]);
     const dst = if (g.cell) |ci| ctx.mod.cells[ci].name else g.sample[0];
     const what: []const u8 = if (g.cell != null) "endpoint" else "input port";
-    const message = try std.fmt.allocPrint(ctx.alloc, "unresolved clock association on {s} '{s}': {s}; {d} crossings cannot prove synchronicity (sample: {s})", .{ what, key, why, g.count, sample });
+    const message = try std.fmt.allocPrint(ctx.tmp, "unresolved clock association on {s} '{s}': {s}; {d} crossings cannot prove synchronicity (sample: {s})", .{ what, key, why, g.count, sample });
     return .{ .rule = rule.id, .severity = rule.severity, .dst = dst, .message = message };
 }

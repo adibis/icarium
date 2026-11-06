@@ -53,15 +53,15 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             // strictly after the source data settles. The textbook
             // safe order, recognized rather than flagged.
             if (try orderedRelease(ctx, scratch.allocator(), src_dom, dst_dom)) continue;
-            try out.append(ctx.alloc, try fire(ctx, sc, dc, src_dom, dst_dom));
+            try out.append(ctx.tmp, try fire(ctx, sc, dc, src_dom, dst_dom));
         }
         // Uncomparable sources aggregate per destination: one caveat,
         // never silence and never one row per unknown pair.
         if (unknowns > 0) {
-            const message = try std.fmt.allocPrint(ctx.alloc,
+            const message = try std.fmt.allocPrint(ctx.tmp,
                 "reset domain comparison incomplete at {s}: {d} source{s} with unresolved reset origins cannot prove same-domain release; resolve the reset drivers or waive after review",
                 .{ c.name, unknowns, if (unknowns == 1) "" else "s" });
-            try out.append(ctx.alloc, .{
+            try out.append(ctx.tmp, .{
                 .rule = rule.id,
                 .severity = .warn,
                 .dst = c.name,
@@ -69,7 +69,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             });
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 // Nearest Q-drivers reachable without ending on a mux select:
@@ -387,9 +387,9 @@ fn fire(
 ) error{OutOfMemory}!finding.Finding {
     const sname = ctx.mod.cells[sc].name;
     const dname = ctx.mod.cells[dc].name;
-    const sdom = try renderDomain(ctx.alloc, src_dom);
-    const ddom = try renderDomain(ctx.alloc, dst_dom);
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const sdom = try renderDomain(ctx.tmp, src_dom);
+    const ddom = try renderDomain(ctx.tmp, dst_dom);
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "unqualified data crossing reset domains: {s} (reset {s}) feeds {s} (reset {s}); the source can come out of reset while the receiver samples",
         .{ sname, sdom, dname, ddom });
     return .{

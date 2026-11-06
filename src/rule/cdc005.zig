@@ -58,7 +58,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         var iit = oe.value_ptr.iterator();
         while (iit.next()) |ie| {
             if (ie.value_ptr.dsts.items.len < 2) continue;
-            try keys.append(ctx.alloc, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .dsts = ie.value_ptr.dsts.items });
+            try keys.append(ctx.tmp, .{ .src = oe.key_ptr.*, .clk = ie.key_ptr.*, .dsts = ie.value_ptr.dsts.items });
         }
     }
     std.mem.sort(Key, keys.items, {}, struct {
@@ -70,10 +70,10 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (keys.items) |k| {
         if (try reconverges(ctx, k.clk, k.dsts)) {
-            try out.append(ctx.alloc, try fire(ctx, k));
+            try out.append(ctx.tmp, try fire(ctx, k));
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Key = struct {
@@ -85,15 +85,15 @@ const Key = struct {
 fn fire(ctx: *context.Context, k: Key) error{OutOfMemory}!finding.Finding {
     var names = std.ArrayListUnmanaged([]const u8).empty;
     for (k.dsts) |dc| {
-        try names.append(ctx.alloc, ctx.mod.cells[dc].name);
+        try names.append(ctx.tmp, ctx.mod.cells[dc].name);
     }
     std.mem.sort([]const u8, names.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.less);
-    const joined = try std.mem.join(ctx.alloc, ", ", names.items);
-    const message = try std.fmt.allocPrint(ctx.alloc, "reconvergent synchronizers: source flop {s} drives {d} independent sync chains in domain {s} (dst flops: {s}); independent metastability resolution can produce mismatched synchronized values when these outputs recombine", .{ ctx.mod.cells[k.src].name, k.dsts.len, k.clk, joined });
+    const joined = try std.mem.join(ctx.tmp, ", ", names.items);
+    const message = try std.fmt.allocPrint(ctx.tmp, "reconvergent synchronizers: source flop {s} drives {d} independent sync chains in domain {s} (dst flops: {s}); independent metastability resolution can produce mismatched synchronized values when these outputs recombine", .{ ctx.mod.cells[k.src].name, k.dsts.len, k.clk, joined });
     return .{
         .rule = rule.id,
         .severity = rule.severity,
@@ -124,11 +124,11 @@ fn reconverges(ctx: *context.Context, clk: []const u8, dsts: []usize) error{OutO
         const entry = try ctx.table.chainDepth(ctx.mod, dc, clk);
         const terminal = entry.stages[entry.stages.len - 1];
         var internal = std.AutoHashMapUnmanaged(usize, void).empty;
-        for (entry.stages) |s| try internal.put(ctx.alloc, s, {});
+        for (entry.stages) |s| try internal.put(ctx.tmp, s, {});
         const reached = try forwardCells(ctx, terminal);
         for (reached) |cell| {
             if (internal.contains(cell)) continue;
-            const slot = try counts.getOrPut(ctx.alloc, cell);
+            const slot = try counts.getOrPut(ctx.tmp, cell);
             slot.value_ptr.* = (if (slot.found_existing) slot.value_ptr.* else 0) + 1;
             if (slot.value_ptr.* >= 2) return true;
         }
@@ -144,32 +144,32 @@ fn forwardCells(ctx: *context.Context, start: usize) error{OutOfMemory}![]usize 
     var frontier = std.ArrayListUnmanaged(FrontierBit).empty;
     const q = portBits(mod.cells[start], "Q") orelse return &.{};
     for (q) |b| {
-        if (b == .sig) try frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = 0 });
+        if (b == .sig) try frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = 0 });
     }
     var head: usize = 0;
     while (head < frontier.items.len) : (head += 1) {
         const fb = frontier.items[head];
         if (seen.contains(fb.bit)) continue;
-        try seen.put(ctx.alloc, fb.bit, {});
+        try seen.put(ctx.tmp, fb.bit, {});
         const loads = mod.loads_of.get(fb.bit) orelse continue;
         for (loads.items) |loc| {
             const ci = loc.cell orelse continue;
-            try reached.append(ctx.alloc, ci);
+            try reached.append(ctx.tmp, ci);
             const c = mod.cells[ci];
             if (clock.cells.isSequential(c.type)) continue;
             if (clock.cells.isMemoryClock(c.type)) continue;
             if (fb.depth >= 12 or expanded.contains(ci)) continue;
-            try expanded.put(ctx.alloc, ci, {});
+            try expanded.put(ctx.tmp, ci, {});
             for (c.ports) |p| {
                 if (p.direction != .output) continue;
                 if (!std.mem.eql(u8, p.name, "Y") and !std.mem.eql(u8, p.name, "Q")) continue;
                 for (p.bits) |ob| {
-                    if (ob == .sig) try frontier.append(ctx.alloc, .{ .bit = ob.sig, .depth = fb.depth + 1 });
+                    if (ob == .sig) try frontier.append(ctx.tmp, .{ .bit = ob.sig, .depth = fb.depth + 1 });
                 }
             }
         }
     }
-    return reached.toOwnedSlice(ctx.alloc);
+    return reached.toOwnedSlice(ctx.tmp);
 }
 
 const FrontierBit = struct { bit: u32, depth: u8 };

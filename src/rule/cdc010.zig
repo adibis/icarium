@@ -24,7 +24,7 @@ pub const rule = registry.Rule{
 // the async transition chops the output. Ports defer out.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     const mod = ctx.mod;
-    const net_cells = try context.clockNetworkCells(ctx.alloc, mod);
+    const net_cells = try context.clockNetworkCells(ctx.tmp, mod);
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (mod.cells, 0..) |c, ci| {
         if (!net_cells.contains(ci)) continue;
@@ -51,8 +51,8 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                 if (std.mem.eql(u8, sdom.name, "unknown")) continue;
                 if (!allAsync(ctx, sdom, gated)) continue;
                 const doms = try describeDomains(ctx, gated);
-                const message = try std.fmt.allocPrint(ctx.alloc, "clock-network cell {s} ({s}) control pin {s} is driven by flop {s} in domain {s}, asynchronous to the cell's clock-input domain(s) ({s}); an async control transition can chop the output clock into runt pulses on every downstream flop. Synchronize {s} into one of the gated-clock domains", .{ c.name, c.type, cp, mod.cells[src].name, sdom.name, doms, mod.cells[src].name });
-                try out.append(ctx.alloc, .{
+                const message = try std.fmt.allocPrint(ctx.tmp, "clock-network cell {s} ({s}) control pin {s} is driven by flop {s} in domain {s}, asynchronous to the cell's clock-input domain(s) ({s}); an async control transition can chop the output clock into runt pulses on every downstream flop. Synchronize {s} into one of the gated-clock domains", .{ c.name, c.type, cp, mod.cells[src].name, sdom.name, doms, mod.cells[src].name });
+                try out.append(ctx.tmp, .{
                     .rule = rule.id,
                     .severity = rule.severity,
                     .dst = c.name,
@@ -61,7 +61,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const explicit_controls = std.StaticStringMap([]const []const u8).initComptime(.{
@@ -97,7 +97,7 @@ fn controlPins(ctx: *context.Context, c: ir.types.Cell) []const []const u8 {
         if (p.name.len > upper.len) continue;
         for (p.name, 0..) |ch, i| upper[i] = std.ascii.toUpper(ch);
         if (heuristic_pins.get(upper[0..p.name.len]) != null) {
-            matches.append(ctx.alloc, p.name) catch return &.{};
+            matches.append(ctx.tmp, p.name) catch return &.{};
         }
     }
     return matches.items;
@@ -124,35 +124,35 @@ fn clockInputDomains(
         if (p.direction == .output) continue;
         if (isCtrl(p.name, ctrls)) continue;
         for (p.bits) |b| {
-            if (b == .sig) try frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = 0 });
+            if (b == .sig) try frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = 0 });
         }
     }
     var head: usize = 0;
     while (head < frontier.items.len) : (head += 1) {
         const fb = frontier.items[head];
         if (seen.contains(fb.bit)) continue;
-        try seen.put(ctx.alloc, fb.bit, {});
+        try seen.put(ctx.tmp, fb.bit, {});
         const drv = mod.driver_of.get(fb.bit) orelse {
             if (portOfBit(mod, fb.bit)) |pn| {
-                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(ctx.alloc, clk);
+                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(ctx.tmp, clk);
             }
             continue;
         };
         const sci = drv.cell orelse {
             if (portOfBit(mod, fb.bit)) |pn| {
-                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(ctx.alloc, clk);
+                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(ctx.tmp, clk);
             }
             continue;
         };
         if (std.mem.eql(u8, drv.port, "Q")) {
-            try cells.append(ctx.alloc, sci);
+            try cells.append(ctx.tmp, sci);
             continue;
         }
         if (fb.depth >= 12) continue;
         for (mod.cells[sci].ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
-                if (b == .sig) try frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = fb.depth + 1 });
+                if (b == .sig) try frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = fb.depth + 1 });
             }
         }
     }
@@ -202,15 +202,15 @@ fn describeDomains(ctx: *context.Context, gated: GatedDomains) error{OutOfMemory
         }
     }.f;
     for (gated.cells.items) |gc| {
-        if (ctx.table.domainOf(gc)) |d| try add(&names, ctx.alloc, d.name);
+        if (ctx.table.domainOf(gc)) |d| try add(&names, ctx.tmp, d.name);
     }
-    for (gated.clocks.items) |c| try add(&names, ctx.alloc, c);
+    for (gated.clocks.items) |c| try add(&names, ctx.tmp, c);
     std.mem.sort([]const u8, names.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
     }.less);
-    return std.mem.join(ctx.alloc, ", ", names.items);
+    return std.mem.join(ctx.tmp, ", ", names.items);
 }
 
 const FrontierBit = struct { bit: u32, depth: u8 };

@@ -90,7 +90,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         while (iit.next()) |ie| {
             if (ie.value_ptr.suppressed) continue;
             if (ie.value_ptr.lanes.count() < 2) continue;
-            try keys.append(ctx.alloc, .{ .drv = oe.key_ptr.*, .clk = ie.key_ptr.*, .lanes = ie.value_ptr.lanes });
+            try keys.append(ctx.tmp, .{ .drv = oe.key_ptr.*, .clk = ie.key_ptr.*, .lanes = ie.value_ptr.lanes });
         }
     }
     std.mem.sort(Key, keys.items, ctx, struct {
@@ -103,22 +103,22 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     for (keys.items) |k| {
         var names = std.ArrayListUnmanaged([]const u8).empty;
         var lit = k.lanes.iterator();
-        while (lit.next()) |le| try names.append(ctx.alloc, le.key_ptr.*);
+        while (lit.next()) |le| try names.append(ctx.tmp, le.key_ptr.*);
         std.mem.sort([]const u8, names.items, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.order(u8, a, b) == .lt;
             }
         }.less);
         const desc = try laneDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc, "independently-synced one-hot decode across CDC: comb cell {s} drives {d} separate WIDTH=1 source flops ({s}) that each cross independently to clock domain {s}. The shared decoder makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.", .{ ctx.mod.cells[k.drv].name, names.items.len, desc, k.clk });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "independently-synced one-hot decode across CDC: comb cell {s} drives {d} separate WIDTH=1 source flops ({s}) that each cross independently to clock domain {s}. The shared decoder makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.", .{ ctx.mod.cells[k.drv].name, names.items.len, desc, k.clk });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = names.items[0],
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Group = struct {
@@ -138,12 +138,12 @@ fn laneDesc(ctx: *context.Context, names: [][]const u8) error{OutOfMemory}![]con
     var buf = std.ArrayListUnmanaged(u8).empty;
     const show = @min(names.len, 4);
     for (names[0..show], 0..) |n, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        try buf.appendSlice(ctx.alloc, n);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        try buf.appendSlice(ctx.tmp, n);
     }
     if (names.len > 4) {
-        const tail = try std.fmt.allocPrint(ctx.alloc, ", ... ({d} lanes total)", .{names.len});
-        try buf.appendSlice(ctx.alloc, tail);
+        const tail = try std.fmt.allocPrint(ctx.tmp, ", ... ({d} lanes total)", .{names.len});
+        try buf.appendSlice(ctx.tmp, tail);
     }
-    return buf.toOwnedSlice(ctx.alloc);
+    return buf.toOwnedSlice(ctx.tmp);
 }

@@ -43,12 +43,12 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (depth.depth >= 2) return null;
     if (ctx.table.hasInterStageComb(ctx.mod, dc) != null) return null;
     const src_desc = if (x.src.cell) |sc|
-        try std.fmt.allocPrint(ctx.alloc, "flop {s}", .{ctx.mod.cells[sc].name})
+        try std.fmt.allocPrint(ctx.tmp, "flop {s}", .{ctx.mod.cells[sc].name})
     else
-        try std.fmt.allocPrint(ctx.alloc, "port {s}", .{x.src.port});
+        try std.fmt.allocPrint(ctx.tmp, "port {s}", .{x.src.port});
     // Both clocks resolve here: the dispatcher routes unclocked
     // pairs to CDC-025, so no unresolved branch survives.
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "unsynchronized control crossing {s} -> {s} (src: {s}): destination flop {s} has no second-stage synchronizer (chain depth = {d})",
         .{ x.src_clk, x.dst_clk, src_desc, dst_name, depth.depth });
     return .{

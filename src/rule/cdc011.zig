@@ -49,7 +49,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var ports = std.ArrayListUnmanaged([]const u8).empty;
     var it = acc.by_port.iterator();
-    while (it.next()) |e| try ports.append(ctx.alloc, e.key_ptr.*);
+    while (it.next()) |e| try ports.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort([]const u8, ports.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
@@ -57,9 +57,9 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
     }.less);
     for (ports.items) |port| {
         const dsts = acc.by_port.get(port).?;
-        try out.append(ctx.alloc, try fire(ctx, port, dsts));
+        try out.append(ctx.tmp, try fire(ctx, port, dsts));
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const PortDsts = struct {
@@ -102,13 +102,13 @@ const PortDsts = struct {
 };
 
 fn fire(ctx: *context.Context, port: []const u8, dsts: PortDsts) error{OutOfMemory}!finding.Finding {
-    const clocks = try dsts.distinctClocks(ctx.alloc);
+    const clocks = try dsts.distinctClocks(ctx.tmp);
     const repr = dsts.reprCell();
     if (clocks.len > 1) {
-        const joined = try std.mem.join(ctx.alloc, ", ", clocks);
-        const message = try std.fmt.allocPrint(ctx.alloc, "unconstrained primary input '{s}' is captured in multiple clock domains ({s}); a single port cannot be synchronous to more than one clock \xe2\x80\x94 add set_input_delay -clock <name> and a synchronizer on at least one destination", .{ port, joined });
+        const joined = try std.mem.join(ctx.tmp, ", ", clocks);
+        const message = try std.fmt.allocPrint(ctx.tmp, "unconstrained primary input '{s}' is captured in multiple clock domains ({s}); a single port cannot be synchronous to more than one clock \xe2\x80\x94 add set_input_delay -clock <name> and a synchronizer on at least one destination", .{ port, joined });
         return .{ .rule = rule.id, .severity = .err, .dst = repr, .message = message };
     }
-    const message = try std.fmt.allocPrint(ctx.alloc, "unconstrained primary input '{s}' has no set_input_delay -clock typing in the SDC but is captured in domain '{s}'; add set_input_delay -clock {s} [get_ports {s}] (or declare the port's true source clock and add a synchronizer)", .{ port, clocks[0], clocks[0], port });
+    const message = try std.fmt.allocPrint(ctx.tmp, "unconstrained primary input '{s}' has no set_input_delay -clock typing in the SDC but is captured in domain '{s}'; add set_input_delay -clock {s} [get_ports {s}] (or declare the port's true source clock and add a synchronizer)", .{ port, clocks[0], clocks[0], port });
     return .{ .rule = rule.id, .severity = .warn, .dst = repr, .message = message };
 }

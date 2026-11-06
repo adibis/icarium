@@ -35,7 +35,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     const d = portBits(ctx.mod.cells[sc], "D") orelse return null;
     if (d.len != 1 or d[0] != .sig) return null;
     if (!isEdgeDetector(ctx, d[0].sig, x.src_clk)) return null;
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "pulse-width risk on '{s}' -> '{s}': src clock '{s}' (period {d}) is faster than dst clock '{s}' (period {d}); a 1-cycle src pulse may not be captured. Consider a pulse-stretcher, toggle synchronizer, or req/ack handshake.",
         .{ ctx.mod.cells[sc].name, ctx.mod.cells[dc].name, x.src_clk, sp, x.dst_clk, dp });
     return .{

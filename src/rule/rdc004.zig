@@ -35,22 +35,22 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, rst);
         if (fanin.items.len == 0) continue;
         var names = std.ArrayListUnmanaged([]const u8).empty;
-        for (fanin.items) |f| try names.append(ctx.alloc, ctx.mod.cells[f].name);
+        for (fanin.items) |f| try names.append(ctx.tmp, ctx.mod.cells[f].name);
         std.mem.sort([]const u8, names.items, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.order(u8, a, b) == .lt;
             }
         }.less);
         const desc = try flopDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc, "reset driven by combinational logic: flop {s}'s reset pin is the output of combinational gate(s) fed by flop(s) {s}. Comb-gate outputs can glitch when inputs transition asynchronously, causing spurious reset assertions. Register the comb output on the consumer's clock before using as a reset.", .{ c.name, desc });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "reset driven by combinational logic: flop {s}'s reset pin is the output of combinational gate(s) fed by flop(s) {s}. Comb-gate outputs can glitch when inputs transition asynchronously, causing spurious reset assertions. Register the comb output on the consumer's clock before using as a reset.", .{ c.name, desc });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = c.name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 // One-hop comb test: a cell output that is neither a flop Q nor
@@ -68,9 +68,9 @@ fn flopDesc(ctx: *context.Context, names: [][]const u8) error{OutOfMemory}![]con
     var buf = std.ArrayListUnmanaged(u8).empty;
     const show = @min(names.len, 3);
     for (names[0..show], 0..) |n, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        try buf.appendSlice(ctx.alloc, n);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        try buf.appendSlice(ctx.tmp, n);
     }
-    if (names.len > 3) try buf.appendSlice(ctx.alloc, "...");
-    return buf.toOwnedSlice(ctx.alloc);
+    if (names.len > 3) try buf.appendSlice(ctx.tmp, "...");
+    return buf.toOwnedSlice(ctx.tmp);
 }

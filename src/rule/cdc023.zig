@@ -23,31 +23,31 @@ pub const rule = registry.Rule{
 // means no combine is possible, so the rule stays out.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
-    if (ctx.model.clocks.count() < 2) return out.toOwnedSlice(ctx.alloc);
-    if (ctx.table.combines.len == 0) return out.toOwnedSlice(ctx.alloc);
+    if (ctx.model.clocks.count() < 2) return out.toOwnedSlice(ctx.tmp);
+    if (ctx.table.combines.len == 0) return out.toOwnedSlice(ctx.tmp);
     const net_of = try netNames(ctx);
     for (ctx.table.combines) |cb| {
         const c = ctx.mod.cells[cb.cell];
-        const net = net_of.get(cb.bit) orelse try std.fmt.allocPrint(ctx.alloc, "{s}.Y", .{c.name});
+        const net = net_of.get(cb.bit) orelse try std.fmt.allocPrint(ctx.tmp, "{s}.Y", .{c.name});
         const sinks = try combineSinks(ctx, cb.bit);
         std.mem.sort(usize, sinks, ctx, struct {
             fn less(cx: *context.Context, a: usize, b: usize) bool {
                 return std.mem.order(u8, cx.mod.cells[a].name, cx.mod.cells[b].name) == .lt;
             }
         }.less);
-        const clocks = try std.mem.join(ctx.alloc, ", ", cb.clocks);
+        const clocks = try std.mem.join(ctx.tmp, ", ", cb.clocks);
         const sample = try sinkSample(ctx, sinks);
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "CLK net `{s}` driven by combine of {{{s}}} at `{s}` (`{s}`): two distinct declared clocks are mixed combinationally onto one clock net. The net glitches and runs at no declared frequency; the clock-root tracer declines to assign a domain through it, leaving the {d} flop(s) it reaches ({s}) domain-unknown and their crossings unchecked. Gate ONE clock and use the other only as a synchronised enable, or select between them with a glitchless clock mux (a mux selects and is not reported here).",
             .{ net, clocks, c.name, c.type, sinks.len, sample });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = c.name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 // First netname claiming each bit wins: elaborators name every
@@ -58,7 +58,7 @@ fn netNames(ctx: *context.Context) error{OutOfMemory}!std.AutoHashMapUnmanaged(u
     while (nit.next()) |ne| {
         for (ne.value_ptr.bits) |b| {
             if (b != .sig) continue;
-            const slot = try names.getOrPut(ctx.alloc, b.sig);
+            const slot = try names.getOrPut(ctx.tmp, b.sig);
             if (!slot.found_existing) slot.value_ptr.* = ne.key_ptr.*;
         }
     }
@@ -76,12 +76,12 @@ fn combineSinks(ctx: *context.Context, bit: u32) error{OutOfMemory}![]usize {
         for (clk) |b| {
             if (b != .sig) continue;
             if (try reaches(ctx, b.sig, bit)) {
-                try sinks.append(ctx.alloc, ci);
+                try sinks.append(ctx.tmp, ci);
                 break;
             }
         }
     }
-    return sinks.toOwnedSlice(ctx.alloc);
+    return sinks.toOwnedSlice(ctx.tmp);
 }
 
 const Hop = struct { bit: u32, depth: u8 };
@@ -90,13 +90,13 @@ fn reaches(ctx: *context.Context, from: u32, target: u32) error{OutOfMemory}!boo
     const mod = ctx.mod;
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var queue = std.ArrayListUnmanaged(Hop).empty;
-    try queue.append(ctx.alloc, .{ .bit = from, .depth = 0 });
+    try queue.append(ctx.tmp, .{ .bit = from, .depth = 0 });
     var head: usize = 0;
     while (head < queue.items.len) : (head += 1) {
         const h = queue.items[head];
         if (h.bit == target) return true;
         if (seen.contains(h.bit)) continue;
-        try seen.put(ctx.alloc, h.bit, {});
+        try seen.put(ctx.tmp, h.bit, {});
         if (h.depth >= 16) continue;
         const drv = mod.driver_of.get(h.bit) orelse continue;
         const ci = drv.cell orelse continue;
@@ -105,14 +105,14 @@ fn reaches(ctx: *context.Context, from: u32, target: u32) error{OutOfMemory}!boo
         if (clock.cells.isSequential(c.type)) {
             const clk = bus.portBits(c, "CLK") orelse bus.portBits(c, "G") orelse bus.portBits(c, "EN") orelse continue;
             for (clk) |b| {
-                if (b == .sig) try queue.append(ctx.alloc, .{ .bit = b.sig, .depth = h.depth + 1 });
+                if (b == .sig) try queue.append(ctx.tmp, .{ .bit = b.sig, .depth = h.depth + 1 });
             }
             continue;
         }
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
-                if (b == .sig) try queue.append(ctx.alloc, .{ .bit = b.sig, .depth = h.depth + 1 });
+                if (b == .sig) try queue.append(ctx.tmp, .{ .bit = b.sig, .depth = h.depth + 1 });
             }
         }
     }
@@ -125,13 +125,13 @@ fn sinkSample(ctx: *context.Context, sinks: []usize) error{OutOfMemory}![]const 
     var buf = std.ArrayListUnmanaged(u8).empty;
     const show = @min(sinks.len, 3);
     for (sinks[0..show], 0..) |s, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        const one = try std.fmt.allocPrint(ctx.alloc, "`{s}`", .{ctx.mod.cells[s].name});
-        try buf.appendSlice(ctx.alloc, one);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        const one = try std.fmt.allocPrint(ctx.tmp, "`{s}`", .{ctx.mod.cells[s].name});
+        try buf.appendSlice(ctx.tmp, one);
     }
     if (sinks.len > show) {
-        const tail = try std.fmt.allocPrint(ctx.alloc, ", +{d} more", .{sinks.len - show});
-        try buf.appendSlice(ctx.alloc, tail);
+        const tail = try std.fmt.allocPrint(ctx.tmp, ", +{d} more", .{sinks.len - show});
+        try buf.appendSlice(ctx.tmp, tail);
     }
-    return buf.toOwnedSlice(ctx.alloc);
+    return buf.toOwnedSlice(ctx.tmp);
 }

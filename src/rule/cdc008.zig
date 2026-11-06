@@ -31,7 +31,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         for ([_][]const u8{ "CLK", "G" }) |pin| {
             const bits = portBits(c, pin) orelse continue;
             for (bits) |b| {
-                if (b == .sig) try clock_bits.put(ctx.alloc, b.sig, {});
+                if (b == .sig) try clock_bits.put(ctx.tmp, b.sig, {});
             }
         }
     }
@@ -39,11 +39,11 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (p.direction != .input) continue;
         if (sdc.model.rootClock(ctx.model, p.name) == null) continue;
         for (p.bits) |b| {
-            if (b == .sig) try clock_bits.put(ctx.alloc, b.sig, {});
+            if (b == .sig) try clock_bits.put(ctx.tmp, b.sig, {});
         }
     }
     if (clock_bits.count() == 0) return &.{};
-    const net_cells = try context.clockNetworkCells(ctx.alloc, ctx.mod);
+    const net_cells = try context.clockNetworkCells(ctx.tmp, ctx.mod);
 
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var seen = std.AutoHashMapUnmanaged(Triple, void).empty;
@@ -55,7 +55,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             for (p.bits) |b| {
                 if (b != .sig or !clock_bits.contains(b.sig)) continue;
                 if (clock.cells.isTransparent(c.type)) {
-                    const terms = try terminals(ctx.alloc, mod, ci, &net_cells);
+                    const terms = try terminals(ctx.tmp, mod, ci, &net_cells);
                     for (terms) |t| {
                         const tc = mod.cells[t.cell];
                         if (skipPin(ctx, tc, t.pin)) continue;
@@ -68,7 +68,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 fn skipPin(ctx: *context.Context, c: ir.types.Cell, pin: []const u8) bool {
@@ -96,12 +96,12 @@ fn fire(
     const c = mod.cells[ci];
     const key = Triple{ .bit = bit, .cell = ci, .pin = pinIndex(c, pin, null) };
     if (seen.contains(key)) return;
-    try seen.put(ctx.alloc, key, {});
-    const label = try bitLabel(ctx.alloc, mod, bit);
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    try seen.put(ctx.tmp, key, {});
+    const label = try bitLabel(ctx.tmp, mod, bit);
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "clock signal {s} used as data: connected to {s}.{s}[{d}] (cell type {s})",
         .{ label, c.name, pin, idx, c.type });
-    try out.append(ctx.alloc, .{
+    try out.append(ctx.tmp, .{
         .rule = rule.id,
         .severity = rule.severity,
         .dst = c.name,

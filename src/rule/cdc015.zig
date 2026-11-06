@@ -57,15 +57,15 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const one = try std.fmt.allocPrint(ctx.tmp, "{s} ({s})", .{ o.name, o.clk });
             try names.appendSlice(ctx.tmp, one);
         }
-        const message = try std.fmt.allocPrint(ctx.alloc, "synchronizer chain in {s} (head {s}) has ARST driven by foreign-domain source(s): {s}. The chain cannot reach steady state because its resolving flops are asynchronously released by a reset that is not in {s}'s reset tree. Use {s}'s reset (or a reset synchronised into {s}) for the sync chain.", .{ x.dst_clk, ctx.mod.cells[dc].name, names.items, x.dst_clk, x.dst_clk, x.dst_clk });
-        try out.append(ctx.alloc, .{
+        const message = try std.fmt.allocPrint(ctx.tmp, "synchronizer chain in {s} (head {s}) has ARST driven by foreign-domain source(s): {s}. The chain cannot reach steady state because its resolving flops are asynchronously released by a reset that is not in {s}'s reset tree. Use {s}'s reset (or a reset synchronised into {s}) for the sync chain.", .{ x.dst_clk, ctx.mod.cells[dc].name, names.items, x.dst_clk, x.dst_clk, x.dst_clk });
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = ctx.mod.cells[dc].name,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 const Offender = struct { name: []const u8, clk: []const u8 };

@@ -38,10 +38,10 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (try bus.isGatedBusCrossing(ctx, ctx.tmp, dc, x.dst_clk)) return null;
     const width = x.lanes.len;
     const src_desc = if (x.src.cell) |sc|
-        try std.fmt.allocPrint(ctx.alloc, "flop {s}", .{ctx.mod.cells[sc].name})
+        try std.fmt.allocPrint(ctx.tmp, "flop {s}", .{ctx.mod.cells[sc].name})
     else
-        try std.fmt.allocPrint(ctx.alloc, "port {s}", .{x.src.port});
-    const message = try std.fmt.allocPrint(ctx.alloc, "unprotected bus crossing on {s} -> {s}: {d}-bit path with no recognized gating or gray-coding (src: {s}, dst flop: {s})", .{ x.src_clk, x.dst_clk, width, src_desc, ctx.mod.cells[dc].name });
+        try std.fmt.allocPrint(ctx.tmp, "port {s}", .{x.src.port});
+    const message = try std.fmt.allocPrint(ctx.tmp, "unprotected bus crossing on {s} -> {s}: {d}-bit path with no recognized gating or gray-coding (src: {s}, dst flop: {s})", .{ x.src_clk, x.dst_clk, width, src_desc, ctx.mod.cells[dc].name });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

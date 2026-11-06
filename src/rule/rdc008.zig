@@ -27,7 +27,7 @@ pub const rule = registry.Rule{
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var by_cell = std.AutoHashMapUnmanaged(usize, *const reset.trace.FlopReset).empty;
-    for (ctx.reset_view.flops) |*fr| try by_cell.put(ctx.alloc, fr.cell, fr);
+    for (ctx.reset_view.flops) |*fr| try by_cell.put(ctx.tmp, fr.cell, fr);
     var groups = std.HashMapUnmanaged(Group, Dsts, GroupCtx, std.hash_map.default_max_load_percentage).empty;
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
@@ -38,15 +38,15 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         for (fr.async) |ar| {
             if (ar.origin != .port) continue;
             const key = Group{ .port = ar.ref, .clk = dom.name };
-            const slot = try groups.getOrPut(ctx.alloc, key);
+            const slot = try groups.getOrPut(ctx.tmp, key);
             if (!slot.found_existing) slot.value_ptr.* = .empty;
-            try slot.value_ptr.put(ctx.alloc, c.name, {});
+            try slot.value_ptr.put(ctx.tmp, c.name, {});
         }
     }
     const synced = try syncedClocks(ctx, &by_cell);
     var keys = std.ArrayListUnmanaged(Group).empty;
     var git = groups.iterator();
-    while (git.next()) |e| try keys.append(ctx.alloc, e.key_ptr.*);
+    while (git.next()) |e| try keys.append(ctx.tmp, e.key_ptr.*);
     std.mem.sort(Group, keys.items, {}, struct {
         fn less(_: void, a: Group, b: Group) bool {
             const ak = std.mem.order(u8, a.port, b.port);
@@ -59,7 +59,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const dsts = groups.get(k).?;
         var names = std.ArrayListUnmanaged([]const u8).empty;
         var dit = dsts.iterator();
-        while (dit.next()) |de| try names.append(ctx.alloc, de.key_ptr.*);
+        while (dit.next()) |de| try names.append(ctx.tmp, de.key_ptr.*);
         std.mem.sort([]const u8, names.items, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
                 return std.mem.order(u8, a, b) == .lt;
@@ -67,17 +67,17 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }.less);
         if (names.items.len < 2) continue;
         const desc = try dstDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "unsynced primary-reset port: top-level reset port '{s}' drives {s} in {s} directly, with no reset-synchronizer chain in that clock domain. Reset assertion is fine, but the deassertion edge is unsynchronized to the consumer clock: recovery/removal timing violations can leave random subsets of flops in different reset states. Add a 2FF reset-synchronizer chain in {s} whose ARST is '{s}', and route consumers through the chain's tail.",
             .{ k.port, desc, k.clk, k.clk, k.port });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = names.items[0],
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }
 
 // Ports with sync infrastructure somewhere: every member's own
@@ -93,7 +93,7 @@ fn syncedClocks(
         const fr = by_cell.get(ci) orelse continue;
         for (fr.async) |ar| {
             if (ar.origin != .port) continue;
-            try synced.put(ctx.alloc, ar.ref, {});
+            try synced.put(ctx.tmp, ar.ref, {});
         }
     }
     return synced;
@@ -120,14 +120,14 @@ const GroupCtx = struct {
 // Crowds read as a count with a sample; singles never reach here.
 fn dstDesc(ctx: *context.Context, names: [][]const u8) error{OutOfMemory}![]const u8 {
     var buf = std.ArrayListUnmanaged(u8).empty;
-    const head = try std.fmt.allocPrint(ctx.alloc, "{d} flops (", .{names.len});
-    try buf.appendSlice(ctx.alloc, head);
+    const head = try std.fmt.allocPrint(ctx.tmp, "{d} flops (", .{names.len});
+    try buf.appendSlice(ctx.tmp, head);
     const show = @min(names.len, 3);
     for (names[0..show], 0..) |n, i| {
-        if (i > 0) try buf.appendSlice(ctx.alloc, ", ");
-        try buf.appendSlice(ctx.alloc, n);
+        if (i > 0) try buf.appendSlice(ctx.tmp, ", ");
+        try buf.appendSlice(ctx.tmp, n);
     }
-    if (names.len > 3) try buf.appendSlice(ctx.alloc, "...");
-    try buf.appendSlice(ctx.alloc, ")");
-    return buf.toOwnedSlice(ctx.alloc);
+    if (names.len > 3) try buf.appendSlice(ctx.tmp, "...");
+    try buf.appendSlice(ctx.tmp, ")");
+    return buf.toOwnedSlice(ctx.tmp);
 }

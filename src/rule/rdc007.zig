@@ -33,15 +33,15 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const tail = ctx.mod.cells[ch.flops[0]].name;
         const head = ctx.mod.cells[ch.flops[ch.flops.len - 1]].name;
         const word: []const u8 = if (ch.polarity == .high) "active-high" else "active-low";
-        const message = try std.fmt.allocPrint(ctx.alloc,
+        const message = try std.fmt.allocPrint(ctx.tmp,
             "reset-synchronizer chain {s} <- ... <- {s} has its head D tied to '{c}', but the chain's reset is {s} (deasserts on '{c}'). The chain reloads the asserted value on the deassertion edge: its output is a one-shot stuck driving the asserted value forever, and every downstream consumer using {s}.Q as their ARST will never leave reset. Tie the head's D to 1'b{c}.",
             .{ tail, head, head_d, word, deassert, tail, deassert });
-        try out.append(ctx.alloc, .{
+        try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
             .dst = tail,
             .message = message,
         });
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }

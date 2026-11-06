@@ -37,7 +37,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     if (x.hop_count == 1 and ctx.table.resetMuxEntry(ctx.mod, dc, x.src.bit)) return null;
     const depth = try ctx.table.chainDepth(ctx.mod, dc, x.dst_clk);
     if (depth.depth < 2) return null;
-    const message = try std.fmt.allocPrint(ctx.alloc,
+    const message = try std.fmt.allocPrint(ctx.tmp,
         "combinational logic between source flop and synchronizer on {s} -> {s} crossing: {d} cell(s) on path (src: {s}, sync first stage: {s})",
         .{ x.src_clk, x.dst_clk, x.hop_count, ctx.mod.cells[sc].name, dst_name });
     return .{
