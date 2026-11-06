@@ -78,17 +78,15 @@ pub const CellInfo = struct {
 };
 
 // Resolved walk index: CSR fanout over the bit universe plus
-// generation-stamped visit arrays. Rebuilds the two hash maps
-// the walker probed per visit (seen, loads_of) as flat arrays,
-// so a visit costs indexing and integer compares only.
+// per-cell flags. Rebuilds the hash fanout as flat arrays, so
+// a visit costs indexing and integer compares only. Immutable
+// after build: worker threads share one index, each with its
+// own Visit state.
 pub const Index = struct {
     off: []u32,
     flat: []Load,
     cells: []CellInfo,
-    stamp: []u32,
-    prev: []u32,
-    via: []u32,
-    gen: u32,
+    nbits: usize,
 
     pub const none: u32 = 0xffff_ffff;
 
@@ -96,12 +94,15 @@ pub const Index = struct {
         return self.flat[self.off[bit]..self.off[bit + 1]];
     }
 
-    pub fn nextGen(self: *Index) void {
-        self.gen += 1;
-        if (self.gen == none) {
-            @memset(self.stamp, 0);
-            self.gen = 1;
-        }
+    pub fn allocVisit(self: *const Index, alloc: std.mem.Allocator) error{OutOfMemory}!Visit {
+        const stamp = try alloc.alloc(u32, self.nbits);
+        @memset(stamp, 0);
+        return .{
+            .stamp = stamp,
+            .prev = try alloc.alloc(u32, self.nbits),
+            .via = try alloc.alloc(u32, self.nbits),
+            .gen = 0,
+        };
     }
 
     pub fn build(
@@ -187,18 +188,30 @@ pub const Index = struct {
             b += 1;
         }
 
-        const nbits = @as(usize, max_bit) + 1;
-        const stamp = try alloc.alloc(u32, nbits);
-        @memset(stamp, 0);
         return .{
             .off = off,
             .flat = flat,
             .cells = cells,
-            .stamp = stamp,
-            .prev = try alloc.alloc(u32, nbits),
-            .via = try alloc.alloc(u32, nbits),
-            .gen = 0,
+            .nbits = @as(usize, max_bit) + 1,
         };
+    }
+};
+
+// Per-walk visit state: generation stamps plus parent links
+// for hop reconstruction. One per worker thread; walks never
+// share it, so concurrent sources cannot corrupt each other.
+pub const Visit = struct {
+    stamp: []u32,
+    prev: []u32,
+    via: []u32,
+    gen: u32,
+
+    pub fn nextGen(self: *Visit) void {
+        self.gen += 1;
+        if (self.gen == Index.none) {
+            @memset(self.stamp, 0);
+            self.gen = 1;
+        }
     }
 };
 

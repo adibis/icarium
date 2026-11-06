@@ -46,18 +46,52 @@ pub const Report = struct {
     // Heap-owned, matching Module: copying a live arena orphans
     // later allocations from deinit (see ir/types.zig).
     backing: *std.heap.ArenaAllocator,
+    // One pair arena per walk worker: hop paths borrow from
+    // them, so they outlive the build like the backing does.
+    parenas: []std.heap.ArenaAllocator,
     crossings: []Crossing,
 
     pub fn deinit(self: *Report) void {
         const parent = self.backing.child_allocator;
+        for (self.parenas) |*pa| pa.deinit();
+        parent.free(self.parenas);
         self.backing.deinit();
         parent.destroy(self.backing);
     }
 };
 
+const Source = struct {
+    cell: ?usize,
+    port: []const u8,
+    bit: u32,
+    lane: usize,
+};
+
+// One walk worker: sources are independent (read-only index,
+// private visit state and scratch), so threads split them.
+// Pair order stays source order across the join, and the final
+// id sort is total, so threaded output is byte-identical.
+const Worker = struct {
+    en: Enumerator,
+    scratch: std.heap.ArenaAllocator,
+    visit: walkidx.Visit,
+    sources: []const Source,
+    pairs: std.ArrayListUnmanaged(Pair) = .empty,
+    err: ?error{OutOfMemory} = null,
+
+    fn run(w: *Worker) void {
+        for (w.sources) |s| {
+            w.en.walkFrom(s.cell, s.port, s.bit, s.lane, &w.pairs) catch |e| {
+                w.err = e;
+                return;
+            };
+        }
+    }
+};
+
 // Cost: O(sources × cone) visits over a resolved index, each
-// visit array-indexed; output pruned to async, unknown, and
-// control arrivals before hashing.
+// visit array-indexed, split across worker threads; output
+// pruned to async, unknown, and control arrivals before hashing.
 pub fn enumerate(
     parent: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -73,13 +107,6 @@ pub fn enumerate(
     var clock_of = std.AutoHashMapUnmanaged(usize, clock.trace.Domain){};
     for (clock_asg.flops) |f| try clock_of.put(alloc, f.cell, f.domain);
 
-    var scratch = std.heap.ArenaAllocator.init(parent);
-    defer scratch.deinit();
-    // Raw pairs die after the build: only crossings survive, so
-    // the pair structs must not ride the retained backing arena.
-    var pairs_backing = std.heap.ArenaAllocator.init(parent);
-    defer pairs_backing.deinit();
-    const pair_alloc = pairs_backing.allocator();
     const controls = try alloc.dupe(clock.trace.ControlPin, clock_asg.controls);
     std.mem.sort(clock.trace.ControlPin, controls, {}, struct {
         fn less(_: void, a: clock.trace.ControlPin, b: clock.trace.ControlPin) bool {
@@ -89,31 +116,23 @@ pub fn enumerate(
     }.less);
     var idx_arena = std.heap.ArenaAllocator.init(parent);
     defer idx_arena.deinit();
-    var widx = try walkidx.Index.build(idx_arena.allocator(), mod, controls);
-    var en = Enumerator{
-        .mod = mod,
-        .model = model,
-        .alloc = alloc,
-        .pair_alloc = pair_alloc,
-        .scratch = &scratch,
-        .clock_of = &clock_of,
-        .bit_domains = &clock_asg.bit_domains,
-        .idx = &widx,
-    };
-    var pairs: std.ArrayListUnmanaged(Pair) = .empty;
+    const tmp = idx_arena.allocator();
+    const widx = try walkidx.Index.build(tmp, mod, controls);
+
+    var srclist: std.ArrayListUnmanaged(Source) = .empty;
     for (mod.cells, 0..) |c, ci| {
         if (clock.cells.isSequential(c.type)) {
             if (portBits(c, "Q")) |q| {
                 for (q, 0..) |b, lane| {
                     if (b != .sig) continue;
-                    try en.walkFrom(ci, "Q", b.sig, lane, &pairs);
+                    try srclist.append(tmp, .{ .cell = ci, .port = "Q", .bit = b.sig, .lane = lane });
                 }
             }
         } else if (clock.cells.isMemRead(c.type)) {
             if (portBits(c, "DATA")) |d| {
                 for (d, 0..) |b, lane| {
                     if (b != .sig) continue;
-                    try en.walkFrom(ci, "DATA", b.sig, lane, &pairs);
+                    try srclist.append(tmp, .{ .cell = ci, .port = "DATA", .bit = b.sig, .lane = lane });
                 }
             }
         } else if (c.blackbox) {
@@ -121,7 +140,7 @@ pub fn enumerate(
                 if (p.direction == .input) continue;
                 for (p.bits, 0..) |b, lane| {
                     if (b != .sig) continue;
-                    try en.walkFrom(ci, p.name, b.sig, lane, &pairs);
+                    try srclist.append(tmp, .{ .cell = ci, .port = p.name, .bit = b.sig, .lane = lane });
                 }
             }
         }
@@ -130,9 +149,101 @@ pub fn enumerate(
         if (p.direction == .output) continue;
         for (p.bits, 0..) |b, lane| {
             if (b != .sig) continue;
-            try en.walkFrom(null, p.name, b.sig, lane, &pairs);
+            try srclist.append(tmp, .{ .cell = null, .port = p.name, .bit = b.sig, .lane = lane });
         }
     }
+    const sources = srclist.items;
+
+    // Pair arenas outlive the build (hop paths borrow them);
+    // the report owns them, so only errors clean up here.
+    const nworkers = @min(sources.len, std.Thread.getCpuCount() catch 1);
+    const parenas = try parent.alloc(std.heap.ArenaAllocator, @max(nworkers, 1));
+    errdefer parent.free(parenas);
+    for (parenas) |*pa| pa.* = std.heap.ArenaAllocator.init(parent);
+    errdefer {
+        for (parenas) |*pa| pa.deinit();
+    }
+    // Visit allocation can fail mid-loop: the block errdefer
+    // frees exactly the finished prefix and dies with the block,
+    // so later errors never double-free against the full defer.
+    const workers = blk: {
+        const ws = try tmp.alloc(Worker, @max(nworkers, 1));
+        var nvis: usize = 0;
+        errdefer {
+            for (ws[0..nvis]) |*w| {
+                w.scratch.deinit();
+                parent.free(w.visit.stamp);
+                parent.free(w.visit.prev);
+                parent.free(w.visit.via);
+            }
+        }
+        for (ws, 0..) |*w, i| {
+            const lo = sources.len * i / ws.len;
+            const hi = sources.len * (i + 1) / ws.len;
+            w.* = .{
+                .en = .{
+                    .mod = mod,
+                    .model = model,
+                    .alloc = alloc,
+                    .pair_alloc = parenas[i].allocator(),
+                    .scratch = undefined,
+                    .clock_of = &clock_of,
+                    .bit_domains = &clock_asg.bit_domains,
+                    .idx = &widx,
+                    .visit = undefined,
+                },
+                .scratch = std.heap.ArenaAllocator.init(parent),
+                .visit = try widx.allocVisit(parent),
+                .sources = sources[lo..hi],
+            };
+            w.en.scratch = &w.scratch;
+            w.en.visit = &w.visit;
+            nvis += 1;
+        }
+        break :blk ws;
+    };
+    defer {
+        for (workers) |*w| {
+            w.scratch.deinit();
+            parent.free(w.visit.stamp);
+            parent.free(w.visit.prev);
+            parent.free(w.visit.via);
+        }
+    }
+    if (workers.len == 1) {
+        workers[0].run();
+    } else {
+        const threads = try tmp.alloc(std.Thread, workers.len);
+        var live: usize = 0;
+        for (workers, 0..) |*w, i| {
+            threads[i] = std.Thread.spawn(.{}, Worker.run, .{w}) catch {
+                // Thread sandboxes run inline instead: slower,
+                // identical output, no failure to report.
+                for (workers[i..]) |*rest| rest.run();
+                break;
+            };
+            live += 1;
+        }
+        for (threads[0..live]) |t| t.join();
+    }
+    for (workers) |w| if (w.err) |e| return e;
+
+    // Concat in chunk order: source order survives the join,
+    // so downstream sees the single-threaded sequence.
+    // Raw pairs die after the build: only crossings survive, so
+    // the pair structs must not ride the retained backing arena.
+    var pairs: std.ArrayListUnmanaged(Pair) = .empty;
+    var total: usize = 0;
+    for (workers) |w| total += w.pairs.items.len;
+    try pairs.ensureTotalCapacity(parenas[0].allocator(), total);
+    for (workers) |w| try pairs.appendSlice(parenas[0].allocator(), w.pairs.items);
+
+    // Build-phase transients (bus-group candidates) die here,
+    // not in the retained pair arenas they would bloat.
+    var build_tmp = std.heap.ArenaAllocator.init(parent);
+    defer build_tmp.deinit();
+    var en = workers[0].en;
+    en.pair_alloc = build_tmp.allocator();
 
     var out: std.ArrayListUnmanaged(Crossing) = .empty;
     // Presized: millions of pairs double the list into gigabytes
@@ -155,7 +266,7 @@ pub fn enumerate(
     }.less);
     const sorted = try alloc.alloc(Crossing, out.items.len);
     for (order, 0..) |o, i| sorted[i] = out.items[o];
-    return .{ .backing = backing, .crossings = sorted };
+    return .{ .backing = backing, .parenas = parenas, .crossings = sorted };
 }
 
 // Both cells clocked by the identical bit set: same net,
@@ -214,7 +325,8 @@ const Enumerator = struct {
     scratch: *std.heap.ArenaAllocator,
     clock_of: *const std.AutoHashMapUnmanaged(usize, clock.trace.Domain),
     bit_domains: *const std.AutoHashMapUnmanaged(u32, clock.trace.Domain),
-    idx: *walkidx.Index,
+    idx: *const walkidx.Index,
+    visit: *walkidx.Visit,
 
     fn walkFrom(
         en: *Enumerator,
@@ -232,11 +344,12 @@ const Enumerator = struct {
         _ = en.scratch.reset(.retain_capacity);
         const tmp = en.scratch.allocator();
         const idx = en.idx;
-        idx.nextGen();
-        const gen = idx.gen;
-        idx.stamp[src_bit] = gen;
-        idx.prev[src_bit] = walkidx.Index.none;
-        idx.via[src_bit] = walkidx.Index.none;
+        const vs = en.visit;
+        vs.nextGen();
+        const gen = vs.gen;
+        vs.stamp[src_bit] = gen;
+        vs.prev[src_bit] = walkidx.Index.none;
+        vs.via[src_bit] = walkidx.Index.none;
         var queue: std.ArrayListUnmanaged(u32) = .empty;
         var head: usize = 0;
         try queue.append(tmp, src_bit);
@@ -352,25 +465,28 @@ const Enumerator = struct {
         tmp: std.mem.Allocator,
     ) error{OutOfMemory}!void {
         if (ob != .sig) return;
-        const idx = en.idx;
-        if (idx.stamp[ob.sig] == gen) return;
-        idx.stamp[ob.sig] = gen;
-        idx.prev[ob.sig] = from;
-        idx.via[ob.sig] = @intCast(via);
+        const vs = en.visit;
+        if (vs.stamp[ob.sig] == gen) return;
+        vs.stamp[ob.sig] = gen;
+        vs.prev[ob.sig] = from;
+        vs.via[ob.sig] = @intCast(via);
         try queue.append(tmp, ob.sig);
     }
 
     fn reconstruct(en: *Enumerator, dst: u32) error{OutOfMemory}![]usize {
-        const idx = en.idx;
+        // Hop paths ride the worker's pair arena: the shared
+        // backing is untouchable mid-walk, and the report owns
+        // the pair arenas, so paths outlive the build either way.
+        const vs = en.visit;
         var rev: std.ArrayListUnmanaged(usize) = .empty;
         var cur: u32 = dst;
         while (cur != walkidx.Index.none) {
-            const v = idx.via[cur];
-            if (v != walkidx.Index.none) try rev.append(en.alloc, v);
-            cur = idx.prev[cur];
+            const v = vs.via[cur];
+            if (v != walkidx.Index.none) try rev.append(en.pair_alloc, v);
+            cur = vs.prev[cur];
         }
         std.mem.reverse(usize, rev.items);
-        return rev.toOwnedSlice(en.alloc);
+        return rev.toOwnedSlice(en.pair_alloc);
     }
 
     // Synchronous data pairs are not crossings: no rule consumes
