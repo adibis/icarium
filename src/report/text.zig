@@ -34,11 +34,7 @@ pub fn writeText(
             slice.len,
             noun,
         }) catch return error.WriteFailed;
-        if (try bucketed(tmp, mod, &idx, slice)) {
-            try writeBuckets(tmp, writer, mod, &idx, slice);
-        } else {
-            for (slice) |f| try writeItem(tmp, writer, mod, &idx, f, "  ");
-        }
+        try writeGroup(tmp, writer, mod, &idx, slice);
         i = j;
     }
     if (carried_over > 0) {
@@ -48,47 +44,49 @@ pub fn writeText(
 }
 
 // Buckets earn headers only when a rule spans instances;
-// single-bucket groups read flat.
-fn bucketed(
-    alloc: std.mem.Allocator,
-    mod: *const ir.types.Module,
-    idx: *const common.Index,
-    slice: []const rule.finding.Finding,
-) error{OutOfMemory}!bool {
-    var first: ?[]const u8 = null;
-    for (slice) |f| {
-        const r = try common.resolve(alloc, mod, idx, f.dst);
-        if (first == null) {
-            first = r.instance;
-        } else if (!std.mem.eql(u8, first.?, r.instance)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-fn writeBuckets(
+// single-bucket groups read flat. One resolve per item: the
+// old per-bucket rescan re-resolved the slice per bucket,
+// quadratic in group size, and buried the full-top writer.
+fn writeGroup(
     alloc: std.mem.Allocator,
     writer: *std.Io.Writer,
     mod: *const ir.types.Module,
     idx: *const common.Index,
     slice: []const rule.finding.Finding,
 ) error{ OutOfMemory, WriteFailed }!void {
-    var seen = std.StringHashMapUnmanaged(void).empty;
-    for (slice) |f| {
-        const r = try common.resolve(alloc, mod, idx, f.dst);
-        if (seen.contains(r.instance)) continue;
-        try seen.put(alloc, r.instance, {});
-        if (r.instance.len == 0) {
+    if (slice.len == 0) return;
+    const inst = try alloc.alloc([]const u8, slice.len);
+    for (slice, 0..) |f, i| inst[i] = (try common.resolve(alloc, mod, idx, f.dst)).instance;
+    var multi = false;
+    for (inst[1..]) |r| {
+        if (!std.mem.eql(u8, r, inst[0])) {
+            multi = true;
+            break;
+        }
+    }
+    if (!multi) {
+        for (slice) |f| try writeItem(alloc, writer, mod, idx, f, "  ");
+        return;
+    }
+    // Buckets print first-seen, members in slice order,
+    // matching the rescan's order without revisiting it.
+    var order = std.ArrayListUnmanaged([]const u8).empty;
+    var members = std.StringHashMapUnmanaged(std.ArrayListUnmanaged(usize)).empty;
+    for (inst, 0..) |r, i| {
+        const slot = try members.getOrPut(alloc, r);
+        if (!slot.found_existing) {
+            slot.value_ptr.* = .empty;
+            try order.append(alloc, r);
+        }
+        try slot.value_ptr.append(alloc, i);
+    }
+    for (order.items) |r| {
+        if (r.len == 0) {
             writer.writeAll("  [top]\n") catch return error.WriteFailed;
         } else {
-            writer.print("  {s}\n", .{r.instance}) catch return error.WriteFailed;
+            writer.print("  {s}\n", .{r}) catch return error.WriteFailed;
         }
-        for (slice) |g| {
-            const gr = try common.resolve(alloc, mod, idx, g.dst);
-            if (!std.mem.eql(u8, gr.instance, r.instance)) continue;
-            try writeItem(alloc, writer, mod, idx, g, "    ");
-        }
+        for (members.get(r).?.items) |i| try writeItem(alloc, writer, mod, idx, slice[i], "    ");
     }
 }
 

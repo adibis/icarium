@@ -57,6 +57,28 @@ test "grouped text buckets by instance" {
     try std.testing.expectEqualStrings(want, out);
 }
 
+test "grouped text orders buckets first-seen, members sorted" {
+    var mod = try ir.load.loadFromSlice(std.testing.allocator, netlist, null);
+    defer mod.deinit();
+    var fs = [_]rule.finding.Finding{
+        .{ .rule = "CDC-001", .severity = .err, .dst = "u_blk.$procdff$1", .message = "m3" },
+        .{ .rule = "CDC-001", .severity = .err, .dst = "$procdff$2", .message = "m2" },
+        .{ .rule = "CDC-001", .severity = .err, .dst = "u_blk.$procdff$1", .driver = "$procdff$2", .message = "m1" },
+    };
+    const out = try render(&mod, &fs);
+    defer std.testing.allocator.free(out);
+    const want =
+        \\CDC-001 [error] Unsynchronized control crossing (3 findings)
+        \\  [top]
+        \\    $procdff$2: m2
+        \\  u_blk
+        \\    u_blk.$procdff$1 @ top.sv:10.3-10.20 <- $procdff$2: m1
+        \\    u_blk.$procdff$1 @ top.sv:10.3-10.20: m3
+        \\
+    ;
+    try std.testing.expectEqualStrings(want, out);
+}
+
 test "grouped text collapses single-bucket groups" {
     var mod = try ir.load.loadFromSlice(std.testing.allocator, netlist, null);
     defer mod.deinit();
