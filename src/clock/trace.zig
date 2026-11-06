@@ -62,6 +62,15 @@ pub const ControlPin = struct {
     domain: Domain,
 };
 
+// A declared clock root resolved to one bit: the clock it
+// defines, the concrete object name matched, and the pattern
+// that claimed it (same-pattern namespaces never conflict).
+pub const Root = struct {
+    clock: []const u8,
+    name: []const u8,
+    pat: []const u8,
+};
+
 pub const Assignment = struct {
     // Heap-owned, matching Module: copying a live arena orphans
     // later allocations from deinit (see ir/types.zig).
@@ -92,19 +101,20 @@ pub const Combine = struct {
 
 // One backward walk per CLK bit with a shared memo: each bit
 // resolves once, so tracing stays linear in design size.
-pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *const sdc.model.Model) error{OutOfMemory}!Assignment {
+pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *const sdc.model.Model, warnings: *std.ArrayListUnmanaged(sdc.tokens.Warning)) error{OutOfMemory}!Assignment {
     const backing = try parent.create(std.heap.ArenaAllocator);
     errdefer parent.destroy(backing);
     backing.* = std.heap.ArenaAllocator.init(parent);
     errdefer backing.deinit();
     const alloc = backing.allocator();
 
+    var roots = try resolveRoots(alloc, mod, model, warnings);
     var memo = std.AutoHashMapUnmanaged(u32, Domain){};
     var active = std.AutoHashMapUnmanaged(u32, void){};
     var flops: std.ArrayListUnmanaged(FlopDomain) = .empty;
     var controls: std.ArrayListUnmanaged(ControlPin) = .empty;
     var combine_sets = std.AutoHashMapUnmanaged(u32, std.StringHashMapUnmanaged(void)){};
-    var w = Walker{ .mod = mod, .model = model, .alloc = alloc, .memo = &memo, .active = &active, .controls = &controls, .combines = &combine_sets };
+    var w = Walker{ .mod = mod, .model = model, .alloc = alloc, .memo = &memo, .active = &active, .controls = &controls, .combines = &combine_sets, .roots = &roots };
     for (mod.cells, 0..) |c, ci| {
         if (!cells.isSequential(c.type)) continue;
         const dom = if (clkBits(c)) |clk|
@@ -152,6 +162,129 @@ pub fn assign(parent: std.mem.Allocator, mod: *const ir.types.Module, model: *co
     };
 }
 
+// Declared roots resolve once to bit sets: patterns match top
+// ports, cell output pins as `cell/pin`, and netnames keys.
+// Sorted patterns claim first-wins; overlaps and dead patterns
+// warn instead of silently misrooting or degrading to async.
+fn resolveRoots(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    model: *const sdc.model.Model,
+    warnings: *std.ArrayListUnmanaged(sdc.tokens.Warning),
+) error{OutOfMemory}!std.AutoHashMapUnmanaged(u32, Root) {
+    var roots = std.AutoHashMapUnmanaged(u32, Root){};
+    var pats = std.ArrayListUnmanaged([]const u8).empty;
+    var it = model.clock_roots.iterator();
+    while (it.next()) |e| try pats.append(alloc, e.key_ptr.*);
+    std.mem.sort([]const u8, pats.items, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.less);
+    for (pats.items) |pat| {
+        const clock = model.clock_roots.get(pat).?;
+        var claimed: usize = 0;
+        var overlaps: usize = 0;
+        claimed += try claimPortBits(alloc, mod, &roots, pat, clock, &overlaps);
+        claimed += try claimPinBits(alloc, mod, &roots, pat, clock, &overlaps);
+        claimed += try claimNetBits(alloc, mod, &roots, pat, clock, &overlaps);
+        // Overlap first: a pattern finding only owned bits
+        // matched, it just lost every claim.
+        if (overlaps > 0) {
+            try warnings.append(alloc, .{ .line = 0, .text = try std.fmt.allocPrint(alloc, "clock root {s} overlaps {d} rooted bit{s}", .{ pat, overlaps, if (overlaps == 1) "" else "s" }) });
+        } else if (claimed == 0) {
+            try warnings.append(alloc, .{ .line = 0, .text = try std.fmt.allocPrint(alloc, "clock root unmatched: {s}", .{pat}) });
+        }
+    }
+    return roots;
+}
+
+fn claimBit(
+    alloc: std.mem.Allocator,
+    roots: *std.AutoHashMapUnmanaged(u32, Root),
+    bit: u32,
+    clock: []const u8,
+    name: []const u8,
+    pat: []const u8,
+    overlaps: *usize,
+) error{OutOfMemory}!bool {
+    if (roots.get(bit)) |r| {
+        // One pattern across namespaces is agreement, not
+        // conflict; only a second pattern overlaps.
+        if (!std.mem.eql(u8, r.pat, pat)) overlaps.* += 1;
+        return false;
+    }
+    try roots.put(alloc, bit, .{ .clock = clock, .name = name, .pat = pat });
+    return true;
+}
+
+fn claimPortBits(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    roots: *std.AutoHashMapUnmanaged(u32, Root),
+    pat: []const u8,
+    clock: []const u8,
+    overlaps: *usize,
+) error{OutOfMemory}!usize {
+    var n: usize = 0;
+    for (mod.ports) |p| {
+        if (p.direction == .output) continue;
+        if (!sdc.model.matchGlob(pat, p.name)) continue;
+        for (p.bits) |b| {
+            if (b != .sig) continue;
+            if (try claimBit(alloc, roots, b.sig, clock, p.name, pat, overlaps)) n += 1;
+        }
+    }
+    return n;
+}
+
+fn claimPinBits(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    roots: *std.AutoHashMapUnmanaged(u32, Root),
+    pat: []const u8,
+    clock: []const u8,
+    overlaps: *usize,
+) error{OutOfMemory}!usize {
+    const slash = std.mem.lastIndexOfScalar(u8, pat, '/') orelse return 0;
+    const cellpat = pat[0..slash];
+    const pinpat = pat[slash + 1 ..];
+    var n: usize = 0;
+    for (mod.cells) |c| {
+        if (!sdc.model.matchGlob(cellpat, c.name)) continue;
+        for (c.ports) |p| {
+            if (p.direction != .output) continue;
+            if (!sdc.model.matchGlob(pinpat, p.name)) continue;
+            const name = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ c.name, p.name });
+            for (p.bits) |b| {
+                if (b != .sig) continue;
+                if (try claimBit(alloc, roots, b.sig, clock, name, pat, overlaps)) n += 1;
+            }
+        }
+    }
+    return n;
+}
+
+fn claimNetBits(
+    alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
+    roots: *std.AutoHashMapUnmanaged(u32, Root),
+    pat: []const u8,
+    clock: []const u8,
+    overlaps: *usize,
+) error{OutOfMemory}!usize {
+    var n: usize = 0;
+    var it = mod.netnames.iterator();
+    while (it.next()) |e| {
+        if (!sdc.model.matchGlob(pat, e.key_ptr.*)) continue;
+        for (e.value_ptr.bits) |b| {
+            if (b != .sig) continue;
+            if (try claimBit(alloc, roots, b.sig, clock, e.key_ptr.*, pat, overlaps)) n += 1;
+        }
+    }
+    return n;
+}
+
 // Bitwise gates resolve per position: the output index picks
 // the matching leg bit on every input port.
 fn outBitIndex(c: ir.types.Cell, bit: u32) ?usize {
@@ -176,9 +309,19 @@ fn gateLeg(mod: *const ir.types.Module, bit: u32) ?usize {
             if (!cells.isClockGate(c.type)) return null;
             return ci;
         }
-        const a = portBits(c, "A") orelse return null;
-        if (a.len != 1 or a[0] != .sig) return null;
-        cur = a[0].sig;
+        cur = transparentLane(c, cur) orelse return null;
+    }
+    return null;
+}
+
+// One step back through a buffer: the resolved bit's lane on
+// the input side. Slang buffers every net, wide buses included,
+// so single-bit stepping strands legs behind bus buffers.
+fn transparentLane(c: ir.types.Cell, bit: u32) ?u32 {
+    const lane = outBitIndex(c, bit) orelse return null;
+    for (c.ports) |p| {
+        if (p.direction == .output) continue;
+        if (lane < p.bits.len and p.bits[lane] == .sig) return p.bits[lane].sig;
     }
     return null;
 }
@@ -197,12 +340,15 @@ fn clkBits(c: ir.types.Cell) ?[]ir.bits.Bit {
     return portBits(c, "EN");
 }
 
-// Single declared clocks only: synthetic, unknown, and union
-// names never identify a gate's clock leg.
+// Declared clocks and their unions identify a gate's clock
+// leg; unknown and undeclared-port names never do. Unions
+// must count: gates pass them and ORs flatten them, and
+// excluding them strands every clock gated downstream of a
+// mux, which on real trees is nearly every gated clock.
 fn isClockDomain(name: []const u8) bool {
     if (std.mem.eql(u8, name, "unknown")) return false;
     if (std.mem.startsWith(u8, name, "port:")) return false;
-    return std.mem.indexOfScalar(u8, name, '+') == null;
+    return true;
 }
 
 const Walker = struct {
@@ -213,6 +359,7 @@ const Walker = struct {
     active: *std.AutoHashMapUnmanaged(u32, void),
     controls: *std.ArrayListUnmanaged(ControlPin),
     combines: *std.AutoHashMapUnmanaged(u32, std.StringHashMapUnmanaged(void)),
+    roots: *const std.AutoHashMapUnmanaged(u32, Root),
 
     // A clock bus must agree with itself; disagreement is broken
     // input, reported as unknown rather than picked arbitrarily.
@@ -235,6 +382,15 @@ const Walker = struct {
         // Active marks the current descent: revisiting one means a
         // combinational loop, which has no meaningful domain.
         if (w.active.contains(bit)) return w.make("unknown", "", &.{"clock-path loop"});
+        // A declared root defines the clock at its bit: descent
+        // stops here, past oscillator rings and analog bounds.
+        // Memoized like every exit: memory endpoints read roots
+        // back out of the memo, never re-walking to them.
+        if (w.roots.get(bit)) |r| {
+            const dom = try w.make(r.clock, r.name, &.{});
+            try w.memo.put(w.alloc, bit, dom);
+            return dom;
+        }
         const drv = w.mod.driver_of.get(bit) orelse return w.make("unknown", "", &.{"undriven clock"});
         try w.active.put(w.alloc, bit, {});
         const dom = if (drv.cell) |ci| try w.throughCell(bit, ci) else try w.throughPort(drv.port);
@@ -255,7 +411,8 @@ const Walker = struct {
     }
 
     fn throughPort(w: *Walker, port: []const u8) error{OutOfMemory}!Domain {
-        if (sdc.model.rootClock(w.model, port)) |c| return w.make(c, port, &.{});
+        // Declared roots resolve up front (resolveRoots); only the
+        // same-name clock fallback still lives at trace time.
         if (w.model.clocks.contains(port)) return w.make(port, port, &.{});
         // Undeclared roots still get a domain: downstream analysis
         // continues, and CDC-021 judges the missing declaration.
@@ -274,10 +431,10 @@ const Walker = struct {
 
     fn throughCell(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
-        if (cells.isTransparent(c.type)) return w.throughTransparent(c);
+        if (cells.isTransparent(c.type)) return w.throughTransparent(bit, c);
         if (cells.isClockMux(c.type)) return w.throughMux(ci);
         if (cells.isClockGate(c.type)) return w.throughGate(bit, ci);
-        if (std.mem.eql(u8, c.type, "$or")) return w.throughOrMux(bit, ci);
+        if (std.mem.eql(u8, c.type, "$or") or std.mem.eql(u8, c.type, "$logic_or")) return w.throughOrMux(bit, ci);
         if (cells.isSequential(c.type)) return w.throughSequential(ci);
         if (c.blackbox) return w.make("unknown", "", &.{"blackbox-driven clock"});
         return w.unhandled(c);
@@ -285,11 +442,19 @@ const Walker = struct {
 
     // Transparent cells pass the domain through; only inverters
     // earn the note, so buffers stay silent on clock paths.
-    fn throughTransparent(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
+    // Lane-following: wide buffers carry whole buses, so only
+    // the resolved bit's lane continues the clock. Agreeing
+    // across lanes misroots const-tied lanes to their neighbor.
+    fn throughTransparent(w: *Walker, bit: u32, c: ir.types.Cell) error{OutOfMemory}!Domain {
+        const lane = outBitIndex(c, bit);
         var inputs: std.ArrayListUnmanaged(ir.bits.Bit) = .empty;
         for (c.ports) |p| {
             if (p.direction == .output) continue;
-            for (p.bits) |b| try inputs.append(w.alloc, b);
+            if (lane) |l| {
+                if (l < p.bits.len) try inputs.append(w.alloc, p.bits[l]);
+            } else {
+                for (p.bits) |b| try inputs.append(w.alloc, b);
+            }
         }
         const dom = try w.resolveBits(inputs.items);
         if (std.mem.eql(u8, dom.name, "unknown")) return dom;
@@ -382,11 +547,11 @@ const Walker = struct {
         return out.toOwnedSlice(w.alloc);
     }
 
-    // Gate-built clock muxes (a glitch-free mux's output stage
-    // is an OR of clock-and-enable ANDs): every leg feeding the
-    // resolved bit must be an $and with exactly one clock leg,
-    // and the union of those legs is the domain. Anything else
-    // ORed onto a clock path keeps today's unhandled verdict.
+    // OR-combined clocks union: every leg must resolve to a
+    // clock, gated or not. AND-gated legs (a glitch-free mux's
+    // output stage) keep their selects; legs arriving any other
+    // way degrade the union to sel-less rather than unknown —
+    // an OR of clocks carries every leg's edges either way.
     fn throughOrMux(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         const idx = outBitIndex(c, bit) orelse return w.unhandled(c);
@@ -394,35 +559,61 @@ const Walker = struct {
         var all: std.ArrayListUnmanaged(LegSide) = .empty;
         var nests: std.ArrayListUnmanaged([]const usize) = .empty;
         var side: usize = 0;
+        // $or legs arrive one per input port; $logic_or packs N
+        // legs in one port. One bit list either way: each bit a leg.
+        var leg_bits: std.ArrayListUnmanaged(u32) = .empty;
+        const wide = std.mem.eql(u8, c.type, "$logic_or");
         for (c.ports) |p| {
             if (p.direction == .output) continue;
-            if (idx >= p.bits.len) return w.unhandled(c);
-            const b = p.bits[idx];
-            if (b != .sig) return w.unhandled(c);
-            const and_ci = gateLeg(w.mod, b.sig) orelse return w.unhandled(c);
-            if (try w.clockLegs(and_ci) != 1) return w.unhandled(c);
-            const d = try w.resolveBit(b.sig);
+            if (wide) {
+                for (p.bits) |wb| {
+                    if (wb != .sig) return w.unhandled(c);
+                    try leg_bits.append(w.alloc, wb.sig);
+                }
+            } else {
+                if (idx >= p.bits.len) return w.unhandled(c);
+                const b = p.bits[idx];
+                if (b != .sig) return w.unhandled(c);
+                try leg_bits.append(w.alloc, b.sig);
+            }
+        }
+        var all_gated = true;
+        for (leg_bits.items) |lb| {
+            const d = try w.resolveBit(lb);
             if (!isClockDomain(d.name)) return w.unhandled(c);
             if (first == null) first = d;
             std.debug.assert(side < both_sides);
-            const gate = try w.clockInput(and_ci);
+            // A found gate must validate: an AND the leg resolves
+            // through that clocks nothing is corrupt, not plain.
+            var gate: ?GateRef = null;
+            if (gateLeg(w.mod, lb)) |and_ci| {
+                if (try w.clockLegs(and_ci) != 1) return w.unhandled(c);
+                gate = try w.clockInput(and_ci);
+            } else all_gated = false;
             for (d.legs) |l| try all.append(w.alloc, .{ .leg = l, .side = @intCast(side), .gate = gate });
             try nests.append(w.alloc, d.muxes);
             side += 1;
         }
         if (first == null) return w.unhandled(c);
         const n = dedupeLegs(all.items);
-        if (n == 1) return w.withNote(first.?, "or-built clock mux");
+        const note = if (all_gated) "or-built clock mux" else "or-combined clocks";
+        if (n == 1) return w.withNote(first.?, note);
         const legs = try w.alloc.alloc([]const u8, n);
-        const sels = try w.alloc.alloc(LegSel, n);
-        for (all.items[0..n], 0..) |ls, i| {
-            legs[i] = ls.leg;
-            sels[i] = .{ .mux = ci, .side = ls.side, .gate = ls.gate, .sel_dom = &.{} };
+        // Selects only mean as a complete exclusive set; one
+        // ungated leg voids all of them, not just its own.
+        const sels = try w.alloc.alloc(LegSel, if (all_gated) n else 0);
+        if (all_gated) {
+            for (all.items[0..n], 0..) |ls, i| {
+                legs[i] = ls.leg;
+                sels[i] = .{ .mux = ci, .side = ls.side, .gate = ls.gate, .sel_dom = &.{} };
+            }
+        } else {
+            for (all.items[0..n], 0..) |ls, i| legs[i] = ls.leg;
         }
         const muxes = try w.joinMuxes(ci, nests.items);
         const root = try std.fmt.allocPrint(w.alloc, "ormux:{s}", .{c.name});
         defer w.alloc.free(root);
-        return w.makeUnion(legs, sels, muxes, root, "or-built clock mux");
+        return w.makeUnion(legs, sels, muxes, root, note);
     }
 
     fn unhandled(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!Domain {
@@ -433,43 +624,52 @@ const Walker = struct {
 
     // The clock input of a validated single-clock gate: pin and
     // bit, so the union records which input carries the leg and
-    // rules read the rest as enables. Exactly one exists.
+    // rules read the rest as enables. Flop-driven legs lose the
+    // tie: an enable latch reports its master's domain, so the
+    // first clock leg found is often the enable, not the clock.
     fn clockInput(w: *Walker, ci: usize) error{OutOfMemory}!?GateRef {
         const c = w.mod.cells[ci];
+        var fallback: ?GateRef = null;
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
                 if (b != .sig) continue;
                 const d = try w.resolveBit(b.sig);
-                if (isClockDomain(d.name)) return .{
+                if (!isClockDomain(d.name)) continue;
+                const ref = GateRef{
                     .cell = ci,
                     .pin = try w.alloc.dupe(u8, p.name),
                     .bit = b.sig,
                 };
+                if (!w.drivenByFlop(b.sig)) return ref;
+                if (fallback == null) fallback = ref;
             }
         }
-        return null;
+        return fallback;
     }
 
-    // Clock-domain inputs on a gate's legs. Unknown legs read as
-    // enables, mirroring the gate doctrine: only the count of
-    // proven clock legs constrains the caller.
+    // Distinct clock domains on a gate's legs, flop-driven
+    // legs excluded: they are enables (see throughGate), and
+    // counting them forges second legs the gate itself rejects.
     fn clockLegs(w: *Walker, ci: usize) error{OutOfMemory}!usize {
         const c = w.mod.cells[ci];
-        var n: usize = 0;
+        var names = std.StringHashMapUnmanaged(void).empty;
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
                 if (b != .sig) continue;
                 const d = try w.resolveBit(b.sig);
-                if (isClockDomain(d.name)) n += 1;
+                if (isClockDomain(d.name) and w.countAsClock(b.sig)) try names.put(w.alloc, d.name, {});
             }
         }
-        return n;
+        return names.count();
     }
 
     // A clock gate passes its clock leg and notes the rest as
     // enables; ambiguous legs stay unknown rather than guessed.
+    // Flop-driven legs are enables unless declared or toggling
+    // (see countAsClock): an enable flop reports its own domain,
+    // which otherwise forges a second clock leg on every gate.
     fn throughGate(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         var clock_dom: ?Domain = null;
@@ -480,7 +680,7 @@ const Walker = struct {
             for (p.bits) |b| {
                 if (b != .sig) continue;
                 const d = try w.resolveBit(b.sig);
-                if (isClockDomain(d.name)) {
+                if (isClockDomain(d.name) and w.countAsClock(b.sig)) {
                     try clock_legs.put(w.alloc, d.name, {});
                     if (clock_dom == null) clock_dom = d;
                 } else {
@@ -605,11 +805,37 @@ const Walker = struct {
 
     // Flop-Q legs are enables even when their master matches the
     // clock: enables are almost always flopped, and the domain
-    // alone cannot tell them from clock legs.
+    // alone cannot tell them from clock legs. Sees through the
+    // buffer chains slang hangs on every net, lane-aware.
     fn drivenByFlop(w: *Walker, bit: u32) bool {
-        const drv = w.mod.driver_of.get(bit) orelse return false;
-        const dci = drv.cell orelse return false;
-        return cells.isSequential(w.mod.cells[dci].type) and std.mem.eql(u8, drv.port, "Q");
+        return w.flopDriver(bit) != null;
+    }
+
+    // The sequential cell driving a leg, if any, through
+    // buffers: enables report their master, so counting needs
+    // the cell to tell dividers from enables.
+    fn flopDriver(w: *Walker, bit: u32) ?usize {
+        var cur = bit;
+        for (0..8) |_| {
+            const drv = w.mod.driver_of.get(cur) orelse return null;
+            const dci = drv.cell orelse return null;
+            const c = w.mod.cells[dci];
+            if (!cells.isTransparent(c.type)) {
+                if (cells.isSequential(c.type) and std.mem.eql(u8, drv.port, "Q")) return dci;
+                return null;
+            }
+            cur = transparentLane(c, cur) orelse return null;
+        }
+        return null;
+    }
+
+    // Flop-driven legs count as clocks only when declared (the
+    // SDC names the pin a clock) or toggling (a divider output):
+    // data flops gate clocks, dividers drive them onward.
+    fn countAsClock(w: *Walker, bit: u32) bool {
+        if (w.roots.get(bit) != null) return true;
+        const fci = w.flopDriver(bit) orelse return true;
+        return w.isToggle(fci);
     }
 
     fn describeBit(w: *Walker, b: ir.bits.Bit) error{OutOfMemory}![]u8 {
@@ -637,7 +863,9 @@ const Walker = struct {
     // legs are what rules reason over. Sorted, so output diffs.
     fn makeUnion(w: *Walker, legs: []const []const u8, sels: []const LegSel, muxes: []const usize, root: []const u8, note: []const u8) error{OutOfMemory}!Domain {
         std.debug.assert(legs.len > 1);
-        std.debug.assert(legs.len == sels.len);
+        // Select-less OR unions carry no selects; every
+        // consumer len-guards before zipping legs to sels.
+        std.debug.assert(legs.len == sels.len or sels.len == 0);
         var total: usize = legs.len - 1;
         for (legs) |l| total += l.len;
         const name = try w.alloc.alloc(u8, total);

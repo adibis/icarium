@@ -58,8 +58,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
     defer sdc_mod.deinit();
 
-    var asg = clock.trace.assign(init.gpa, &mod, &sdc_mod) catch return 3;
+    var asg = clock.trace.assign(init.gpa, &mod, &sdc_mod, &warnings) catch return 3;
     defer asg.deinit();
+    for (warnings.items) |w| w.print(sdc_path, err);
 
     // Sorted by cell name so repeated runs diff cleanly.
     const order = scratch.alloc(usize, asg.flops.len) catch return 3;

@@ -54,7 +54,8 @@ fn loadView(hints_doc: []const u8) !ViewLoaded {
     errdefer mod.deinit();
     var sdc_mod = try sdc.model.build(std.testing.allocator, &[_]sdc.commands.Parsed{});
     errdefer sdc_mod.deinit();
-    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
+    var awarns: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod, &awarns);
     errdefer clock_asg.deinit();
     var hints = try sync.hints.load(std.testing.allocator, hints_doc);
     errdefer hints.deinit();

@@ -64,6 +64,7 @@ pub fn isClockMux(cell_type: []const u8) bool {
 
 const clock_gate = std.StaticStringMap(void).initComptime(.{
     .{ "$and", {} },
+    .{ "$logic_and", {} },
 });
 
 pub fn isClockGate(cell_type: []const u8) bool {

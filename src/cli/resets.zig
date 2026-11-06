@@ -57,8 +57,9 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     }
     defer sdc_mod.deinit();
 
-    var clock_asg = clock.trace.assign(init.gpa, &mod, &sdc_mod) catch return 3;
+    var clock_asg = clock.trace.assign(init.gpa, &mod, &sdc_mod, &warnings) catch return 3;
     defer clock_asg.deinit();
+    for (warnings.items) |w| w.print(sdc_path, err);
     var view = reset.trace.assign(init.gpa, &mod, &clock_asg, null) catch return 3;
     defer view.deinit();
 

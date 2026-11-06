@@ -282,7 +282,8 @@ test "toon crossings round-trip structurally" {
     for (cmds) |c| try parsed.append(sdc_arena.allocator(), try sdc.commands.parse(sdc_arena.allocator(), c, &warns));
     var sdc_mod = try sdc.model.build(std.testing.allocator, parsed.items);
     defer sdc_mod.deinit();
-    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
+    var awarns: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod, &awarns);
     defer clock_asg.deinit();
     var xrep = try crossing.enumerate.enumerate(std.testing.allocator, &mod, &clock_asg, &sdc_mod);
     defer xrep.deinit();

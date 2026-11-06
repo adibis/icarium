@@ -7,6 +7,7 @@ const Loaded = struct {
     mod: ir.types.Module,
     sdc_mod: sdc.model.Model,
     asg: clock.trace.Assignment,
+    awarns: std.ArrayListUnmanaged(sdc.tokens.Warning),
 };
 
 fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
@@ -25,8 +26,9 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
         sdc_mod = try sdc.model.build(std.testing.allocator, &[_]sdc.commands.Parsed{});
     }
     errdefer sdc_mod.deinit();
-    const asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
-    return .{ .mod = mod, .sdc_mod = sdc_mod, .asg = asg };
+    var awarns: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    const asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod, &awarns);
+    return .{ .mod = mod, .sdc_mod = sdc_mod, .asg = asg, .awarns = awarns };
 }
 
 fn domFor(l: *const Loaded, cell_name: []const u8) ?clock.trace.Domain {
@@ -397,7 +399,7 @@ test "gated clocks keep the clock leg and name the enable" {
     try std.testing.expectEqualStrings("clock gate enable: port en", port_en.notes[0]);
     const flop_en = domFor(&l, "f_gated2").?;
     try std.testing.expectEqualStrings("clk", flop_en.name);
-    try std.testing.expectEqualStrings("clock gate", flop_en.notes[0]);
+    try std.testing.expectEqualStrings("clock gate enable: cell f_en", flop_en.notes[0]);
 }
 
 const divided =
@@ -582,9 +584,325 @@ test "or of gated clocks yields a union with legs" {
     try std.testing.expectEqual(@as(usize, 0), dom.sels[0].sel_dom.len);
 }
 
-test "naked or of clocks stays unhandled" {
+test "naked or of clocks unions without selects" {
     var l = try loadAll(ormuxed, mux_sdc);
     defer freeAll(&l);
     const dom = domFor(&l, "f_bador").?;
+    try std.testing.expectEqualStrings("ca+cb", dom.name);
+    try std.testing.expectEqual(@as(usize, 2), dom.legs.len);
+    try std.testing.expectEqual(@as(usize, 0), dom.sels.len);
+    try std.testing.expectEqualStrings("or-combined clocks", dom.notes[0]);
+}
+
+// Slang emits boolean clock spines as $logic_and/$logic_or
+// widens instead of bitwise twins; unions must still form.
+const logic_ormux =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "ena": {"direction": "input", "bits": [4]},
+    \\        "enb": {"direction": "input", "bits": [5]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "and0": {
+    \\          "type": "$logic_and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [4], "Y": [10]}
+    \\        },
+    \\        "and1": {
+    \\          "type": "$logic_and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "B": [5], "Y": [11]}
+    \\        },
+    \\        "ormux": {
+    \\          "type": "$logic_or",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [11], "Y": [12]}
+    \\        },
+    \\        "f_or": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [12], "D": [6], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "boolean twin spine yields the same union" {
+    var l = try loadAll(logic_ormux, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_or").?;
+    try std.testing.expectEqualStrings("ca+cb", dom.name);
+    try std.testing.expectEqual(@as(usize, 2), dom.legs.len);
+    try std.testing.expectEqual(@as(usize, 2), dom.sels.len);
+}
+
+const osc_net =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [4]}
+    \\      },
+    \\      "netnames": {
+    \\        "osc_clk": {"hide_name": 0, "bits": [2]}
+    \\      },
+    \\      "cells": {
+    \\        "gbuf": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "Y": [5]}
+    \\        },
+    \\        "f_osc": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [5], "D": [3], "Q": [4]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "internal root on a netname types the cone" {
+    var l = try loadAll(osc_net, "create_clock -name osc -period 10 [get_nets osc_clk]\n");
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_osc").?;
+    try std.testing.expectEqualStrings("osc", dom.name);
+    try std.testing.expectEqualStrings("osc_clk", dom.root);
+    try std.testing.expectEqual(@as(usize, 0), l.awarns.items.len);
+}
+
+test "internal root on a cell pin types the cone" {
+    var l = try loadAll(osc_net, "create_clock -name g -period 10 [get_pins gbuf/Y]\n");
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_osc").?;
+    try std.testing.expectEqualStrings("g", dom.name);
+    try std.testing.expectEqual(@as(usize, 0), l.awarns.items.len);
+}
+
+test "unmatched root warns and stays unknown" {
+    var l = try loadAll(osc_net, "create_clock -name ghost -period 10 [get_nets nope]\n");
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_osc").?;
     try std.testing.expectEqualStrings("unknown", dom.name);
+    try std.testing.expectEqual(@as(usize, 1), l.awarns.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, l.awarns.items[0].text, "unmatched: nope") != null);
+}
+
+test "overlapping roots warn, first sorted pattern wins" {
+    var l = try loadAll(osc_net, "create_clock -name A -period 10 [get_nets osc*]\ncreate_clock -name B -period 10 [get_nets *clk]\n");
+    defer freeAll(&l);
+    const dom = domFor(&l, "f_osc").?;
+    try std.testing.expectEqualStrings("B", dom.name);
+    try std.testing.expectEqual(@as(usize, 1), l.awarns.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, l.awarns.items[0].text, "overlaps 1 rooted bit") != null);
+}
+
+// Latch-gated oscillator: the latch reports its master's
+// domain, but the gate must still validate on the one clock
+// leg and name the latch an enable, not a second clock.
+const gated_osc =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "osc": {"direction": "input", "bits": [2]},
+    \\        "en_dat": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "lo": {
+    \\          "type": "$dlatch",
+    \\          "port_directions": {"D": "input", "EN": "input", "Q": "output"},
+    \\          "connections": {"D": [3], "EN": [2], "Q": [10]}
+    \\        },
+    \\        "g0": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [2], "Y": [11]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [4], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const gated_osc_sdc =
+    \\create_clock -name sys_osc -period 10 [get_ports osc]
+;
+
+test "latch-gated clock validates and names the latch" {
+    var l = try loadAll(gated_osc, gated_osc_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f").?;
+    try std.testing.expectEqualStrings("sys_osc", dom.name);
+    try std.testing.expectEqualStrings("clock gate enable: cell lo", dom.notes[0]);
+}
+
+// Bypass-OR replica: gated osc OR muxed(ext, osc). The mux
+// leg arrives already unioned; the OR flattens it rather
+// than rejecting a leg it cannot select-analyze.
+const bypass_or =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "osc": {"direction": "input", "bits": [2]},
+    \\        "extp": {"direction": "input", "bits": [6]},
+    \\        "en_dat": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "lo": {
+    \\          "type": "$dlatch",
+    \\          "port_directions": {"D": "input", "EN": "input", "Q": "output"},
+    \\          "connections": {"D": [3], "EN": [2], "Q": [10]}
+    \\        },
+    \\        "g0": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [10], "B": [2], "Y": [11]}
+    \\        },
+    \\        "mux0": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "B": [2], "S": [4], "Y": [12]}
+    \\        },
+    \\        "or0": {
+    \\          "type": "$or",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [11], "B": [12], "Y": [13]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [13], "D": [4], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const bypass_or_sdc =
+    \\create_clock -name sys_osc -period 10 [get_ports osc]
+    \\create_clock -name ext -period 10 [get_ports extp]
+;
+
+test "or of gated and muxed clocks flattens the union" {
+    var l = try loadAll(bypass_or, bypass_or_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f").?;
+    try std.testing.expectEqualStrings("ext+sys_osc", dom.name);
+    try std.testing.expectEqual(@as(usize, 2), dom.legs.len);
+    try std.testing.expectEqual(@as(usize, 0), dom.sels.len);
+    try std.testing.expectEqualStrings("or-combined clocks", dom.notes[0]);
+}
+
+// Wide buffer on a clock path: only the clock lane continues;
+// the data lane resolves on its own, never joined nor fatal.
+const wide_buf =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "osc": {"direction": "input", "bits": [2]},
+    \\        "dat": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [6]},
+    \\        "q2": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "wb": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [2, 4], "Y": [20, 21]}
+    \\        },
+    \\        "fw": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [20], "D": [5], "Q": [6]}
+    \\        },
+    \\        "fd": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [21], "D": [5], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "wide buffer follows the resolved lane" {
+    var l = try loadAll(wide_buf, gated_osc_sdc);
+    defer freeAll(&l);
+    const w = domFor(&l, "fw").?;
+    try std.testing.expectEqualStrings("sys_osc", w.name);
+    const dd = domFor(&l, "fd").?;
+    try std.testing.expectEqualStrings("port:dat", dd.name);
+}
+
+// Divider flop ANDed with a second clock: the toggle output
+// is a clock, not an enable, so the gate must decline with
+// multiple legs rather than pass one side silently.
+const toggle_combine =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]}
+    \\      },
+    \\      "cells": {
+    \\        "div": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [8], "Q": [6]}
+    \\        },
+    \\        "inv": {
+    \\          "type": "$not",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "Y": [8]}
+    \\        },
+    \\        "g0": {
+    \\          "type": "$and",
+    \\          "port_directions": {"A": "input", "B": "input", "Y": "output"},
+    \\          "connections": {"A": [6], "B": [3], "Y": [7]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [7], "D": [4], "Q": [5]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "toggle flop leg counts as a second clock" {
+    var l = try loadAll(toggle_combine, mux_sdc);
+    defer freeAll(&l);
+    const dom = domFor(&l, "f").?;
+    try std.testing.expectEqualStrings("unknown", dom.name);
+    try std.testing.expectEqualStrings("clock gate with multiple clock legs", dom.notes[0]);
 }

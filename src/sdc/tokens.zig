@@ -8,6 +8,17 @@ pub const Command = struct {
 pub const Warning = struct {
     line: usize,
     text: []const u8,
+
+    // One line on stderr; generated warnings carry line 0 and
+    // name no line. Callers print after the model assigns so
+    // root-resolution warnings join parse warnings in order.
+    pub fn print(w: Warning, file: ?[]const u8, err: anytype) void {
+        if (w.line > 0) {
+            err.print("{s}:{d}: warning: {s}\n", .{ file orelse "<sdc>", w.line, w.text }) catch {};
+        } else {
+            err.print("{s}: warning: {s}\n", .{ file orelse "<sdc>", w.text }) catch {};
+        }
+    }
 };
 
 // `#` starts a comment at segment start or after whitespace: SDC

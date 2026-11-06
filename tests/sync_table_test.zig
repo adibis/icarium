@@ -28,7 +28,8 @@ fn loadAll(json: []const u8, sdc_text: ?[]const u8) !Loaded {
         sdc_mod = try sdc.model.build(std.testing.allocator, &[_]sdc.commands.Parsed{});
     }
     errdefer sdc_mod.deinit();
-    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
+    var awarns: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod, &awarns);
     errdefer clock_asg.deinit();
     var table = try sync.table.build(std.testing.allocator, &mod, &clock_asg);
     errdefer table.deinit();

@@ -68,7 +68,8 @@ fn loadAll() !Loaded {
     for (cmds) |c| try parsed.append(arena.allocator(), try sdc.commands.parse(arena.allocator(), c, &warns));
     var sdc_mod = try sdc.model.build(std.testing.allocator, parsed.items);
     errdefer sdc_mod.deinit();
-    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod);
+    var awarns: std.ArrayListUnmanaged(sdc.tokens.Warning) = .empty;
+    var clock_asg = try clock.trace.assign(std.testing.allocator, &mod, &sdc_mod, &awarns);
     errdefer clock_asg.deinit();
     var xrep = try crossing.enumerate.enumerate(std.testing.allocator, &mod, &clock_asg, &sdc_mod);
     errdefer xrep.deinit();
