@@ -1,0 +1,35 @@
+{
+ "blessed_at": "c0582527b6fdad8e7bc1681b63c97a398c2cee8a",
+ "opentitan": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170",
+ "blocks": {
+  "uart": {
+   "findings": 0,
+   "full": 0,
+   "partial": 0,
+   "rule-only": 0,
+   "missed": 0,
+   "modeling-gap": 0
+  },
+  "spi_device": {
+   "findings": 39290,
+   "full": 0,
+   "partial": 11,
+   "rule-only": 0,
+   "missed": 0,
+   "modeling-gap": 0
+  }
+ },
+ "entries": {
+  "spi_device:meridian-0028": "partial",
+  "spi_device:meridian-0029": "partial",
+  "spi_device:meridian-0040": "partial",
+  "spi_device:meridian-0041": "partial",
+  "spi_device:meridian-0042": "partial",
+  "spi_device:meridian-0043": "partial",
+  "spi_device:meridian-0044": "partial",
+  "spi_device:meridian-0046": "partial",
+  "spi_device:meridian-0048": "partial",
+  "spi_device:meridian-0049": "partial",
+  "spi_device:meridian-0050": "partial"
+ }
+}

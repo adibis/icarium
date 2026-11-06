@@ -9,6 +9,13 @@ pending, counted but never in the denominator. Extras never block:
 recall counts what Meridian waived that we also flag.
 
 Usage: python3 bench/recall.py [--ot DIR] [--yosys BIN] [--work DIR]
+                             [--bless] [--enforce] [--baseline PATH]
+
+--bless writes the blessed baseline (per-entry verdicts plus the
+icarium commit) to the baseline path. --enforce exits 1 on any
+miss, modeling gap, verdict downgrade, or dropped in-scope
+entry versus the baseline. Finding counts never block: recall
+measures what Meridian waived that we also flag, not volume.
 """
 import json
 import os
@@ -145,10 +152,47 @@ def verdict(entry, findings, blob):
     return "rule-only", cands[0]
 
 
+RANK = {"full": 3, "partial": 2, "rule-only": 1, "missed": 0,
+        "modeling-gap": 0}
+
+
+def compare(baseline, report):
+    # Returns (ok, problems): absolute gates first (a miss or a
+    # modeling gap fails even a first run), then per-entry
+    # verdicts against the blessed ranks. Upgrades pass
+    # silently; drops fail loudly so scope changes re-bless.
+    problems = []
+    for name, b in report["blocks"].items():
+        if "error" in b:
+            problems.append(f"{name}: {b['error']}")
+            continue
+        if b["missed"]:
+            problems.append(f"{name}: {b['missed']} missed")
+        if b["modeling-gap"]:
+            problems.append(f"{name}: {b['modeling-gap']} modeling-gap")
+    if baseline is None:
+        return (not problems, problems)
+    want = baseline["entries"]
+    got = {e["id"]: e["verdict"] for e in report["entries"]}
+    for i in sorted(set(want) - set(got)):
+        problems.append(f"{i}: dropped from measurement "
+                        f"(was {want[i]})")
+    for i in sorted(set(got) - set(want)):
+        if RANK[got[i]] == 0:
+            problems.append(f"{i}: new entry {got[i]}")
+    for i in sorted(set(want) & set(got)):
+        if RANK[got[i]] < RANK[want[i]]:
+            problems.append(f"{i}: downgrade {want[i]} -> {got[i]}")
+    return (not problems, problems)
+
+
 def main():
     work = os.path.join(ROOT, "bench", "work")
     ot = os.path.join(os.path.expanduser("~"), "opentitan")
     yosys_slang = os.environ.get("YOSYS_SLANG")
+    baseline_path = os.path.join(ROOT, "bench", "recall_baseline.json")
+    bless = False
+    enforce = False
     args = sys.argv[1:]
     while args:
         if args[0] == "--work":
@@ -157,6 +201,12 @@ def main():
             ot, args = args[1], args[2:]
         elif args[0] == "--yosys":
             yosys_slang, args = args[1], args[2:]
+        elif args[0] == "--baseline":
+            baseline_path, args = args[1], args[2:]
+        elif args[0] == "--bless":
+            bless, args = True, args[1:]
+        elif args[0] == "--enforce":
+            enforce, args = True, args[1:]
         else:
             sys.exit(f"recall: unknown flag {args[0]}")
     os.makedirs(work, exist_ok=True)
@@ -229,8 +279,38 @@ def main():
               f"out-of-scope {b['pending-out-of-scope']})")
     print(f"recall pending: {len(chip)} chip entries, "
           f"{len(other)} unelaborated-block entries")
-    print("recall: no baseline yet; first numbers above "
-          "(enforcement lands after review)")
+    if bless:
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                capture_output=True,
+                                text=True).stdout.strip()
+        blessed = {
+            "blessed_at": commit,
+            "opentitan": oracle["meta"]["opentitan"],
+            "blocks": {n: {k: b[k] for k in
+                            ("findings", "full", "partial", "rule-only",
+                             "missed", "modeling-gap")}
+                       for n, b in report["blocks"].items()
+                       if "error" not in b},
+            "entries": {e["id"]: e["verdict"]
+                        for e in report["entries"]},
+        }
+        json.dump(blessed, open(baseline_path, "w"), indent=1)
+        print(f"recall: baseline blessed at {commit[:12]} "
+              f"({len(blessed['entries'])} entries) -> {baseline_path}")
+    if enforce:
+        if os.path.exists(baseline_path):
+            baseline = json.load(open(baseline_path))
+            print(f"recall: enforcing against {baseline_path} "
+                  f"(blessed at {baseline['blessed_at'][:12]})")
+        else:
+            baseline = None
+            print("recall: no baseline file; absolute gates only")
+        ok, problems = compare(baseline, report)
+        for p in problems:
+            print(f"recall FAIL: {p}")
+        if ok:
+            print("recall: gate holds")
+        sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":
