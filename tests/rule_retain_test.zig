@@ -298,3 +298,93 @@ const bus_sdc =
     \\create_clock -name clk_b -period 7 [get_ports clk_b]
     \\set_clock_groups -asynchronous -group {clk_a} -group {clk_b}
 ;
+
+// Clock muxes with comb trees behind select: CDC-010 walks
+// each mux once, and walk garbage must die per mux rather
+// than accumulate across them. Trees hold no flops, so the
+// rule walks every cone and fires nothing.
+fn clockForest(muxes: usize, depth: usize) ![]u8 {
+    var buf = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer buf.deinit();
+    const w = &buf.writer;
+    // Bits stay compact and sequential: sparse numbering would
+    // size the loader's dense bit-indexed tables, not the walks.
+    var next_bit: usize = 100;
+    const ncells: usize = (@as(usize, 1) << @intCast(depth)) - 1;
+    const ys = try std.testing.allocator.alloc(usize, ncells);
+    defer std.testing.allocator.free(ys);
+    try w.writeAll("{\"modules\":{\"top\":{\"ports\":{");
+    try w.writeAll("\"clk_a\":{\"direction\":\"input\",\"bits\":[2]},");
+    try w.writeAll("\"clk_b\":{\"direction\":\"input\",\"bits\":[3]}},\"cells\":{");
+    var first = true;
+    for (0..muxes) |m| {
+        for (ys) |*y| {
+            y.* = next_bit;
+            next_bit += 1;
+        }
+        for (0..ncells) |i| {
+            if (!first) try w.writeAll(",");
+            first = false;
+            try w.print("\"t{d}_{d}\":{{\"type\":\"$and\",\"port_directions\":{{\"A\":\"input\",\"B\":\"input\",\"Y\":\"output\"}},\"connections\":{{", .{ m, i });
+            const la = 2 * i + 1;
+            const lb = 2 * i + 2;
+            if (la < ncells) {
+                try w.print("\"A\":[{d}],\"B\":[{d}],\"Y\":[{d}]}}}}", .{ ys[la], ys[lb], ys[i] });
+            } else {
+                const a = next_bit;
+                next_bit += 1;
+                const b = next_bit;
+                next_bit += 1;
+                try w.print("\"A\":[{d}],\"B\":[{d}],\"Y\":[{d}]}}}}", .{ a, b, ys[i] });
+            }
+        }
+        const my = next_bit;
+        next_bit += 1;
+        const dd = next_bit;
+        next_bit += 1;
+        const dq = next_bit;
+        next_bit += 1;
+        try w.print(",\"mux{d}\":{{\"type\":\"$mux\",\"port_directions\":{{\"A\":\"input\",\"B\":\"input\",\"S\":\"input\",\"Y\":\"output\"}},\"connections\":{{\"A\":[2],\"B\":[3],\"S\":[{d}],\"Y\":[{d}]}}}}", .{ m, ys[0], my });
+        try w.print(",\"dst{d}\":{{\"type\":\"$dff\",\"port_directions\":{{\"CLK\":\"input\",\"D\":\"input\",\"Q\":\"output\"}},\"connections\":{{\"CLK\":[{d}],\"D\":[{d}],\"Q\":[{d}]}}}}", .{ m, my, dd, dq });
+    }
+    try w.writeAll("}}}}");
+    return buf.toOwnedSlice();
+}
+
+fn runOnceGross(muxes: usize) !usize {
+    const json = try clockForest(muxes, 6);
+    defer std.testing.allocator.free(json);
+    var l = try loadAll(json, bus_sdc);
+    defer freeAll(&l);
+    var tmp_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer tmp_arena.deinit();
+    var tmp_gross = Gross{ .child = tmp_arena.allocator() };
+    var ctx = rule.context.Context{
+        .mod = &l.mod,
+        .model = &l.sdc_mod,
+        .crossings = &.{},
+        .table = &l.table,
+        .marks = &l.marks,
+        .reset_view = &l.reset_view,
+        .reset_syncs = &l.reset_syncs,
+        .buses = &.{},
+        .cfg = .{},
+        .tmp = tmp_gross.allocator(),
+        .range_alloc = std.testing.allocator,
+        .alloc = std.testing.allocator,
+    };
+    const rl = rule.registry.find("CDC-010").?;
+    const fs = try rl.check_all.?(&ctx);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
+    return tmp_gross.gross;
+}
+
+test "CDC-010 walks die per clock cell" {
+    const small = try runOnceGross(10);
+    const big = try runOnceGross(100);
+    if (small == 0) {
+        try std.testing.expectEqual(@as(usize, 0), big);
+    } else {
+        try std.testing.expect(big < 3 * small);
+    }
+}

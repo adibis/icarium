@@ -67,9 +67,10 @@ pub const Table = struct {
         inner.value_ptr.* = v;
     }
 
-    // Miss scratch rooted at the real allocator: walk garbage
-    // frees per miss instead of piling into a batch arena.
-    pub fn missArena(t: *const Table) std.heap.ArenaAllocator {
+    // Work scratch rooted at the real allocator: walk garbage
+    // frees with the arena instead of piling into a batch arena
+    // whose free is a no-op.
+    pub fn workArena(t: *const Table) std.heap.ArenaAllocator {
         return std.heap.ArenaAllocator.init(t.backing.child_allocator);
     }
 

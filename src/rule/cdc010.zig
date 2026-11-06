@@ -24,19 +24,32 @@ pub const rule = registry.Rule{
 // the async transition chops the output. Ports defer out.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     const mod = ctx.mod;
-    const net_cells = try context.clockNetworkCells(ctx.tmp, mod);
+    // Walks root here, never in tmp: the network walk is design-
+    // wide and per-cell walks reset, so everything frees at return.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    const parent = backing.allocator();
+    var hood = std.heap.ArenaAllocator.init(parent);
+    defer hood.deinit();
+    const net_cells = try context.clockNetworkCells(hood.allocator(), mod);
+    var scratch = std.heap.ArenaAllocator.init(parent);
+    defer scratch.deinit();
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (mod.cells, 0..) |c, ci| {
         if (!net_cells.contains(ci)) continue;
-        const ctrls = controlPins(ctx, c);
+        // Walks die per cell: clock cones span the design, and
+        // retaining one per clock cell buried the full-top run.
+        _ = scratch.reset(.retain_capacity);
+        const alloc = scratch.allocator();
+        const ctrls = controlPins(ctx, alloc, c);
         if (ctrls.len == 0) continue;
-        const gated = try clockInputDomains(ctx, ci, ctrls);
+        const gated = try clockInputDomains(ctx, alloc, ci, ctrls);
         if (gated.cells.items.len == 0 and gated.clocks.items.len == 0) continue;
         for (ctrls) |cp| {
             const bits = portBits(c, cp) orelse continue;
             if (bits.len == 0) continue;
             if (anyGlitchless(ctx, bits)) continue;
-            const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, bits);
+            const fanin = try context.backwardFlopFanin(alloc, ctx.mod, bits);
             if (fanin.items.len == 0) continue;
             std.mem.sort(usize, fanin.items, {}, struct {
                 fn less(_: void, a: usize, b: usize) bool {
@@ -84,7 +97,7 @@ const heuristic_pins = std.StaticStringMap(void).initComptime(.{
 
 // Explicit cell map, then gate-level prefixes, then pin-name
 // guessing for library cells. Buffers fall through pinless.
-fn controlPins(ctx: *context.Context, c: ir.types.Cell) []const []const u8 {
+fn controlPins(ctx: *context.Context, alloc: std.mem.Allocator, c: ir.types.Cell) []const []const u8 {
     if (explicit_controls.get(c.type)) |pins| return pins;
     if (std.mem.startsWith(u8, c.type, "$_DLATCH") or
         std.mem.startsWith(u8, c.type, "$_DFFE_") or
@@ -97,7 +110,7 @@ fn controlPins(ctx: *context.Context, c: ir.types.Cell) []const []const u8 {
         if (p.name.len > upper.len) continue;
         for (p.name, 0..) |ch, i| upper[i] = std.ascii.toUpper(ch);
         if (heuristic_pins.get(upper[0..p.name.len]) != null) {
-            matches.append(ctx.tmp, p.name) catch return &.{};
+            matches.append(alloc, p.name) catch return &.{};
         }
     }
     return matches.items;
@@ -112,6 +125,7 @@ const GatedDomains = struct {
 // clock ports. Nothing classifiable means silence, not a guess.
 fn clockInputDomains(
     ctx: *context.Context,
+    alloc: std.mem.Allocator,
     ci: usize,
     ctrls: []const []const u8,
 ) error{OutOfMemory}!GatedDomains {
@@ -124,35 +138,35 @@ fn clockInputDomains(
         if (p.direction == .output) continue;
         if (isCtrl(p.name, ctrls)) continue;
         for (p.bits) |b| {
-            if (b == .sig) try frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = 0 });
+            if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = 0 });
         }
     }
     var head: usize = 0;
     while (head < frontier.items.len) : (head += 1) {
         const fb = frontier.items[head];
         if (seen.contains(fb.bit)) continue;
-        try seen.put(ctx.tmp, fb.bit, {});
+        try seen.put(alloc, fb.bit, {});
         const drv = mod.driver_of.get(fb.bit) orelse {
             if (portOfBit(mod, fb.bit)) |pn| {
-                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(ctx.tmp, clk);
+                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(alloc, clk);
             }
             continue;
         };
         const sci = drv.cell orelse {
             if (portOfBit(mod, fb.bit)) |pn| {
-                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(ctx.tmp, clk);
+                if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(alloc, clk);
             }
             continue;
         };
         if (std.mem.eql(u8, drv.port, "Q")) {
-            try cells.append(ctx.tmp, sci);
+            try cells.append(alloc, sci);
             continue;
         }
         if (fb.depth >= 12) continue;
         for (mod.cells[sci].ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
-                if (b == .sig) try frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = fb.depth + 1 });
+                if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = fb.depth + 1 });
             }
         }
     }

@@ -50,7 +50,7 @@ pub fn isMultibitSyncFirstStage(ctx: *context.Context, dst: usize, dst_clock: []
 // batches stop paying a walk per crossing.
 pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
     if (ctx.table.grayVerdict(src)) |v| return v;
-    var arena = ctx.table.missArena();
+    var arena = ctx.table.workArena();
     defer arena.deinit();
     const v = grayWalk(ctx, arena.allocator(), src);
     ctx.table.storeGray(src, v);
@@ -113,7 +113,7 @@ pub fn isMuxedClock(ctx: *context.Context, cell: usize) bool {
 // arena, so nothing per-crossing reaches any batch arena.
 pub fn isGatedBusCrossing(ctx: *context.Context, dst: usize, dst_clock: []const u8) error{OutOfMemory}!bool {
     if (ctx.table.gatingVerdict(dst, dst_clock)) |v| return v;
-    var arena = ctx.table.missArena();
+    var arena = ctx.table.workArena();
     defer arena.deinit();
     const v = try gatedWalk(ctx, arena.allocator(), dst, dst_clock);
     try ctx.table.storeGating(dst, dst_clock, v);
