@@ -45,20 +45,31 @@ pub fn isMultibitSyncFirstStage(ctx: *context.Context, dst: usize, dst_clock: []
 }
 
 // Canonical gray encode in the source fanin: shifted $xor,
-// found by a bounded walk that never crosses a flop.
+// found by a bounded walk that never crosses a flop. The walk
+// runs once per cell; repeats read the memo, so broadcast
+// batches stop paying a walk per crossing.
 pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
+    if (ctx.table.grayVerdict(src)) |v| return v;
+    var arena = ctx.table.missArena();
+    defer arena.deinit();
+    const v = grayWalk(ctx, arena.allocator(), src);
+    ctx.table.storeGray(src, v);
+    return v;
+}
+
+fn grayWalk(ctx: *context.Context, alloc: std.mem.Allocator, src: usize) bool {
     const mod = ctx.mod;
     const d = portBits(mod.cells[src], "D") orelse return false;
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var frontier = std.ArrayListUnmanaged(GrayBit).empty;
     for (d) |b| {
-        if (b == .sig) frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = 0 }) catch return false;
+        if (b == .sig) frontier.append(alloc, .{ .bit = b.sig, .depth = 0 }) catch return false;
     }
     var head: usize = 0;
     while (head < frontier.items.len) : (head += 1) {
         const gb = frontier.items[head];
         if (seen.contains(gb.bit)) continue;
-        seen.put(ctx.tmp, gb.bit, {}) catch return false;
+        seen.put(alloc, gb.bit, {}) catch return false;
         if (gb.depth > 8) continue;
         const drv = mod.driver_of.get(gb.bit) orelse continue;
         const ci = drv.cell orelse continue;
@@ -68,7 +79,7 @@ pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
-                if (b == .sig) frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = gb.depth + 1 }) catch return false;
+                if (b == .sig) frontier.append(alloc, .{ .bit = b.sig, .depth = gb.depth + 1 }) catch return false;
             }
         }
     }
@@ -97,9 +108,19 @@ pub fn isMuxedClock(ctx: *context.Context, cell: usize) bool {
 }
 
 // Handshake gating, enabled-flop or mux-on-D: the control
-// fanin must sit entirely in the destination domain. Walks run
-// in caller scratch: retaining them per pair buried spi at 8GB.
-pub fn isGatedBusCrossing(ctx: *context.Context, scratch: std.mem.Allocator, dst: usize, dst_clock: []const u8) error{OutOfMemory}!bool {
+// fanin must sit entirely in the destination domain. The walk
+// runs once per (destination, clock); misses burn a throwaway
+// arena, so nothing per-crossing reaches any batch arena.
+pub fn isGatedBusCrossing(ctx: *context.Context, dst: usize, dst_clock: []const u8) error{OutOfMemory}!bool {
+    if (ctx.table.gatingVerdict(dst, dst_clock)) |v| return v;
+    var arena = ctx.table.missArena();
+    defer arena.deinit();
+    const v = try gatedWalk(ctx, arena.allocator(), dst, dst_clock);
+    try ctx.table.storeGating(dst, dst_clock, v);
+    return v;
+}
+
+fn gatedWalk(ctx: *context.Context, scratch: std.mem.Allocator, dst: usize, dst_clock: []const u8) error{OutOfMemory}!bool {
     const mod = ctx.mod;
     const c = mod.cells[dst];
     const flopped = clock.cells.isSequential(c.type) and !clock.cells.isLatch(c.type);

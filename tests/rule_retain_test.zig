@@ -207,3 +207,94 @@ test "all rules retain bounded per duplicate tile" {
     const big = try runTiled(&l, 100, null);
     try std.testing.expect(big.gross < 3 * small.gross);
 }
+
+// Enabled bus, gated in its own domain: CDC-004 walks the
+// enable fanin for every tile, proves gating, and fires
+// nothing. Walk garbage must not scale with tile count.
+const gated =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk_a": {"direction": "input", "bits": [2]},
+    \\        "clk_b": {"direction": "input", "bits": [3]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [30, 31], "Q": [10, 11]}
+    \\        },
+    \\        "en1": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [40], "Q": [41]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "EN": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [10, 11], "EN": [41], "Q": [20, 21]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+// Batch-tmp gross over K tiles: walks that memoize stay
+// flat, walks that rerun grow with the tile count. Fires
+// stay out of the signal; the fixture proves gating.
+fn runGross(json: []const u8, sdc_text: ?[]const u8, k: usize, only_rule: ?[]const u8) !usize {
+    var l = try loadAll(json, sdc_text);
+    defer freeAll(&l);
+    const base = l.report.crossings;
+    const tiled = try std.testing.allocator.alloc(crossing.enumerate.Crossing, base.len * k);
+    defer std.testing.allocator.free(tiled);
+    for (0..k) |i| @memcpy(tiled[i * base.len ..][0..base.len], base);
+
+    var keep_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer keep_arena.deinit();
+    var tmp_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer tmp_arena.deinit();
+    var tmp_gross = Gross{ .child = tmp_arena.allocator() };
+    var ctx = rule.context.Context{
+        .mod = &l.mod,
+        .model = &l.sdc_mod,
+        .crossings = tiled,
+        .table = &l.table,
+        .marks = &l.marks,
+        .reset_view = &l.reset_view,
+        .reset_syncs = &l.reset_syncs,
+        .buses = &.{},
+        .cfg = .{},
+        .tmp = tmp_gross.allocator(),
+        .range_alloc = keep_arena.allocator(),
+        .alloc = keep_arena.allocator(),
+    };
+    var run = rule.registry.Run.init(keep_arena.allocator(), std.testing.allocator);
+    defer run.deinit();
+    const only: ?[]const []const u8 = if (only_rule) |r| &[_][]const u8{r} else null;
+    try run.runPass(&ctx, only, null, .batch);
+    try run.runRangeBatch(&ctx, only, null);
+    try run.endRange(&ctx, only, null);
+    try std.testing.expectEqual(@as(usize, 0), run.out.items.len);
+    return tmp_gross.gross;
+}
+
+test "CDC-004 gating walks memoize across duplicate tiles" {
+    const small = try runGross(gated, bus_sdc, 10, "CDC-004");
+    const big = try runGross(gated, bus_sdc, 100, "CDC-004");
+    // A fully memoized walk touches tmp never: zero must
+    // stay zero, or the ratio below divides by nothing.
+    if (small == 0) {
+        try std.testing.expectEqual(@as(usize, 0), big);
+    } else {
+        try std.testing.expect(big < 3 * small);
+    }
+}
+
+const bus_sdc =
+    \\create_clock -name clk_a -period 10 [get_ports clk_a]
+    \\create_clock -name clk_b -period 7 [get_ports clk_b]
+    \\set_clock_groups -asynchronous -group {clk_a} -group {clk_b}
+;

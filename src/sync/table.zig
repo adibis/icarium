@@ -25,6 +25,12 @@ pub const Table = struct {
     // Dense chain memo for the same reason: one indexed load.
     memo: []?Entry,
     combines: []clock.trace.Combine,
+    // Dense gray-encode memo: one verdict per source cell, so
+    // the fanin walk runs once per cell, never per crossing.
+    gray_memo: []?bool,
+    // Gating verdicts per (destination, clock): the enable/mux
+    // fanin walk runs once per pair, never per crossing.
+    gating_memo: std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(bool)),
 
     pub fn deinit(self: *Table) void {
         const parent = self.backing.child_allocator;
@@ -35,6 +41,36 @@ pub const Table = struct {
     pub fn domainOf(self: *const Table, cell: usize) ?clock.trace.Domain {
         if (cell >= self.by_cell.len) return null;
         return if (self.by_cell[cell]) |d| d.* else null;
+    }
+
+    pub fn grayVerdict(t: *const Table, sc: usize) ?bool {
+        if (sc >= t.gray_memo.len) return null;
+        return t.gray_memo[sc];
+    }
+
+    pub fn storeGray(t: *Table, sc: usize, v: bool) void {
+        if (sc >= t.gray_memo.len) return;
+        t.gray_memo[sc] = v;
+    }
+
+    pub fn gatingVerdict(t: *const Table, dst: usize, clk: []const u8) ?bool {
+        const inner = t.gating_memo.get(dst) orelse return null;
+        return inner.get(clk);
+    }
+
+    pub fn storeGating(t: *Table, dst: usize, clk: []const u8, v: bool) error{OutOfMemory}!void {
+        const slot = try t.gating_memo.getOrPut(t.alloc, dst);
+        if (!slot.found_existing) slot.value_ptr.* = .empty;
+        const inner = try slot.value_ptr.getOrPut(t.alloc, clk);
+        // Clock names copy out: probes borrow batch crossings.
+        if (!inner.found_existing) inner.key_ptr.* = try t.alloc.dupe(u8, clk);
+        inner.value_ptr.* = v;
+    }
+
+    // Miss scratch rooted at the real allocator: walk garbage
+    // frees per miss instead of piling into a batch arena.
+    pub fn missArena(t: *const Table) std.heap.ArenaAllocator {
+        return std.heap.ArenaAllocator.init(t.backing.child_allocator);
     }
 
     fn readers(_: *const Table, mod: *const ir.types.Module, bit: u32) usize {
@@ -246,6 +282,8 @@ pub fn build(
     while (dit.next()) |e| by_cell[e.key_ptr.*] = e.value_ptr;
     const memo = try alloc.alloc(?Entry, mod.cells.len);
     @memset(memo, null);
+    const gray_memo = try alloc.alloc(?bool, mod.cells.len);
+    @memset(gray_memo, null);
     var t = Table{
         .alloc = alloc,
         .backing = backing,
@@ -255,6 +293,8 @@ pub fn build(
         .srst_data_bit_to_flop = .{},
         .memo = memo,
         .combines = try combines.toOwnedSlice(alloc),
+        .gray_memo = gray_memo,
+        .gating_memo = .{},
     };
     // First flop wins a shared data bit, in cell order: a shared
     // bit has two readers anyway, so walkers reject it first.

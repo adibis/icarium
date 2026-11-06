@@ -35,7 +35,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         if (bus.isMultibitSyncFirstStage(ctx, dc, x.dst_clk) and
             bus.isGrayEncodedSource(ctx, sc)) return null;
     }
-    if (try bus.isGatedBusCrossing(ctx, ctx.tmp, dc, x.dst_clk)) return null;
+    if (try bus.isGatedBusCrossing(ctx, dc, x.dst_clk)) return null;
     const width = x.lanes.len;
     const src_desc = if (x.src.cell) |sc|
         try std.fmt.allocPrint(ctx.tmp, "flop {s}", .{ctx.mod.cells[sc].name})

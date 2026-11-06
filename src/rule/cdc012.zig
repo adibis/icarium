@@ -24,8 +24,6 @@ pub const rule = registry.Rule{
 // dst-domain feedback within six flop hops. Gray sources and
 // vouched handshakes exempt: both hold the payload by shape.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var scratch = std.heap.ArenaAllocator.init(ctx.tmp);
-    defer scratch.deinit();
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var feedback = std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(bool)).empty;
     var fanin = std.AutoHashMapUnmanaged(usize, []usize).empty;
@@ -42,8 +40,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         // Muxed endpoints belong to the leg-pair report: gating
         // and feedback need one exact domain on each side.
         if (bus.isMuxedClock(ctx, sc) or bus.isMuxedClock(ctx, dc)) continue;
-        _ = scratch.reset(.retain_capacity);
-        if (!(try bus.isGatedBusCrossing(ctx, scratch.allocator(), dc, x.dst_clk))) continue;
+        if (!(try bus.isGatedBusCrossing(ctx, dc, x.dst_clk))) continue;
         const src_name = ctx.mod.cells[sc].name;
         if (ctx.marks.hasGray(src_name)) continue;
         if (bus.isGrayEncodedSource(ctx, sc)) continue;
