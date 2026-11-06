@@ -52,8 +52,16 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     }
     const key = groupKey(ctx, x) orelse return;
     const slot = try acc.by_key.getOrPut(ctx.alloc, key.name);
-    if (!slot.found_existing) slot.value_ptr.* = .{ .cell = key.cell, .port = key.port };
-    slot.value_ptr.add(farName(ctx, x, key));
+    // Port keys copy out on insert only: the accumulator
+    // outlives the batch crossings probes borrow from.
+    if (!slot.found_existing) {
+        if (key.cell == null) {
+            const owned = try ctx.alloc.dupe(u8, key.name);
+            slot.key_ptr.* = owned;
+            slot.value_ptr.* = .{ .cell = null, .port = owned };
+        } else slot.value_ptr.* = .{ .cell = key.cell, .port = null };
+    }
+    try slot.value_ptr.add(ctx.alloc, farName(ctx, x, key));
 }
 
 pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
@@ -129,7 +137,8 @@ const Group = struct {
     // Smallest four far names, sorted: batches arrive in chunk
     // order, not id order, so first-seen sampling would print
     // different witnesses per path. Minima are order-free.
-    fn add(self: *Group, far: []const u8) void {
+    // Samples copy out on insert: batch crossings die young.
+    fn add(self: *Group, alloc: std.mem.Allocator, far: []const u8) error{OutOfMemory}!void {
         self.count += 1;
         var pos: usize = 0;
         while (pos < self.nsample) : (pos += 1) {
@@ -138,9 +147,10 @@ const Group = struct {
             if (ord == .lt) break;
         }
         if (pos >= self.sample.len) return;
+        const owned = try alloc.dupe(u8, far);
         var j = @min(self.nsample, self.sample.len - 1);
         while (j > pos) : (j -= 1) self.sample[j] = self.sample[j - 1];
-        self.sample[pos] = far;
+        self.sample[pos] = owned;
         if (self.nsample < self.sample.len) self.nsample += 1;
     }
 };

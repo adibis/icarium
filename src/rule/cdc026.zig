@@ -54,7 +54,7 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (!g.found_existing) {
         g.value_ptr.* = .{
             .dst = dc,
-            .dst_clk = x.dst_clk,
+            .dst_clk = try ctx.alloc.dupe(u8, x.dst_clk),
             .dst_legs = dst.legs,
             .dst_sels = dst.sels,
             .dst_muxes = dst.muxes,
@@ -65,7 +65,7 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     for (src.legs) |sl| try pushDistinct(ctx.alloc, &gr.src_legs, sl);
     for (src.muxes) |m| try pushDistinctUsize(ctx.alloc, &gr.src_muxes, m);
     const sname = if (x.src.cell) |sc| ctx.mod.cells[sc].name else x.src.port;
-    gr.addSample(sname);
+    try gr.addSample(ctx.alloc, sname);
     for (src.legs, 0..) |sl, i| {
         const ssel: ?clock.trace.LegSel = if (i < src.sels.len) src.sels[i] else null;
         for (dst.legs, 0..) |dl, j| {
@@ -126,7 +126,8 @@ const Group = struct {
     // Smallest four source names: repeat crossings from one
     // flop share a bit, not a story, and minima print the
     // same witnesses whatever order the batches arrive in.
-    fn addSample(self: *Group, sname: []const u8) void {
+    // Samples copy out on insert: batch crossings die young.
+    fn addSample(self: *Group, alloc: std.mem.Allocator, sname: []const u8) error{OutOfMemory}!void {
         var pos: usize = 0;
         while (pos < self.nsamples) : (pos += 1) {
             const ord = std.mem.order(u8, sname, self.samples[pos]);
@@ -134,9 +135,10 @@ const Group = struct {
             if (ord == .lt) break;
         }
         if (pos >= self.samples.len) return;
+        const owned = try alloc.dupe(u8, sname);
         var j = @min(self.nsamples, self.samples.len - 1);
         while (j > pos) : (j -= 1) self.samples[j] = self.samples[j - 1];
-        self.samples[pos] = sname;
+        self.samples[pos] = owned;
         if (self.nsamples < self.samples.len) self.nsamples += 1;
     }
 
@@ -171,7 +173,9 @@ fn pushDistinct(alloc: std.mem.Allocator, list: *std.ArrayListUnmanaged([]const 
     for (list.items) |e| {
         if (std.mem.eql(u8, e, v)) return;
     }
-    try list.append(alloc, v);
+    // Legs copy out on insert: port legs borrow the crossing,
+    // and the accumulator outlives the batch.
+    try list.append(alloc, try alloc.dupe(u8, v));
 }
 
 fn pushDistinctUsize(alloc: std.mem.Allocator, list: *std.ArrayListUnmanaged(usize), v: usize) error{OutOfMemory}!void {
@@ -229,7 +233,11 @@ fn pushPair(
         if (p.rel == .exclusive and rel != .exclusive) p.rel = rel;
         return;
     }
-    try gr.pairs.append(ctx.alloc, .{ .sl = sl, .dl = dl, .rel = rel });
+    try gr.pairs.append(ctx.alloc, .{
+        .sl = try ctx.alloc.dupe(u8, sl),
+        .dl = try ctx.alloc.dupe(u8, dl),
+        .rel = rel,
+    });
 }
 
 fn relWord(r: Rel) []const u8 {

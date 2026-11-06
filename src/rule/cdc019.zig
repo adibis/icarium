@@ -64,7 +64,12 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     const outer = try groups.getOrPut(ctx.alloc, di);
     if (!outer.found_existing) outer.value_ptr.* = .empty;
     const inner = try outer.value_ptr.getOrPut(ctx.alloc, x.dst_clk);
-    if (!inner.found_existing) inner.value_ptr.* = .{ .lanes = .empty, .suppressed = false };
+    // Clock keys copy out: the accumulator outlives the batch
+    // crossings they borrow from.
+    if (!inner.found_existing) {
+        inner.value_ptr.* = .{ .lanes = .empty, .suppressed = false };
+        inner.key_ptr.* = try ctx.alloc.dupe(u8, x.dst_clk);
+    }
     const src_name = ctx.mod.cells[sc].name;
     if (ctx.marks.hasGray(src_name) or
         ctx.marks.hasStatic(src_name) or

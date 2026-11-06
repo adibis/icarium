@@ -263,7 +263,7 @@ pub const Run = struct {
                     if (unknownSide(x)) continue;
                     if (try one(ctx, x)) |got| {
                         var f = got;
-                        if (f.driver == null) f.driver = srcName(ctx, x);
+                        if (f.driver == null) f.driver = try srcName(ctx, x);
                         if (try fresh(r.alloc, &r.seen, f)) try r.out.append(r.alloc, f);
                     }
                 }
@@ -323,9 +323,11 @@ pub fn unknownSide(x: crossing.enumerate.Crossing) bool {
 
 // The crossing's own source endpoint: single-crossing rules
 // inherit their driver, and only override when they know better.
-fn srcName(ctx: *context.Context, x: crossing.enumerate.Crossing) []const u8 {
+// Port names copy out: batch crossings die with their chunk,
+// while findings outlive the run.
+fn srcName(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}![]const u8 {
     if (x.src.cell) |sc| return ctx.mod.cells[sc].name;
-    return x.src.port;
+    return try ctx.alloc.dupe(u8, x.src.port);
 }
 
 pub fn renderList(out: anytype) !void {
