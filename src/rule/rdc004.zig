@@ -32,7 +32,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const rst = bus.portBits(c, ap.pin) orelse continue;
         if (rst.len == 0 or rst[0] != .sig) continue;
         if (!isCombSource(ctx, rst[0].sig)) continue;
-        const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, rst);
+        const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, rst);
         if (fanin.items.len == 0) continue;
         var names = std.ArrayListUnmanaged([]const u8).empty;
         for (fanin.items) |f| try names.append(ctx.alloc, ctx.mod.cells[f].name);
@@ -42,9 +42,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }.less);
         const desc = try flopDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "reset driven by combinational logic: flop {s}'s reset pin is the output of combinational gate(s) fed by flop(s) {s}. Comb-gate outputs can glitch when inputs transition asynchronously, causing spurious reset assertions. Register the comb output on the consumer's clock before using as a reset.",
-            .{ c.name, desc });
+        const message = try std.fmt.allocPrint(ctx.alloc, "reset driven by combinational logic: flop {s}'s reset pin is the output of combinational gate(s) fed by flop(s) {s}. Comb-gate outputs can glitch when inputs transition asynchronously, causing spurious reset assertions. Register the comb output on the consumer's clock before using as a reset.", .{ c.name, desc });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,

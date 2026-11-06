@@ -24,7 +24,7 @@ pub const rule = registry.Rule{
 // dst-domain feedback within six flop hops. Gray sources and
 // vouched handshakes exempt: both hold the payload by shape.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-    var scratch = std.heap.ArenaAllocator.init(ctx.alloc);
+    var scratch = std.heap.ArenaAllocator.init(ctx.tmp);
     defer scratch.deinit();
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var feedback = std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(bool)).empty;
@@ -52,10 +52,10 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         // Feedback keys by source and clock pair: the verdict
         // answers for one domain pair, and sharing it across
         // pairs both misreports and depends on arrival order.
-        const fop = try feedback.getOrPut(ctx.alloc, sc);
+        const fop = try feedback.getOrPut(ctx.tmp, sc);
         if (!fop.found_existing) fop.value_ptr.* = .empty;
-        const fkey = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ x.src_clk, x.dst_clk });
-        const gop = try fop.value_ptr.getOrPut(ctx.alloc, fkey);
+        const fkey = try std.fmt.allocPrint(ctx.tmp, "{s}|{s}", .{ x.src_clk, x.dst_clk });
+        const gop = try fop.value_ptr.getOrPut(ctx.tmp, fkey);
         if (!gop.found_existing) gop.value_ptr.* = try hasFeedback(ctx, &fanin, sc, x.src_clk, x.dst_clk);
         if (gop.value_ptr.*) continue;
         const message = try std.fmt.allocPrint(ctx.alloc, "functional data-hold risk on '{s}' -> '{s}': {d}-bit gated bus crossing from '{s}' to '{s}' has no synced-back handshake between the two domains. The destination's enable is synchronised, but nothing keeps the source payload stable while the enable is in flight. Add a req/ack handshake: hold the source payload until an ack from the destination confirms the sample.", .{ src_name, ctx.mod.cells[dc].name, x.lanes.len, x.src_clk, x.dst_clk });
@@ -80,19 +80,19 @@ fn hasFeedback(
     dst_clock: []const u8,
 ) error{OutOfMemory}!bool {
     var seen = std.AutoHashMapUnmanaged(usize, void).empty;
-    try seen.put(ctx.alloc, src, {});
+    try seen.put(ctx.tmp, src, {});
     var frontier = std.ArrayListUnmanaged(usize).empty;
-    try frontier.append(ctx.alloc, src);
+    try frontier.append(ctx.tmp, src);
     for (0..6) |_| {
         var next = std.ArrayListUnmanaged(usize).empty;
         for (frontier.items) |f| {
             const fanin = try cachedFanin(ctx, fanin_cache, f);
             for (fanin) |ff| {
                 if (seen.contains(ff)) continue;
-                try seen.put(ctx.alloc, ff, {});
+                try seen.put(ctx.tmp, ff, {});
                 const dom = ctx.table.domainOf(ff) orelse continue;
                 if (std.mem.eql(u8, dom.name, dst_clock)) return true;
-                if (std.mem.eql(u8, dom.name, src_clock)) try next.append(ctx.alloc, ff);
+                if (std.mem.eql(u8, dom.name, src_clock)) try next.append(ctx.tmp, ff);
             }
         }
         if (next.items.len == 0) break;
@@ -112,11 +112,11 @@ fn cachedFanin(
         if (p.direction == .output) continue;
         if (std.mem.eql(u8, p.name, "CLK") or std.mem.eql(u8, p.name, "C")) continue;
         for (p.bits) |b| {
-            if (b == .sig) try bits.append(ctx.alloc, b);
+            if (b == .sig) try bits.append(ctx.tmp, b);
         }
     }
-    var fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, bits.items);
-    const owned = try fanin.toOwnedSlice(ctx.alloc);
-    try fanin_cache.put(ctx.alloc, f, owned);
+    var fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, bits.items);
+    const owned = try fanin.toOwnedSlice(ctx.tmp);
+    try fanin_cache.put(ctx.tmp, f, owned);
     return owned;
 }

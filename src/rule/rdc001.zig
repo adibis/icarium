@@ -31,7 +31,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
         const arst = bus.portBits(c, "ARST") orelse continue;
         if (arst.len == 0) continue;
-        const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, arst);
+        const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, arst);
         for (fanin.items) |f| {
             const fdom = ctx.table.domainOf(f) orelse continue;
             if (std.mem.eql(u8, fdom.name, "unknown")) continue;
@@ -66,9 +66,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }.less);
         const desc = try dstDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "async reset released from a foreign clock domain: ARST of {s} in clock domain '{s}' is driven by flop '{s}' in async clock domain '{s}'. An asynchronously-released reset races the destination clock and can leave the flop metastable coming out of reset. Drive the reset from the destination domain's reset tree, or pass it through a reset synchroniser in '{s}'.",
-            .{ desc, k.dst_clk, ctx.mod.cells[k.src].name, k.src_clk, k.dst_clk });
+        const message = try std.fmt.allocPrint(ctx.alloc, "async reset released from a foreign clock domain: ARST of {s} in clock domain '{s}' is driven by flop '{s}' in async clock domain '{s}'. An asynchronously-released reset races the destination clock and can leave the flop metastable coming out of reset. Drive the reset from the destination domain's reset tree, or pass it through a reset synchroniser in '{s}'.", .{ desc, k.dst_clk, ctx.mod.cells[k.src].name, k.src_clk, k.dst_clk });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,

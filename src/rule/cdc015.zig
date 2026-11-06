@@ -43,7 +43,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (entry.stages.len < 2) continue;
         const offenders = try foreignResets(ctx, entry.stages, x.dst_clk);
         if (offenders.len == 0) continue;
-        try seen.put(ctx.alloc, dc, {});
+        try seen.put(ctx.tmp, dc, {});
         std.mem.sort(Offender, offenders, {}, struct {
             fn less(_: void, a: Offender, b: Offender) bool {
                 const ck = std.mem.order(u8, a.name, b.name);
@@ -53,13 +53,11 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }.less);
         var names = std.ArrayListUnmanaged(u8).empty;
         for (offenders, 0..) |o, i| {
-            if (i > 0) try names.appendSlice(ctx.alloc, ", ");
-            const one = try std.fmt.allocPrint(ctx.alloc, "{s} ({s})", .{ o.name, o.clk });
-            try names.appendSlice(ctx.alloc, one);
+            if (i > 0) try names.appendSlice(ctx.tmp, ", ");
+            const one = try std.fmt.allocPrint(ctx.tmp, "{s} ({s})", .{ o.name, o.clk });
+            try names.appendSlice(ctx.tmp, one);
         }
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "synchronizer chain in {s} (head {s}) has ARST driven by foreign-domain source(s): {s}. The chain cannot reach steady state because its resolving flops are asynchronously released by a reset that is not in {s}'s reset tree. Use {s}'s reset (or a reset synchronised into {s}) for the sync chain.",
-            .{ x.dst_clk, ctx.mod.cells[dc].name, names.items, x.dst_clk, x.dst_clk, x.dst_clk });
+        const message = try std.fmt.allocPrint(ctx.alloc, "synchronizer chain in {s} (head {s}) has ARST driven by foreign-domain source(s): {s}. The chain cannot reach steady state because its resolving flops are asynchronously released by a reset that is not in {s}'s reset tree. Use {s}'s reset (or a reset synchronised into {s}) for the sync chain.", .{ x.dst_clk, ctx.mod.cells[dc].name, names.items, x.dst_clk, x.dst_clk, x.dst_clk });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,
@@ -85,16 +83,16 @@ fn foreignResets(
     for (stages) |s| {
         const arst = bus.portBits(ctx.mod.cells[s], "ARST") orelse continue;
         if (arst.len == 0) continue;
-        const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, arst);
+        const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, arst);
         for (fanin.items) |f| {
             if (seen.contains(f)) continue;
-            try seen.put(ctx.alloc, f, {});
+            try seen.put(ctx.tmp, f, {});
             const dom = ctx.table.domainOf(f) orelse continue;
             if (std.mem.eql(u8, dom.name, "unknown")) continue;
             if (std.mem.eql(u8, dom.name, dst_clock)) continue;
             if (!ctx.model.areAsync(dom.name, dst_clock)) continue;
-            try out.append(ctx.alloc, .{ .name = ctx.mod.cells[f].name, .clk = dom.name });
+            try out.append(ctx.tmp, .{ .name = ctx.mod.cells[f].name, .clk = dom.name });
         }
     }
-    return out.toOwnedSlice(ctx.alloc);
+    return out.toOwnedSlice(ctx.tmp);
 }

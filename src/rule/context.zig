@@ -21,6 +21,11 @@ pub const Context = struct {
     // One batch or the whole report: rules never see past
     // this slice, so streaming feeds chunks through it.
     crossings: []const crossing.enumerate.Crossing,
+    // Per-batch transients die here: caches, seen sets, scratch
+    // walks, fire-time lists. Findings, messages, and ledger
+    // state belong to alloc; everything else must not outlive
+    // the batch, or a million batches retain a mountain.
+    tmp: std.mem.Allocator,
     table: *sync.table.Table,
     marks: *const sync.attrs.Marks,
     reset_view: *const reset.trace.View,

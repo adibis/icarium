@@ -86,6 +86,7 @@ fn checkAll(l: *Loaded) ![]rule.finding.Finding {
         .reset_syncs = &l.reset_syncs,
         .buses = buses,
         .cfg = .{},
+        .tmp = alloc,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, null, null);

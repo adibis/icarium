@@ -32,7 +32,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const rst = bus.portBits(c, ap.pin) orelse continue;
         if (rst.len == 0) continue;
         if (muxDriven(ctx, rst)) continue;
-        const flops = try context.backwardFlopFanin(ctx.alloc, ctx.mod, rst);
+        const flops = try context.backwardFlopFanin(ctx.tmp, ctx.mod, rst);
         if (flops.items.len > 0) continue;
         const ports = try context.backwardPortFanin(ctx.alloc, ctx.mod, rst);
         if (ports.len < 2) continue;
@@ -42,9 +42,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }.less);
         const desc = try std.mem.join(ctx.alloc, ", ", ports);
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "reset from multiple independent sources: flop {s}'s async reset is driven by combinational logic over {d} independent top-level reset ports ({s}), with no flops in the reset path. Independent reset sources release at different times; the consumer's effective release edge is undefined. Qualify the sources through a single reset tree or a reset synchroniser.",
-            .{ c.name, ports.len, desc });
+        const message = try std.fmt.allocPrint(ctx.alloc, "reset from multiple independent sources: flop {s}'s async reset is driven by combinational logic over {d} independent top-level reset ports ({s}), with no flops in the reset path. Independent reset sources release at different times; the consumer's effective release edge is undefined. Qualify the sources through a single reset tree or a reset synchroniser.", .{ c.name, ports.len, desc });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,

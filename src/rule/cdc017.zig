@@ -49,9 +49,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                 const key = Triple{ .latch = ci, .src = se.key_ptr.*, .dst = de.key_ptr.* };
                 if (seen.contains(key)) continue;
                 try seen.put(ctx.alloc, key, {});
-                const message = try std.fmt.allocPrint(ctx.alloc,
-                    "transparent latch in CDC path {s} -> {s}: latch {s} feeds destination flop {s} (in {s}) from source flop {s} (in {s}). During the latch's enable-active phase the foreign-domain signal propagates transparently to the destination, with no metastability resolution. Replace the latch with a 2FF synchroniser flop chain on {s}.",
-                    .{ se.key_ptr.*, de.key_ptr.*, c.name, ctx.mod.cells[de.value_ptr.*].name, de.key_ptr.*, ctx.mod.cells[se.value_ptr.*].name, se.key_ptr.*, de.key_ptr.* });
+                const message = try std.fmt.allocPrint(ctx.alloc, "transparent latch in CDC path {s} -> {s}: latch {s} feeds destination flop {s} (in {s}) from source flop {s} (in {s}). During the latch's enable-active phase the foreign-domain signal propagates transparently to the destination, with no metastability resolution. Replace the latch with a 2FF synchroniser flop chain on {s}.", .{ se.key_ptr.*, de.key_ptr.*, c.name, ctx.mod.cells[de.value_ptr.*].name, de.key_ptr.*, ctx.mod.cells[se.value_ptr.*].name, se.key_ptr.*, de.key_ptr.* });
                 try out.append(ctx.alloc, .{
                     .rule = rule.id,
                     .severity = rule.severity,
@@ -119,7 +117,7 @@ fn srcByClock(
     d: []ir.bits.Bit,
 ) error{OutOfMemory}!std.StringHashMapUnmanaged(usize) {
     var srcs = std.StringHashMapUnmanaged(usize).empty;
-    const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, d);
+    const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, d);
     for (fanin.items) |f| {
         const dom = ctx.table.domainOf(f) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;

@@ -90,6 +90,7 @@ fn checkAllCfg(l: *Loaded, cfg: rule.context.Config) ![]rule.finding.Finding {
         .reset_syncs = &l.reset_syncs,
         .buses = buses,
         .cfg = cfg,
+        .tmp = alloc,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, null, null);

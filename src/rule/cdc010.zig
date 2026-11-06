@@ -36,7 +36,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const bits = portBits(c, cp) orelse continue;
             if (bits.len == 0) continue;
             if (anyGlitchless(ctx, bits)) continue;
-            const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, bits);
+            const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, bits);
             if (fanin.items.len == 0) continue;
             std.mem.sort(usize, fanin.items, {}, struct {
                 fn less(_: void, a: usize, b: usize) bool {
@@ -51,9 +51,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                 if (std.mem.eql(u8, sdom.name, "unknown")) continue;
                 if (!allAsync(ctx, sdom, gated)) continue;
                 const doms = try describeDomains(ctx, gated);
-                const message = try std.fmt.allocPrint(ctx.alloc,
-                    "clock-network cell {s} ({s}) control pin {s} is driven by flop {s} in domain {s}, asynchronous to the cell's clock-input domain(s) ({s}); an async control transition can chop the output clock into runt pulses on every downstream flop. Synchronize {s} into one of the gated-clock domains",
-                    .{ c.name, c.type, cp, mod.cells[src].name, sdom.name, doms, mod.cells[src].name });
+                const message = try std.fmt.allocPrint(ctx.alloc, "clock-network cell {s} ({s}) control pin {s} is driven by flop {s} in domain {s}, asynchronous to the cell's clock-input domain(s) ({s}); an async control transition can chop the output clock into runt pulses on every downstream flop. Synchronize {s} into one of the gated-clock domains", .{ c.name, c.type, cp, mod.cells[src].name, sdom.name, doms, mod.cells[src].name });
                 try out.append(ctx.alloc, .{
                     .rule = rule.id,
                     .severity = rule.severity,

@@ -233,6 +233,10 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     const cfg = rule.context.Config{ .sync_depth = sync_depth, .cdc010_heuristic = heuristic, .cdc018_threshold = depth_threshold, .sync_primitives = prims.items };
     var findings: []rule.finding.Finding = &.{};
     if (!no_findings) {
+        // Transients die per batch in the stream, at the end in
+        // the legacy run; either way they never ride scratch.
+        var tail_arena = std.heap.ArenaAllocator.init(init.gpa);
+        defer tail_arena.deinit();
         if (stream) {
             var st = StreamState{
                 .run = rule.registry.Run.init(scratch),
@@ -244,6 +248,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 .reset_syncs = &reset_syncs,
                 .cfg = cfg,
                 .alloc = scratch,
+                .gpa = init.gpa,
                 .only = only_arg,
                 .skip = skip_arg,
                 .progress = progress,
@@ -254,6 +259,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 .mod = &mod,
                 .model = &sdc_mod,
                 .crossings = &.{},
+                .tmp = tail_arena.allocator(),
                 .table = &table,
                 .marks = &marks,
                 .reset_view = &reset_view,
@@ -267,11 +273,12 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             sortFindings(st.run.out.items);
             findings = st.run.out.toOwnedSlice(scratch) catch return 3;
         } else {
-            const buses = rule.context.collectBuses(scratch, report.?.crossings) catch return 3;
+            const buses = rule.context.collectBuses(tail_arena.allocator(), report.?.crossings) catch return 3;
             var ctx = rule.context.Context{
                 .mod = &mod,
                 .model = &sdc_mod,
                 .crossings = report.?.crossings,
+                .tmp = tail_arena.allocator(),
                 .table = &table,
                 .marks = &marks,
                 .reset_view = &reset_view,
@@ -402,6 +409,7 @@ const StreamState = struct {
     reset_syncs: *const reset.chains.Syncs,
     cfg: rule.context.Config,
     alloc: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     only: ?[]const []const u8,
     skip: ?[]const []const u8,
     chunks: usize = 0,
@@ -411,11 +419,16 @@ const StreamState = struct {
         const crossings = batch.crossings;
         st.chunks += 1;
         if (st.progress) std.debug.print("stream: chunk {d} pairs {d} crossings {d} findings {d}\n", .{ st.chunks, batch.pairs, crossings.len, st.run.out.items.len });
-        const buses = try rule.context.collectBuses(st.alloc, crossings);
+        // Batch transients die here, rooted at the real
+        // allocator: an arena child of scratch would retain.
+        var tmp_arena = std.heap.ArenaAllocator.init(st.gpa);
+        defer tmp_arena.deinit();
+        const buses = try rule.context.collectBuses(tmp_arena.allocator(), crossings);
         var ctx = rule.context.Context{
             .mod = st.mod,
             .model = st.model,
             .crossings = crossings,
+            .tmp = tmp_arena.allocator(),
             .table = st.table,
             .marks = st.marks,
             .reset_view = st.reset_view,

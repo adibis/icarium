@@ -36,7 +36,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const dom = ctx.table.domainOf(ci) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
         const bits = syncResetBits(ctx, &by_cell, ci) orelse continue;
-        const fanin = try context.backwardFlopFanin(ctx.alloc, ctx.mod, bits);
+        const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, bits);
         for (fanin.items) |f| {
             const fdom = ctx.table.domainOf(f) orelse continue;
             if (std.mem.eql(u8, fdom.name, "unknown")) continue;
@@ -71,9 +71,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }.less);
         const desc = try dstDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "sync reset crossing: flop(s) in clk={s} have SRST driven by flop {s} from a different async domain (clk={s}); the sync reset is sampled on the destination clock and the cross-domain source may produce metastability. Add a 2FF reset synchroniser in the {s} domain. {s}",
-            .{ k.dst_clk, ctx.mod.cells[k.src].name, k.src_clk, k.dst_clk, desc });
+        const message = try std.fmt.allocPrint(ctx.alloc, "sync reset crossing: flop(s) in clk={s} have SRST driven by flop {s} from a different async domain (clk={s}); the sync reset is sampled on the destination clock and the cross-domain source may produce metastability. Add a 2FF reset synchroniser in the {s} domain. {s}", .{ k.dst_clk, ctx.mod.cells[k.src].name, k.src_clk, k.dst_clk, desc });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,

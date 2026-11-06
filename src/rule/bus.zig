@@ -52,13 +52,13 @@ pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var frontier = std.ArrayListUnmanaged(GrayBit).empty;
     for (d) |b| {
-        if (b == .sig) frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = 0 }) catch return false;
+        if (b == .sig) frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = 0 }) catch return false;
     }
     var head: usize = 0;
     while (head < frontier.items.len) : (head += 1) {
         const gb = frontier.items[head];
         if (seen.contains(gb.bit)) continue;
-        seen.put(ctx.alloc, gb.bit, {}) catch return false;
+        seen.put(ctx.tmp, gb.bit, {}) catch return false;
         if (gb.depth > 8) continue;
         const drv = mod.driver_of.get(gb.bit) orelse continue;
         const ci = drv.cell orelse continue;
@@ -68,7 +68,7 @@ pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
-                if (b == .sig) frontier.append(ctx.alloc, .{ .bit = b.sig, .depth = gb.depth + 1 }) catch return false;
+                if (b == .sig) frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = gb.depth + 1 }) catch return false;
             }
         }
     }

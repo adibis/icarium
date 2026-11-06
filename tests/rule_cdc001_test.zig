@@ -86,6 +86,7 @@ fn checkAll(l: *Loaded, only: ?[]const []const u8, skip: ?[]const []const u8) ![
         .reset_syncs = &l.reset_syncs,
         .buses = buses,
         .cfg = .{},
+        .tmp = alloc,
         .alloc = alloc,
     };
     return rule.registry.runChecks(alloc, &ctx, only, skip);
