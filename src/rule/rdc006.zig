@@ -25,6 +25,12 @@ pub const rule = registry.Rule{
 // async. Chain stages and user marks pass; syncing is their job.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
+    // Walks die per flop: reset cones span the design, and one
+    // retained walk per flop buried the full-top once pass.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    var scratch = std.heap.ArenaAllocator.init(backing.allocator());
+    defer scratch.deinit();
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         if (ctx.reset_syncs.isMember(c.name)) continue;
@@ -34,7 +40,8 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const di = drv.cell orelse continue;
         const dc = ctx.mod.cells[di];
         if (!std.mem.eql(u8, dc.type, "$mux") and !std.mem.eql(u8, dc.type, "$pmux")) continue;
-        const phrase = try sourcesPhrase(ctx, dc);
+        _ = scratch.reset(.retain_capacity);
+        const phrase = try sourcesPhrase(ctx, scratch.allocator(), dc);
         const message = try std.fmt.allocPrint(ctx.tmp,
             "muxed async reset without local synchronizer: flop '{s}' reset pin is driven by a {s} selecting between {s}. The mux makes source selection explicit (why RDC-005 stays silent), but the selected reset's deassertion edge is still asynchronous to this flop's clock. Add a 2FF reset synchronizer in the consumer clock domain between the mux and this flop's reset pin.",
             .{ c.name, dc.type, phrase });
@@ -50,12 +57,12 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
 
 // Data legs only: the select is control, not a reset source,
 // and naming it one confuses the fix.
-fn sourcesPhrase(ctx: *context.Context, mux: @import("../ir.zig").types.Cell) error{OutOfMemory}![]const u8 {
+fn sourcesPhrase(ctx: *context.Context, alloc: std.mem.Allocator, mux: @import("../ir.zig").types.Cell) error{OutOfMemory}![]const u8 {
     var legs = std.ArrayListUnmanaged(@import("../ir.zig").bits.Bit).empty;
     for ([_][]const u8{ "A", "B" }) |pin| {
-        if (bus.portBits(mux, pin)) |bits| try legs.appendSlice(ctx.tmp, bits);
+        if (bus.portBits(mux, pin)) |bits| try legs.appendSlice(alloc, bits);
     }
-    const ports = try context.backwardPortFanin(ctx.tmp, ctx.mod, legs.items);
+    const ports = try context.backwardPortFanin(alloc, ctx.mod, legs.items);
     std.mem.sort([]const u8, ports, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.order(u8, a, b) == .lt;

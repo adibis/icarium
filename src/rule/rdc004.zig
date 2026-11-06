@@ -25,6 +25,12 @@ pub const rule = registry.Rule{
 // ANDed external resets are the user's business, not the tool's.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
+    // Walks die per flop: reset cones span the design, and one
+    // retained walk per flop buried the full-top once pass.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    var scratch = std.heap.ArenaAllocator.init(backing.allocator());
+    defer scratch.deinit();
     for (ctx.mod.cells) |c| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         if (ctx.reset_syncs.isMember(c.name)) continue;
@@ -32,7 +38,8 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const rst = bus.portBits(c, ap.pin) orelse continue;
         if (rst.len == 0 or rst[0] != .sig) continue;
         if (!isCombSource(ctx, rst[0].sig)) continue;
-        const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, rst);
+        _ = scratch.reset(.retain_capacity);
+        const fanin = try context.backwardFlopFanin(scratch.allocator(), ctx.mod, rst);
         if (fanin.items.len == 0) continue;
         var names = std.ArrayListUnmanaged([]const u8).empty;
         for (fanin.items) |f| try names.append(ctx.tmp, ctx.mod.cells[f].name);

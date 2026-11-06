@@ -43,7 +43,14 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }
     }
     if (clock_bits.count() == 0) return &.{};
-    const net_cells = try context.clockNetworkCells(ctx.tmp, ctx.mod);
+    // Walks die per cell: clock cones span the design, and one
+    // retained walk per cell buried the full-top once pass.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    const parent = backing.allocator();
+    var scratch = std.heap.ArenaAllocator.init(parent);
+    defer scratch.deinit();
+    const net_cells = try context.clockNetworkCells(parent, ctx.mod);
 
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     var seen = std.AutoHashMapUnmanaged(Triple, void).empty;
@@ -55,7 +62,8 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             for (p.bits) |b| {
                 if (b != .sig or !clock_bits.contains(b.sig)) continue;
                 if (clock.cells.isTransparent(c.type)) {
-                    const terms = try terminals(ctx.tmp, mod, ci, &net_cells);
+                    _ = scratch.reset(.retain_capacity);
+                    const terms = try terminals(scratch.allocator(), mod, ci, &net_cells);
                     for (terms) |t| {
                         const tc = mod.cells[t.cell];
                         if (skipPin(ctx, tc, t.pin)) continue;

@@ -31,12 +31,19 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var by_cell = std.AutoHashMapUnmanaged(usize, *const reset.trace.FlopReset).empty;
     for (ctx.reset_view.flops) |*fr| try by_cell.put(ctx.tmp, fr.cell, fr);
     var groups = std.HashMapUnmanaged(Group, Dsts, GroupCtx, std.hash_map.default_max_load_percentage).empty;
+    // Walks die per flop: reset cones span the design, and one
+    // retained walk per flop buried the full-top once pass.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    var scratch = std.heap.ArenaAllocator.init(backing.allocator());
+    defer scratch.deinit();
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         const dom = ctx.table.domainOf(ci) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
         const bits = syncResetBits(ctx, &by_cell, ci) orelse continue;
-        const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, bits);
+        _ = scratch.reset(.retain_capacity);
+        const fanin = try context.backwardFlopFanin(scratch.allocator(), ctx.mod, bits);
         for (fanin.items) |f| {
             const fdom = ctx.table.domainOf(f) orelse continue;
             if (std.mem.eql(u8, fdom.name, "unknown")) continue;

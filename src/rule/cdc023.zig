@@ -70,12 +70,19 @@ fn netNames(ctx: *context.Context) error{OutOfMemory}!std.AutoHashMapUnmanaged(u
 // (transparent, mux, gate, divider master) within 16 hops.
 fn combineSinks(ctx: *context.Context, bit: u32) error{OutOfMemory}![]usize {
     var sinks = std.ArrayListUnmanaged(usize).empty;
+    // Walks die per flop: clock cones span the design, and one
+    // retained walk per flop buried the full-top once pass.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    var scratch = std.heap.ArenaAllocator.init(backing.allocator());
+    defer scratch.deinit();
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         const clk = bus.portBits(c, "CLK") orelse continue;
         for (clk) |b| {
             if (b != .sig) continue;
-            if (try reaches(ctx, b.sig, bit)) {
+            _ = scratch.reset(.retain_capacity);
+            if (try reaches(ctx, scratch.allocator(), b.sig, bit)) {
                 try sinks.append(ctx.tmp, ci);
                 break;
             }
@@ -86,17 +93,17 @@ fn combineSinks(ctx: *context.Context, bit: u32) error{OutOfMemory}![]usize {
 
 const Hop = struct { bit: u32, depth: u8 };
 
-fn reaches(ctx: *context.Context, from: u32, target: u32) error{OutOfMemory}!bool {
+fn reaches(ctx: *context.Context, alloc: std.mem.Allocator, from: u32, target: u32) error{OutOfMemory}!bool {
     const mod = ctx.mod;
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var queue = std.ArrayListUnmanaged(Hop).empty;
-    try queue.append(ctx.tmp, .{ .bit = from, .depth = 0 });
+    try queue.append(alloc, .{ .bit = from, .depth = 0 });
     var head: usize = 0;
     while (head < queue.items.len) : (head += 1) {
         const h = queue.items[head];
         if (h.bit == target) return true;
         if (seen.contains(h.bit)) continue;
-        try seen.put(ctx.tmp, h.bit, {});
+        try seen.put(alloc, h.bit, {});
         if (h.depth >= 16) continue;
         const drv = mod.driver_of.get(h.bit) orelse continue;
         const ci = drv.cell orelse continue;
@@ -105,14 +112,14 @@ fn reaches(ctx: *context.Context, from: u32, target: u32) error{OutOfMemory}!boo
         if (clock.cells.isSequential(c.type)) {
             const clk = bus.portBits(c, "CLK") orelse bus.portBits(c, "G") orelse bus.portBits(c, "EN") orelse continue;
             for (clk) |b| {
-                if (b == .sig) try queue.append(ctx.tmp, .{ .bit = b.sig, .depth = h.depth + 1 });
+                if (b == .sig) try queue.append(alloc, .{ .bit = b.sig, .depth = h.depth + 1 });
             }
             continue;
         }
         for (c.ports) |p| {
             if (p.direction == .output) continue;
             for (p.bits) |b| {
-                if (b == .sig) try queue.append(ctx.tmp, .{ .bit = b.sig, .depth = h.depth + 1 });
+                if (b == .sig) try queue.append(alloc, .{ .bit = b.sig, .depth = h.depth + 1 });
             }
         }
     }

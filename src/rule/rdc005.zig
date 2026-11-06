@@ -25,6 +25,12 @@ pub const rule = registry.Rule{
 // RDC-004; single ports are clean distribution.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
+    // Walks die per flop: reset cones span the design, and one
+    // retained walk per flop buried the full-top once pass.
+    var backing = ctx.table.workArena();
+    defer backing.deinit();
+    var scratch = std.heap.ArenaAllocator.init(backing.allocator());
+    defer scratch.deinit();
     for (ctx.mod.cells) |c| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         if (ctx.reset_syncs.isMember(c.name)) continue;
@@ -32,9 +38,11 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const rst = bus.portBits(c, ap.pin) orelse continue;
         if (rst.len == 0) continue;
         if (muxDriven(ctx, rst)) continue;
-        const flops = try context.backwardFlopFanin(ctx.tmp, ctx.mod, rst);
+        _ = scratch.reset(.retain_capacity);
+        const alloc = scratch.allocator();
+        const flops = try context.backwardFlopFanin(alloc, ctx.mod, rst);
         if (flops.items.len > 0) continue;
-        const ports = try context.backwardPortFanin(ctx.tmp, ctx.mod, rst);
+        const ports = try context.backwardPortFanin(alloc, ctx.mod, rst);
         if (ports.len < 2) continue;
         std.mem.sort([]const u8, ports, {}, struct {
             fn less(_: void, a: []const u8, b: []const u8) bool {
