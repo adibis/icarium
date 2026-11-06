@@ -27,7 +27,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var scratch = std.heap.ArenaAllocator.init(ctx.alloc);
     defer scratch.deinit();
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
-    var feedback = std.AutoHashMapUnmanaged(usize, bool).empty;
+    var feedback = std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(bool)).empty;
     var fanin = std.AutoHashMapUnmanaged(usize, []usize).empty;
     for (ctx.crossings) |x| {
         if (x.kind != .flop_flop_bus) continue;
@@ -49,12 +49,16 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (bus.isGrayEncodedSource(ctx, sc)) continue;
         if (ctx.marks.hasHandshake(src_name)) continue;
         if (ctx.marks.hasHandshake(ctx.mod.cells[dc].name)) continue;
-        const gop = try feedback.getOrPut(ctx.alloc, sc);
+        // Feedback keys by source and clock pair: the verdict
+        // answers for one domain pair, and sharing it across
+        // pairs both misreports and depends on arrival order.
+        const fop = try feedback.getOrPut(ctx.alloc, sc);
+        if (!fop.found_existing) fop.value_ptr.* = .empty;
+        const fkey = try std.fmt.allocPrint(ctx.alloc, "{s}|{s}", .{ x.src_clk, x.dst_clk });
+        const gop = try fop.value_ptr.getOrPut(ctx.alloc, fkey);
         if (!gop.found_existing) gop.value_ptr.* = try hasFeedback(ctx, &fanin, sc, x.src_clk, x.dst_clk);
         if (gop.value_ptr.*) continue;
-        const message = try std.fmt.allocPrint(ctx.alloc,
-            "functional data-hold risk on '{s}' -> '{s}': {d}-bit gated bus crossing from '{s}' to '{s}' has no synced-back handshake between the two domains. The destination's enable is synchronised, but nothing keeps the source payload stable while the enable is in flight. Add a req/ack handshake: hold the source payload until an ack from the destination confirms the sample.",
-            .{ src_name, ctx.mod.cells[dc].name, x.lanes.len, x.src_clk, x.dst_clk });
+        const message = try std.fmt.allocPrint(ctx.alloc, "functional data-hold risk on '{s}' -> '{s}': {d}-bit gated bus crossing from '{s}' to '{s}' has no synced-back handshake between the two domains. The destination's enable is synchronised, but nothing keeps the source payload stable while the enable is in flight. Add a req/ack handshake: hold the source payload until an ack from the destination confirms the sample.", .{ src_name, ctx.mod.cells[dc].name, x.lanes.len, x.src_clk, x.dst_clk });
         try out.append(ctx.alloc, .{
             .rule = rule.id,
             .severity = rule.severity,

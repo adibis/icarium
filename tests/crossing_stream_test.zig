@@ -144,12 +144,24 @@ const Checker = struct {
     split_runs: usize = 0,
     want_integrity: bool,
 
+    fn contentKey(x: crossing.enumerate.Crossing) error{OutOfMemory}![]const u8 {
+        // Stream batches carry no ids, so identity is content:
+        // kind plus both endpoints plus both clocks.
+        return try std.fmt.allocPrint(std.testing.allocator, "{t}|{?d}|{s}|{d}|{d}|{?d}|{s}|{d}|{d}|{s}|{s}", .{
+            x.kind,     x.src.cell, x.src.port, x.src.bit,  x.src.lane,
+            x.dst.cell, x.dst.port, x.dst.bit,  x.dst.lane, x.src_clk,
+            x.dst_clk,
+        });
+    }
+
     fn onBatch(c: *Checker, batch: crossing.enumerate.Batch) error{OutOfMemory}!void {
         c.batches += 1;
         // Every pair builds one bit crossing; bus records add more.
         if (batch.crossings.len < batch.pairs) c.bad_ids += 1;
         for (batch.crossings) |x| {
-            if (c.want.getPtr(x.id)) |left| {
+            const key = try contentKey(x);
+            defer std.testing.allocator.free(key);
+            if (c.want.getPtr(key)) |left| {
                 if (left.* == 0) {
                     c.bad_ids += 1;
                 } else left.* -= 1;
@@ -179,7 +191,11 @@ fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize, budget: us
     var l = try loadAll(json, sdc_text);
     defer freeAll(&l);
     var c = Checker{ .want = .empty, .seen_cells = .empty, .seen_ports = .empty, .want_integrity = want_integrity };
-    defer c.want.deinit(std.testing.allocator);
+    defer {
+        var wit = c.want.iterator();
+        while (wit.next()) |e| std.testing.allocator.free(e.key_ptr.*);
+        c.want.deinit(std.testing.allocator);
+    }
     defer c.seen_cells.deinit(std.testing.allocator);
     defer {
         var it = c.seen_ports.iterator();
@@ -187,7 +203,10 @@ fn checkStream(json: []const u8, sdc_text: ?[]const u8, chunk: usize, budget: us
         c.seen_ports.deinit(std.testing.allocator);
     }
     for (l.report.crossings) |x| {
-        const slot = try c.want.getOrPut(std.testing.allocator, x.id);
+        const key = try Checker.contentKey(x);
+        errdefer std.testing.allocator.free(key);
+        const slot = try c.want.getOrPut(std.testing.allocator, key);
+        if (!slot.found_existing) slot.key_ptr.* = key else std.testing.allocator.free(key);
         slot.value_ptr.* = (if (slot.found_existing) slot.value_ptr.* else 0) + 1;
     }
     try crossing.enumerate.streamBatches(std.testing.allocator, &l.mod, &l.clock_asg, &l.sdc_mod, chunk, budget, &c, Checker.onBatch);

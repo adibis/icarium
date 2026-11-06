@@ -187,14 +187,17 @@ fn walkRanges(
     return ws;
 }
 
-// Bit records plus bus groups, id-sorted. The build arena owns
-// the crossings; transients die in build_alloc, never in the
-// retained pair arenas they would bloat.
+// Bit records plus bus groups. The build arena owns the
+// crossings; transients die in build_alloc, never in the
+// retained pair arenas they would bloat. Stream builds skip
+// the id sort and the ids themselves: every consumer folds
+// order-free, and the sort costs two-thirds of build time.
 fn buildChunk(
     en: *Enumerator,
     build_alloc: std.mem.Allocator,
     pairs: []const Pair,
     alloc: std.mem.Allocator,
+    stream: bool,
 ) error{OutOfMemory}![]Crossing {
     en.pair_alloc = build_alloc;
     var plist: std.ArrayListUnmanaged(Pair) = .{ .items = @constCast(pairs), .capacity = pairs.len };
@@ -204,9 +207,10 @@ fn buildChunk(
     try out.ensureTotalCapacity(alloc, pairs.len);
     // Emit already applied keepPair; every pair here builds.
     for (plist.items) |pr| {
-        try out.append(alloc, try en.buildCrossing(pr, null));
+        try out.append(alloc, try en.buildCrossing(pr, null, stream));
     }
-    try en.appendBusGroups(&plist, &out);
+    try en.appendBusGroups(&plist, &out, stream);
+    if (stream) return out.items;
     // Argsort indices, then permute in place: a Crossing spans
     // hundreds of bytes, so a gathered copy doubles a vector
     // already worth gigabytes. IDs are unique, so the order is
@@ -367,7 +371,7 @@ pub fn enumerate(
     defer build_tmp.deinit();
     var en = walked[0].en;
     en.alloc = alloc;
-    const sorted = try buildChunk(&en, build_tmp.allocator(), pairs.items, alloc);
+    const sorted = try buildChunk(&en, build_tmp.allocator(), pairs.items, alloc, false);
     return .{ .backing = backing, .parenas = parenas, .crossings = sorted };
 }
 
@@ -399,7 +403,7 @@ fn runSub(
         break :blk sub;
     } else all_pairs;
     en.alloc = chunk_arena.allocator();
-    const crossings = try buildChunk(en, build_tmp.allocator(), pairs, chunk_arena.allocator());
+    const crossings = try buildChunk(en, build_tmp.allocator(), pairs, chunk_arena.allocator(), true);
     try onBatch(bctx, .{ .pairs = pairs.len, .crossings = crossings });
 }
 
@@ -733,7 +737,7 @@ const Enumerator = struct {
         return en.asyncFor(pr);
     }
 
-    fn buildCrossing(en: *Enumerator, pr: Pair, kind_override: ?Kind) error{OutOfMemory}!Crossing {
+    fn buildCrossing(en: *Enumerator, pr: Pair, kind_override: ?Kind, stream: bool) error{OutOfMemory}!Crossing {
         const kind: Kind = kind_override orelse if (pr.dst_control)
             .clock_control
         else if (pr.dst_class == .clk)
@@ -746,14 +750,19 @@ const Enumerator = struct {
             .flop_flop_bit;
         const src_clk = try en.srcClock(pr);
         const dst_clk = try en.dstClock(pr);
-        const src_name = try renderEndpoint(en.alloc, en.mod, pr.src_cell, pr.src_port, pr.src_bit);
-        defer en.alloc.free(src_name);
-        const dst_name = try renderEndpoint(en.alloc, en.mod, pr.dst_cell, pr.dst_pin, pr.dst_bit);
-        defer en.alloc.free(dst_name);
-        const ident = id.compute(@tagName(kind), src_name, dst_name, src_clk, dst_clk);
+        // Stream builds skip ids: no rule reads them, and the
+        // hash plus endpoint renders cost per crossing.
+        const ident: []const u8 = if (stream) &.{} else blk: {
+            const src_name = try renderEndpoint(en.alloc, en.mod, pr.src_cell, pr.src_port, pr.src_bit);
+            defer en.alloc.free(src_name);
+            const dst_name = try renderEndpoint(en.alloc, en.mod, pr.dst_cell, pr.dst_pin, pr.dst_bit);
+            defer en.alloc.free(dst_name);
+            const h = id.compute(@tagName(kind), src_name, dst_name, src_clk, dst_clk);
+            break :blk try en.alloc.dupe(u8, &h);
+        };
         const dc = en.mod.cells[pr.dst_cell];
         return .{
-            .id = try en.alloc.dupe(u8, &ident),
+            .id = ident,
             .kind = kind,
             .src = .{
                 .cell = pr.src_cell,
@@ -785,6 +794,7 @@ const Enumerator = struct {
         en: *Enumerator,
         pairs: *const std.ArrayListUnmanaged(Pair),
         out: *std.ArrayListUnmanaged(Crossing),
+        stream: bool,
     ) error{OutOfMemory}!void {
         var cand: std.ArrayListUnmanaged(usize) = .empty;
         for (pairs.items, 0..) |pr, i| {
@@ -827,7 +837,7 @@ const Enumerator = struct {
                     lanes[n] = .{ .src_lane = pairs.items[k].src_lane, .dst_lane = pairs.items[k].dst_lane };
                 }
                 const bkind: Kind = if (pairs.items[run[0]].src_cell == null) .port_flop_bus else .flop_flop_bus;
-                var bus = try en.buildCrossing(pairs.items[run[0]], bkind);
+                var bus = try en.buildCrossing(pairs.items[run[0]], bkind, stream);
                 bus.lanes = lanes;
                 bus.hops = try en.alloc.dupe(usize, bus.hops);
                 try out.append(en.alloc, bus);
