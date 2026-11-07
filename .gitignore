@@ -9,3 +9,7 @@ zig-out/
 bench/results.json
 bench/work/
 bench/__pycache__/
+# Hugo site build outputs.
+site/public/
+site/resources/
+site/.hugo_build.lock

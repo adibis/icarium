@@ -1,0 +1,72 @@
+# DEPLOY: baseURL + GitHub URLs are placeholders until the repo has a
+# remote. Confirm owner/repo name before the first Pages deploy.
+baseURL: https://adibis.github.io/icarium/
+locale: en-us
+title: icarium
+theme: hextra
+
+enableRobotsTXT: true
+enableGitInfo: true
+
+params:
+  description: "Open-source structural CDC/RDC checker in Zig: full-chip SystemVerilog, JSON-native formats, Accellera 1.0 interchange."
+
+  navbar:
+    displayTitle: true
+    displayLogo: false
+    width: wide
+
+  page:
+    width: wide
+
+  theme:
+    default: light
+    displayToggle: true
+
+  footer:
+    displayCopyright: true
+    displayPoweredBy: false
+
+  imageZoom:
+    enable: true
+
+  displayUpdatedDate: true
+  dateFormat: "January 2, 2006"
+
+menu:
+  main:
+    - name: Docs
+      pageRef: /docs
+      weight: 1
+    - name: Rules
+      pageRef: /docs/rules
+      weight: 2
+    - name: Benchmarks
+      pageRef: /docs/benchmarks
+      weight: 3
+    - name: About
+      pageRef: /about
+      weight: 4
+    - name: search
+      weight: 5
+      params:
+        type: search
+    - name: theme-toggle
+      weight: 6
+      params:
+        type: theme-toggle
+    - name: GitHub
+      url: https://github.com/adibis/icarium
+      weight: 7
+      params:
+        icon: github
+
+markup:
+  highlight:
+    noClasses: false
+    style: monokai
+    lineNos: true
+    lineNumbersInTable: false
+  goldmark:
+    renderer:
+      unsafe: true
