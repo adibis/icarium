@@ -326,18 +326,11 @@ fn transparentLane(c: ir.types.Cell, bit: u32) ?u32 {
     return null;
 }
 
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
-}
-
 fn clkBits(c: ir.types.Cell) ?[]ir.bits.Bit {
     // Flops clock on CLK; latches open on G or EN instead.
-    if (portBits(c, "CLK")) |b| return b;
-    if (portBits(c, "G")) |b| return b;
-    return portBits(c, "EN");
+    if (c.portBits("CLK")) |b| return b;
+    if (c.portBits("G")) |b| return b;
+    return c.portBits("EN");
 }
 
 // Declared clocks and their unions identify a gate's clock
@@ -464,10 +457,10 @@ const Walker = struct {
 
     fn throughMux(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
-        const a = portBits(c, "A") orelse return w.make("unknown", "", &.{"malformed clock mux"});
-        const b = portBits(c, "B") orelse return w.make("unknown", "", &.{"malformed clock mux"});
-        const s = portBits(c, "S") orelse return w.make("unknown", "", &.{"malformed clock mux"});
-        if (constSel(s)) |sel| {
+        const a = c.portBits("A") orelse return w.make("unknown", "", &.{"malformed clock mux"});
+        const b = c.portBits("B") orelse return w.make("unknown", "", &.{"malformed clock mux"});
+        const s = c.portBits("S") orelse return w.make("unknown", "", &.{"malformed clock mux"});
+        if (ir.bits.constSel(s)) |sel| {
             const dom = try w.resolveBits(if (sel) b else a);
             if (std.mem.eql(u8, dom.name, "unknown"))
                 return w.make("unknown", "", &.{"clock mux static leg unresolved"});
@@ -475,7 +468,7 @@ const Walker = struct {
         }
         // A constant data leg under a dynamic select is a gate
         // (S&B / ~S|B): the gate path counts the live leg for us.
-        if (allConst(a) or allConst(b)) return w.throughGate(bit, ci);
+        if (ir.bits.allConst(a) or ir.bits.allConst(b)) return w.throughGate(bit, ci);
         // Dynamic selects are recorded before legs resolve: the
         // select domain stands even when a leg does not.
         const sel = try w.resolveBits(s);
@@ -748,8 +741,8 @@ const Walker = struct {
     // most transparent cells: the divide-by-2 idiom `q <= ~q`.
     fn isToggle(w: *Walker, ci: usize) bool {
         const c = w.mod.cells[ci];
-        const d = portBits(c, "D") orelse return false;
-        const q = portBits(c, "Q") orelse return false;
+        const d = c.portBits("D") orelse return false;
+        const q = c.portBits("Q") orelse return false;
         if (d.len != 1 or q.len != 1) return false;
         if (d[0] != .sig or q[0] != .sig) return false;
         return w.foldsBack(d[0].sig, ci, 0);
@@ -771,33 +764,6 @@ const Walker = struct {
             }
         }
         return any;
-    }
-
-    // A data leg with no signal bits is tied off: the mux
-    // degenerates, and the live leg decides alone.
-    fn allConst(s: []const ir.bits.Bit) bool {
-        if (s.len == 0) return false;
-        for (s) |b| if (b == .sig) return false;
-        return true;
-    }
-
-    // Only constants are statically known selects; anything else
-    // needs value propagation we deliberately do not have (v1).
-    fn constSel(s: []const ir.bits.Bit) ?bool {
-        if (s.len == 0) return null;
-        var val: ?bool = null;
-        for (s) |b| switch (b) {
-            .zero => {
-                if (val != null and val.? != false) return null;
-                val = false;
-            },
-            .one => {
-                if (val != null and val.? != true) return null;
-                val = true;
-            },
-            else => return null,
-        };
-        return val;
     }
 
     fn describeSelect(w: *Walker, s: []const ir.bits.Bit) error{OutOfMemory}![]u8 {

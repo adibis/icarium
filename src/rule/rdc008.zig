@@ -67,9 +67,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }.less);
         if (names.items.len < 2) continue;
         const desc = try dstDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "unsynced primary-reset port: top-level reset port '{s}' drives {s} in {s} directly, with no reset-synchronizer chain in that clock domain. Reset assertion is fine, but the deassertion edge is unsynchronized to the consumer clock: recovery/removal timing violations can leave random subsets of flops in different reset states. Add a 2FF reset-synchronizer chain in {s} whose ARST is '{s}', and route consumers through the chain's tail.",
-            .{ k.port, desc, k.clk, k.clk, k.port });
+        const message = try std.fmt.allocPrint(ctx.tmp, "unsynced primary-reset port: top-level reset port '{s}' drives {s} in {s} directly, with no reset-synchronizer chain in that clock domain. Reset assertion is fine, but the deassertion edge is unsynchronized to the consumer clock: recovery/removal timing violations can leave random subsets of flops in different reset states. Add a 2FF reset-synchronizer chain in {s} whose ARST is '{s}', and route consumers through the chain's tail.", .{ k.port, desc, k.clk, k.clk, k.port });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

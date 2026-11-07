@@ -45,7 +45,7 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (clock.cells.isLatch(ctx.mod.cells[dc].type)) return;
     if (std.mem.eql(u8, x.dst_clk, "unknown")) return;
     if (std.mem.eql(u8, x.src_clk, x.dst_clk)) return;
-    const sq = bus.portBits(ctx.mod.cells[sc], "Q") orelse return;
+    const sq = ctx.mod.cells[sc].portBits("Q") orelse return;
     if (sq.len < 2) return;
     const outer = try acc.groups.getOrPut(ctx.range_alloc, sc);
     if (!outer.found_existing) outer.value_ptr.* = .empty;
@@ -96,7 +96,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
                 return std.mem.order(u8, a, b) == .lt;
             }
         }.less);
-        const sq = bus.portBits(ctx.mod.cells[k.src], "Q").?;
+        const sq = ctx.mod.cells[k.src].portBits("Q").?;
         const desc = try laneDesc(ctx, names.items);
         const message = try std.fmt.allocPrint(ctx.tmp, "sliced-bus reconvergence across CDC: source flop {s} (WIDTH={d}) is sliced into {d} per-lane crossings to clock domain {s} ({s}). Each lane resolves metastability on its own schedule. Fix: gray-code the source, use a req/ack handshake, or replace the per-lane sync chains with a single multi-bit sync chain.", .{ src_name, sq.len, names.items.len, desc, k.clk });
         try out.append(ctx.tmp, .{

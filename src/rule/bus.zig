@@ -6,20 +6,14 @@ const ir = @import("../ir.zig");
 // Structural bus-crossing tests shared by the bus rules: gating
 // detection and gray-encode recognition. One home avoids drift
 // between the rule that demands them and the ones that exempt.
-pub fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
-}
 
 // Destination Q drives another same-width D lane for lane in the
 // same clock: the async-FIFO pointer shape, gray-friendly.
 pub fn isMultibitSyncFirstStage(ctx: *context.Context, dst: usize, dst_clock: []const u8) bool {
     const mod = ctx.mod;
     const c = mod.cells[dst];
-    const q = portBits(c, "Q") orelse return false;
-    const d = portBits(c, "D") orelse return false;
+    const q = c.portBits("Q") orelse return false;
+    const d = c.portBits("D") orelse return false;
     if (q.len < 2 or d.len != q.len) return false;
     for (q) |qb| {
         if (qb != .sig) return false;
@@ -31,7 +25,7 @@ pub fn isMultibitSyncFirstStage(ctx: *context.Context, dst: usize, dst_clock: []
         if (!std.mem.eql(u8, loc.port, "D")) continue;
         const n = mod.cells[nci];
         if (!clock.cells.isSequential(n.type)) continue;
-        const nd = portBits(n, "D") orelse continue;
+        const nd = n.portBits("D") orelse continue;
         if (nd.len != q.len) continue;
         var aligned = true;
         for (nd, q) |db, qb| {
@@ -59,7 +53,7 @@ pub fn isGrayEncodedSource(ctx: *context.Context, src: usize) bool {
 
 fn grayWalk(ctx: *context.Context, alloc: std.mem.Allocator, src: usize) bool {
     const mod = ctx.mod;
-    const d = portBits(mod.cells[src], "D") orelse return false;
+    const d = mod.cells[src].portBits("D") orelse return false;
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var frontier = std.ArrayListUnmanaged(GrayBit).empty;
     for (d) |b| {
@@ -89,8 +83,8 @@ fn grayWalk(ctx: *context.Context, alloc: std.mem.Allocator, src: usize) bool {
 const GrayBit = struct { bit: u32, depth: u8 };
 
 fn hasGraySignature(c: ir.types.Cell) bool {
-    const a = portBits(c, "A") orelse return false;
-    const b = portBits(c, "B") orelse return false;
+    const a = c.portBits("A") orelse return false;
+    const b = c.portBits("B") orelse return false;
     if (a.len < 2 or b.len != a.len) return false;
     for (0..a.len - 1) |i| {
         if (a[i + 1] != .sig or b[i] != .sig) return false;
@@ -125,7 +119,7 @@ fn gatedWalk(ctx: *context.Context, scratch: std.mem.Allocator, dst: usize, dst_
     const c = mod.cells[dst];
     const flopped = clock.cells.isSequential(c.type) and !clock.cells.isLatch(c.type);
     if (flopped) {
-        if (portBits(c, "EN")) |en| {
+        if (c.portBits("EN")) |en| {
             var any_sig = false;
             for (en) |b| {
                 if (b == .sig) any_sig = true;
@@ -136,7 +130,7 @@ fn gatedWalk(ctx: *context.Context, scratch: std.mem.Allocator, dst: usize, dst_
             }
         }
     }
-    const d = portBits(c, "D") orelse return false;
+    const d = c.portBits("D") orelse return false;
     var origins = std.AutoHashMapUnmanaged(usize, void).empty;
     for (d) |db| {
         if (db != .sig) continue;
@@ -147,7 +141,7 @@ fn gatedWalk(ctx: *context.Context, scratch: std.mem.Allocator, dst: usize, dst_
     var oit = origins.iterator();
     const origin = oit.next().?.key_ptr.*;
     if (!std.mem.eql(u8, mod.cells[origin].type, "$mux")) return false;
-    const s = portBits(mod.cells[origin], "S") orelse return false;
+    const s = mod.cells[origin].portBits("S") orelse return false;
     if (s.len == 0) return false;
     const fanin = try context.backwardFlopFanin(scratch, mod, s);
     if (fanin.items.len == 0) return false;
@@ -181,8 +175,8 @@ fn traceThroughBuffers(mod: *const ir.types.Module, bit: u32) ?usize {
         const c = mod.cells[ci];
         if (buffer_types.get(c.type) == null) return ci;
         if (hops >= 2) return ci;
-        const a = portBits(c, "A") orelse return ci;
-        const y = portBits(c, "Y") orelse return ci;
+        const a = c.portBits("A") orelse return ci;
+        const y = c.portBits("Y") orelse return ci;
         if (a.len != y.len) return ci;
         const idx = yIndex(y, cur) orelse return ci;
         if (a[idx] != .sig) return ci;

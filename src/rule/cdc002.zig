@@ -38,9 +38,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     }
     const depth = try ctx.table.chainDepth(ctx.mod, dc, x.dst_clk);
     if (depth.depth < 2 or depth.depth >= ctx.cfg.sync_depth) return null;
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "insufficient synchronizer depth on {s} -> {s} crossing: found {d} flop(s), required >= {d} (dst flop: {s})",
-        .{ x.src_clk, x.dst_clk, depth.depth, ctx.cfg.sync_depth, dst_name });
+    const message = try std.fmt.allocPrint(ctx.tmp, "insufficient synchronizer depth on {s} -> {s} crossing: found {d} flop(s), required >= {d} (dst flop: {s})", .{ x.src_clk, x.dst_clk, depth.depth, ctx.cfg.sync_depth, dst_name });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

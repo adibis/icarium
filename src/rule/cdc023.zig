@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -37,9 +36,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         }.less);
         const clocks = try std.mem.join(ctx.tmp, ", ", cb.clocks);
         const sample = try sinkSample(ctx, sinks);
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "CLK net `{s}` driven by combine of {{{s}}} at `{s}` (`{s}`): two distinct declared clocks are mixed combinationally onto one clock net. The net glitches and runs at no declared frequency; the clock-root tracer declines to assign a domain through it, leaving the {d} flop(s) it reaches ({s}) domain-unknown and their crossings unchecked. Gate ONE clock and use the other only as a synchronised enable, or select between them with a glitchless clock mux (a mux selects and is not reported here).",
-            .{ net, clocks, c.name, c.type, sinks.len, sample });
+        const message = try std.fmt.allocPrint(ctx.tmp, "CLK net `{s}` driven by combine of {{{s}}} at `{s}` (`{s}`): two distinct declared clocks are mixed combinationally onto one clock net. The net glitches and runs at no declared frequency; the clock-root tracer declines to assign a domain through it, leaving the {d} flop(s) it reaches ({s}) domain-unknown and their crossings unchecked. Gate ONE clock and use the other only as a synchronised enable, or select between them with a glitchless clock mux (a mux selects and is not reported here).", .{ net, clocks, c.name, c.type, sinks.len, sample });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
@@ -78,7 +75,7 @@ fn combineSinks(ctx: *context.Context, bit: u32) error{OutOfMemory}![]usize {
     defer scratch.deinit();
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
-        const clk = bus.portBits(c, "CLK") orelse continue;
+        const clk = c.portBits("CLK") orelse continue;
         for (clk) |b| {
             if (b != .sig) continue;
             _ = scratch.reset(.retain_capacity);
@@ -110,7 +107,7 @@ fn reaches(ctx: *context.Context, alloc: std.mem.Allocator, from: u32, target: u
         const c = mod.cells[ci];
         if (c.blackbox) continue;
         if (clock.cells.isSequential(c.type)) {
-            const clk = bus.portBits(c, "CLK") orelse bus.portBits(c, "G") orelse bus.portBits(c, "EN") orelse continue;
+            const clk = c.portBits("CLK") orelse c.portBits("G") orelse c.portBits("EN") orelse continue;
             for (clk) |b| {
                 if (b == .sig) try queue.append(alloc, .{ .bit = b.sig, .depth = h.depth + 1 });
             }

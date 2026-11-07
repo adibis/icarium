@@ -102,7 +102,7 @@ pub fn clockNetworkCells(
     for (mod.cells) |c| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         for ([_][]const u8{ "CLK", "G" }) |pin| {
-            const bits = portBits(c, pin) orelse continue;
+            const bits = c.portBits(pin) orelse continue;
             for (bits) |b| {
                 if (b == .sig) try frontier.append(alloc, b.sig);
             }
@@ -125,13 +125,6 @@ pub fn clockNetworkCells(
         }
     }
     return cells;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }
 
 const FaninBit = struct { bit: u32, depth: u8 };

@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -35,7 +34,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         const dom = ctx.table.domainOf(ci) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
-        const arst = bus.portBits(c, "ARST") orelse continue;
+        const arst = c.portBits("ARST") orelse continue;
         if (arst.len == 0) continue;
         _ = scratch.reset(.retain_capacity);
         const fanin = try context.backwardFlopFanin(scratch.allocator(), ctx.mod, arst);

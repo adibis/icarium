@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -104,9 +103,7 @@ fn noteChain(
         .zero => '0',
         else => '?',
     };
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "reset synchronizer {s} <- {s} ({d} stages) on {s}, {s}, head D '{c}', async root {s}; serves {d} on-chip consumer{s}",
-        .{ tail, head, ch.flops.len, clk, word, dc, tar.ref, ncon, if (ncon == 1) "" else "s" });
+    const message = try std.fmt.allocPrint(ctx.tmp, "reset synchronizer {s} <- {s} ({d} stages) on {s}, {s}, head D '{c}', async root {s}; serves {d} on-chip consumer{s}", .{ tail, head, ch.flops.len, clk, word, dc, tar.ref, ncon, if (ncon == 1) "" else "s" });
     return .{
         .rule = rule.id,
         .severity = .note,
@@ -122,9 +119,7 @@ fn fireClock(
     clk: []const u8,
     cclk: []const u8,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "reset synchronizer {s} runs on {s} but drives the async reset of {s} on {s}: the release edge arrives in the wrong clock domain and races the consumer clock",
-        .{ ctx.mod.cells[tail].name, clk, ctx.mod.cells[consumer].name, cclk });
+    const message = try std.fmt.allocPrint(ctx.tmp, "reset synchronizer {s} runs on {s} but drives the async reset of {s} on {s}: the release edge arrives in the wrong clock domain and races the consumer clock", .{ ctx.mod.cells[tail].name, clk, ctx.mod.cells[consumer].name, cclk });
     return .{
         .rule = rule.id,
         .severity = .err,
@@ -140,9 +135,7 @@ fn fireTap(
     stage: usize,
     consumer: usize,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "consumer {s} takes its async reset from internal tap {s} of reset synchronizer {s} instead of the final stage: the tap releases early with less settling time",
-        .{ ctx.mod.cells[consumer].name, ctx.mod.cells[stage].name, ctx.mod.cells[tail].name });
+    const message = try std.fmt.allocPrint(ctx.tmp, "consumer {s} takes its async reset from internal tap {s} of reset synchronizer {s} instead of the final stage: the tap releases early with less settling time", .{ ctx.mod.cells[consumer].name, ctx.mod.cells[stage].name, ctx.mod.cells[tail].name });
     return .{
         .rule = rule.id,
         .severity = .err,
@@ -157,9 +150,7 @@ fn fireComb(
     tail: usize,
     cl: reset.chains.Load,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "combinational {s} sits between reset synchronizer {s} and consumer {s}: the gate can glitch or skew the release edge the chain shaped",
-        .{ ctx.mod.cells[cl.comb].name, ctx.mod.cells[tail].name, ctx.mod.cells[cl.cell].name });
+    const message = try std.fmt.allocPrint(ctx.tmp, "combinational {s} sits between reset synchronizer {s} and consumer {s}: the gate can glitch or skew the release edge the chain shaped", .{ ctx.mod.cells[cl.comb].name, ctx.mod.cells[tail].name, ctx.mod.cells[cl.cell].name });
     return .{
         .rule = rule.id,
         .severity = .err,
@@ -176,9 +167,7 @@ fn fireRaw(
     clk: []const u8,
     root: []const u8,
 ) error{OutOfMemory}!finding.Finding {
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "consumer {s} on {s} uses raw reset {s} while reset synchronizer {s} serves the same root and clock: its release runs ahead of the synchronized consumers",
-        .{ ctx.mod.cells[consumer].name, clk, root, ctx.mod.cells[tail].name });
+    const message = try std.fmt.allocPrint(ctx.tmp, "consumer {s} on {s} uses raw reset {s} while reset synchronizer {s} serves the same root and clock: its release runs ahead of the synchronized consumers", .{ ctx.mod.cells[consumer].name, clk, root, ctx.mod.cells[tail].name });
     return .{
         .rule = rule.id,
         .severity = .warn,

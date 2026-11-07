@@ -72,8 +72,8 @@ test "grouped text orders buckets first-seen, members sorted" {
         \\  [top]
         \\    $procdff$2: m2
         \\  u_blk
-        \\    u_blk.$procdff$1 @ top.sv:10.3-10.20 <- $procdff$2: m1
         \\    u_blk.$procdff$1 @ top.sv:10.3-10.20: m3
+        \\    u_blk.$procdff$1 @ top.sv:10.3-10.20 <- $procdff$2: m1
         \\
     ;
     try std.testing.expectEqualStrings(want, out);

@@ -56,9 +56,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const js = try joinNames(ctx.tmp, sides.sync_users.items);
         const both = overlap(sides);
         const both_clause = if (both == 0) "" else try std.fmt.allocPrint(ctx.tmp, "; {d} flop{s} take it both ways", .{ both, if (both == 1) "" else "s" });
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "net '{s}' ({s}) drives async reset of {s} and sync reset of {s}{s}. Async users leave reset on the net's edge while sync users wait for a clock edge, so the two groups never leave reset together; split the net or qualify one side.",
-            .{ k[cut + 1 ..], k[0..cut], ja, js, both_clause });
+        const message = try std.fmt.allocPrint(ctx.tmp, "net '{s}' ({s}) drives async reset of {s} and sync reset of {s}{s}. Async users leave reset on the net's edge while sync users wait for a clock edge, so the two groups never leave reset together; split the net or qualify one side.", .{ k[cut + 1 ..], k[0..cut], ja, js, both_clause });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

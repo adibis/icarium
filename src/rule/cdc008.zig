@@ -29,7 +29,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     for (mod.cells) |c| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         for ([_][]const u8{ "CLK", "G" }) |pin| {
-            const bits = portBits(c, pin) orelse continue;
+            const bits = c.portBits(pin) orelse continue;
             for (bits) |b| {
                 if (b == .sig) try clock_bits.put(ctx.tmp, b.sig, {});
             }
@@ -106,9 +106,7 @@ fn fire(
     if (seen.contains(key)) return;
     try seen.put(ctx.tmp, key, {});
     const label = try bitLabel(ctx.tmp, mod, bit);
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "clock signal {s} used as data: connected to {s}.{s}[{d}] (cell type {s})",
-        .{ label, c.name, pin, idx, c.type });
+    const message = try std.fmt.allocPrint(ctx.tmp, "clock signal {s} used as data: connected to {s}.{s}[{d}] (cell type {s})", .{ label, c.name, pin, idx, c.type });
     try out.append(ctx.tmp, .{
         .rule = rule.id,
         .severity = rule.severity,
@@ -172,7 +170,7 @@ fn terminals(
                 }
                 continue;
             }
-            const port = portBits(c, loc.port) orelse continue;
+            const port = c.portBits(loc.port) orelse continue;
             for (port, 0..) |b, i| {
                 if (b == .sig and b.sig == bit) try out.append(alloc, .{ .cell = ci, .pin = loc.port, .idx = i });
             }
@@ -190,11 +188,4 @@ fn bitLabel(alloc: std.mem.Allocator, mod: *const ir.types.Module, bit: u32) err
         }
     }
     return std.fmt.allocPrint(alloc, "net@{d}", .{bit});
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }

@@ -46,7 +46,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         const gated = try clockInputDomains(ctx, alloc, ci, ctrls);
         if (gated.cells.items.len == 0 and gated.clocks.items.len == 0) continue;
         for (ctrls) |cp| {
-            const bits = portBits(c, cp) orelse continue;
+            const bits = c.portBits(cp) orelse continue;
             if (bits.len == 0) continue;
             if (anyGlitchless(ctx, bits)) continue;
             const fanin = try context.backwardFlopFanin(alloc, ctx.mod, bits);
@@ -234,13 +234,6 @@ fn portOfBit(mod: *const ir.types.Module, bit: u32) ?[]const u8 {
         for (p.bits) |b| {
             if (b == .sig and b.sig == bit) return p.name;
         }
-    }
-    return null;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
     }
     return null;
 }

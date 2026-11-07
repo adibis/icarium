@@ -50,9 +50,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             }
         }.less);
         const desc = try consumerDesc(ctx, consumers.items);
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "flop CLK driven by undeclared port: top-level input port '{s}' drives {s} but has no create_clock declaration in the SDC. All other CDC checks that touch this domain are silently skipped. Add `create_clock -name {s} -period <T> [get_ports {s}]` to the SDC.",
-            .{ p, desc, p, p });
+        const message = try std.fmt.allocPrint(ctx.tmp, "flop CLK driven by undeclared port: top-level input port '{s}' drives {s} but has no create_clock declaration in the SDC. All other CDC checks that touch this domain are silently skipped. Add `create_clock -name {s} -period <T> [get_ports {s}]` to the SDC.", .{ p, desc, p, p });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

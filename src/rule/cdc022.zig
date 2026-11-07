@@ -39,9 +39,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         for (sync.primitives.depthParams(c.type, ctx.cfg.sync_primitives)) |param| {
             const depth = sync.primitives.syncDepth(c, param, xpm) orelse continue;
             if (depth >= ctx.cfg.sync_depth) continue;
-            const message = try std.fmt.allocPrint(ctx.tmp,
-                "synchroniser primitive `{s}` (`{s}`) declares {s}={d}, below the project's required synchroniser depth of {d}. The macro's stage count is a parameter, not a flop chain, so CDC-002 cannot see it. Raise {s} on the instantiation{s} or lower --sync-depth if {d} stages are sufficient here.",
-                .{ c.name, sync.primitives.normaliseType(c.type), param, depth, ctx.cfg.sync_depth, param, hint, depth });
+            const message = try std.fmt.allocPrint(ctx.tmp, "synchroniser primitive `{s}` (`{s}`) declares {s}={d}, below the project's required synchroniser depth of {d}. The macro's stage count is a parameter, not a flop chain, so CDC-002 cannot see it. Raise {s} on the instantiation{s} or lower --sync-depth if {d} stages are sufficient here.", .{ c.name, sync.primitives.normaliseType(c.type), param, depth, ctx.cfg.sync_depth, param, hint, depth });
             try out.append(ctx.tmp, .{
                 .rule = rule.id,
                 .severity = rule.severity,
@@ -52,4 +50,3 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     }
     return out.toOwnedSlice(ctx.tmp);
 }
-

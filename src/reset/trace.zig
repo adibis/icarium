@@ -81,7 +81,7 @@ pub fn assign(
             for (rp.async) |ap| {
                 // Table pins a cell lacks are skipped: a wrong guess
                 // degrades to a missing pin, never a wrong walk.
-                const bits = portBits(c, ap.pin) orelse continue;
+                const bits = c.portBits(ap.pin) orelse continue;
                 const res = try w.resolveBits(bits);
                 const pol = w.pinPolarity(c, ap, res);
                 var notes: std.ArrayListUnmanaged([]const u8) = .empty;
@@ -105,13 +105,6 @@ pub fn assign(
         });
     }
     return .{ .backing = backing, .flops = try flops.toOwnedSlice(alloc) };
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }
 
 const Resolved = struct {
@@ -180,10 +173,10 @@ const Walker = struct {
     }
 
     fn throughMux(w: *Walker, c: ir.types.Cell, follow_static: bool) error{OutOfMemory}!Resolved {
-        const s = portBits(c, "S") orelse return w.resolved(.unknown, "", 0, &.{"malformed reset mux"});
+        const s = c.portBits("S") orelse return w.resolved(.unknown, "", 0, &.{"malformed reset mux"});
         if (follow_static) {
-            if (constSel(s)) |sel| {
-                const leg = portBits(c, if (sel) "B" else "A") orelse
+            if (ir.bits.constSel(s)) |sel| {
+                const leg = c.portBits(if (sel) "B" else "A") orelse
                     return w.resolved(.unknown, "", 0, &.{"malformed reset mux"});
                 var res = try w.resolveBits(leg);
                 const note = try std.fmt.allocPrint(
@@ -204,7 +197,7 @@ const Walker = struct {
     fn detectSync(w: *Walker, c: ir.types.Cell) error{OutOfMemory}!SyncReset {
         if (cells.resetPins(c.type)) |rp| {
             for (rp.sync) |sp| {
-                if (portBits(c, sp)) |bits| {
+                if (c.portBits(sp)) |bits| {
                     const res = try w.resolveBits(bits);
                     return .{
                         .kind = .pin,
@@ -216,7 +209,7 @@ const Walker = struct {
                 }
             }
         }
-        const d = portBits(c, "D") orelse return SyncReset{ .kind = .none, .ref = "", .origin = .unknown, .origin_ref = "", .notes = &.{} };
+        const d = c.portBits("D") orelse return SyncReset{ .kind = .none, .ref = "", .origin = .unknown, .origin_ref = "", .notes = &.{} };
         var saw_pmux = false;
         for (d) |b| {
             if (b != .sig) continue;
@@ -225,7 +218,7 @@ const Walker = struct {
             const m = w.mod.cells[dci];
             if (std.mem.eql(u8, m.type, "$pmux")) saw_pmux = true;
             if (isSyncMux(m)) {
-                const s = portBits(m, "S") orelse return SyncReset{ .kind = .mux, .ref = try w.alloc.dupe(u8, m.name), .origin = .unknown, .origin_ref = "", .mux = dci, .notes = try w.dupeNotes(&.{"reset mux without select"}) };
+                const s = m.portBits("S") orelse return SyncReset{ .kind = .mux, .ref = try w.alloc.dupe(u8, m.name), .origin = .unknown, .origin_ref = "", .mux = dci, .notes = try w.dupeNotes(&.{"reset mux without select"}) };
                 const res = try w.resolveBits(s);
                 return .{
                     .kind = .mux,
@@ -378,46 +371,18 @@ fn flip(p: Polarity) Polarity {
     };
 }
 
-// Only constants are statically known selects; anything else
-// needs value propagation we deliberately do not have (v1).
-fn constSel(s: []const ir.bits.Bit) ?bool {
-    if (s.len == 0) return null;
-    var val: ?bool = null;
-    for (s) |b| switch (b) {
-        .zero => {
-            if (val != null and val.? != false) return null;
-            val = false;
-        },
-        .one => {
-            if (val != null and val.? != true) return null;
-            val = true;
-        },
-        else => return null,
-    };
-    return val;
-}
-
 // A sync-reset mux switches live data against a 0/1 leg by dynamic
 // select. Enable masks and don't-care muxes are ordinary logic.
 fn isSyncMux(m: ir.types.Cell) bool {
     if (!std.mem.eql(u8, m.type, "$mux")) return false;
-    const s = portBits(m, "S") orelse return false;
-    if (constSel(s) != null) return false;
-    const a = portBits(m, "A") orelse return false;
-    const b = portBits(m, "B") orelse return false;
-    const a_const = is01Const(a);
-    const b_const = is01Const(b);
+    const s = m.portBits("S") orelse return false;
+    if (ir.bits.constSel(s) != null) return false;
+    const a = m.portBits("A") orelse return false;
+    const b = m.portBits("B") orelse return false;
+    const a_const = ir.bits.is01Const(a);
+    const b_const = ir.bits.is01Const(b);
     if (a_const == b_const) return false;
     const data = if (a_const) b else a;
     for (data) |bit| if (bit == .sig) return true;
     return false;
-}
-
-fn is01Const(list: []const ir.bits.Bit) bool {
-    if (list.len == 0) return false;
-    for (list) |b| switch (b) {
-        .zero, .one => {},
-        else => return false,
-    };
-    return true;
 }

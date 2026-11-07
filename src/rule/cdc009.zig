@@ -32,12 +32,10 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     const sp = src_clk.period orelse return null;
     const dp = dst_clk.period orelse return null;
     if (!(sp * 1.5 < dp)) return null;
-    const d = portBits(ctx.mod.cells[sc], "D") orelse return null;
+    const d = ctx.mod.cells[sc].portBits("D") orelse return null;
     if (d.len != 1 or d[0] != .sig) return null;
     if (!isEdgeDetector(ctx, d[0].sig, x.src_clk)) return null;
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "pulse-width risk on '{s}' -> '{s}': src clock '{s}' (period {d}) is faster than dst clock '{s}' (period {d}); a 1-cycle src pulse may not be captured. Consider a pulse-stretcher, toggle synchronizer, or req/ack handshake.",
-        .{ ctx.mod.cells[sc].name, ctx.mod.cells[dc].name, x.src_clk, sp, x.dst_clk, dp });
+    const message = try std.fmt.allocPrint(ctx.tmp, "pulse-width risk on '{s}' -> '{s}': src clock '{s}' (period {d}) is faster than dst clock '{s}' (period {d}); a 1-cycle src pulse may not be captured. Consider a pulse-stretcher, toggle synchronizer, or req/ack handshake.", .{ ctx.mod.cells[sc].name, ctx.mod.cells[dc].name, x.src_clk, sp, x.dst_clk, dp });
     return .{
         .rule = rule.id,
         .severity = rule.severity,
@@ -65,8 +63,8 @@ fn isEdgeDetector(ctx: *context.Context, d_bit: u32, src_clock: []const u8) bool
     const ci = drv.cell orelse return false;
     const c = ctx.mod.cells[ci];
     if (and_types.get(c.type) == null or !std.mem.eql(u8, drv.port, "Y")) return false;
-    const a = portBits(c, "A") orelse return false;
-    const b = portBits(c, "B") orelse return false;
+    const a = c.portBits("A") orelse return false;
+    const b = c.portBits("B") orelse return false;
     if (a.len != 1 or b.len != 1) return false;
     if (a[0] != .sig or b[0] != .sig) return false;
     return isPair(ctx, a[0].sig, b[0].sig, src_clock) or
@@ -79,7 +77,7 @@ fn isPair(ctx: *context.Context, direct: u32, inverted: u32, src_clock: []const 
     const ci = drv.cell orelse return false;
     const c = ctx.mod.cells[ci];
     if (not_types.get(c.type) == null or !std.mem.eql(u8, drv.port, "Y")) return false;
-    const na = portBits(c, "A") orelse return false;
+    const na = c.portBits("A") orelse return false;
     if (na.len != 1 or na[0] != .sig) return false;
     const delay_d = srcFlopDPin(ctx, na[0].sig, src_clock) orelse return false;
     return delay_d == direct;
@@ -95,15 +93,8 @@ fn srcFlopDPin(ctx: *context.Context, q_bit: u32, src_clock: []const u8) ?u32 {
     if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) return null;
     const dom = ctx.table.domainOf(ci) orelse return null;
     if (!std.mem.eql(u8, dom.name, src_clock)) return null;
-    const d = portBits(c, "D") orelse return null;
-    const q = portBits(c, "Q") orelse return null;
+    const d = c.portBits("D") orelse return null;
+    const q = c.portBits("Q") orelse return null;
     if (d.len != 1 or q.len != 1 or d[0] != .sig) return null;
     return d[0].sig;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }

@@ -447,19 +447,7 @@ const StreamState = struct {
 };
 
 fn sortFindings(findings: []rule.finding.Finding) void {
-    std.mem.sort(rule.finding.Finding, findings, {}, struct {
-        fn less(_: void, a: rule.finding.Finding, b: rule.finding.Finding) bool {
-            const r = std.mem.order(u8, a.rule, b.rule);
-            if (r != .eq) return r == .lt;
-            const d = std.mem.order(u8, a.dst, b.dst);
-            if (d != .eq) return d == .lt;
-            const da = a.driver orelse "";
-            const db = b.driver orelse "";
-            const v = std.mem.order(u8, da, db);
-            if (v != .eq) return v == .lt;
-            return std.mem.order(u8, a.message, b.message) == .lt;
-        }
-    }.less);
+    std.mem.sort(rule.finding.Finding, findings, {}, rule.finding.Finding.less);
 }
 
 fn splitIds(alloc: std.mem.Allocator, s: ?[]const u8) error{OutOfMemory}![][]const u8 {

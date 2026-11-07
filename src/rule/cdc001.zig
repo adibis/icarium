@@ -48,9 +48,7 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         try std.fmt.allocPrint(ctx.tmp, "port {s}", .{x.src.port});
     // Both clocks resolve here: the dispatcher routes unclocked
     // pairs to CDC-025, so no unresolved branch survives.
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "unsynchronized control crossing {s} -> {s} (src: {s}): destination flop {s} has no second-stage synchronizer (chain depth = {d})",
-        .{ x.src_clk, x.dst_clk, src_desc, dst_name, depth.depth });
+    const message = try std.fmt.allocPrint(ctx.tmp, "unsynchronized control crossing {s} -> {s} (src: {s}): destination flop {s} has no second-stage synchronizer (chain depth = {d})", .{ x.src_clk, x.dst_clk, src_desc, dst_name, depth.depth });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

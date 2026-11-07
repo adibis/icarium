@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
@@ -45,8 +44,8 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (std.mem.eql(u8, x.dst_clk, "unknown")) return;
     if (std.mem.eql(u8, x.src_clk, x.dst_clk)) return;
     if (ctx.marks.hasSync(ctx.mod.cells[dc].name)) return;
-    const d = bus.portBits(ctx.mod.cells[dc], "D") orelse return;
-    const q = bus.portBits(ctx.mod.cells[dc], "Q") orelse return;
+    const d = ctx.mod.cells[dc].portBits("D") orelse return;
+    const q = ctx.mod.cells[dc].portBits("Q") orelse return;
     if (d.len != 1 or q.len != 1) return;
     if (d[0] != .sig or q[0] != .sig) return;
     const entry = try ctx.table.chainDepth(ctx.mod, dc, x.dst_clk);

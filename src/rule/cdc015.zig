@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
@@ -81,7 +80,7 @@ fn foreignResets(
     var out = std.ArrayListUnmanaged(Offender).empty;
     var seen = std.AutoHashMapUnmanaged(usize, void).empty;
     for (stages) |s| {
-        const arst = bus.portBits(ctx.mod.cells[s], "ARST") orelse continue;
+        const arst = ctx.mod.cells[s].portBits("ARST") orelse continue;
         if (arst.len == 0) continue;
         const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, arst);
         for (fanin.items) |f| {

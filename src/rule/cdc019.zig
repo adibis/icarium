@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
@@ -46,14 +45,14 @@ pub fn accumulate(acc: *Accum, ctx: *context.Context, x: crossing.enumerate.Cros
     if (clock.cells.isLatch(ctx.mod.cells[dc].type)) return;
     if (std.mem.eql(u8, x.dst_clk, "unknown")) return;
     if (std.mem.eql(u8, x.src_clk, x.dst_clk)) return;
-    const sd = bus.portBits(ctx.mod.cells[sc], "D") orelse return;
+    const sd = ctx.mod.cells[sc].portBits("D") orelse return;
     if (sd.len != 1 or sd[0] != .sig) return;
     const drv = ctx.mod.driver_of.get(sd[0].sig) orelse return;
     const di = drv.cell orelse return;
     if (!std.mem.eql(u8, drv.port, "Y")) return;
     const dt = ctx.mod.cells[di].type;
     if (clock.cells.isSequential(dt) and !clock.cells.isLatch(dt)) return;
-    const y = bus.portBits(ctx.mod.cells[di], "Y") orelse return;
+    const y = ctx.mod.cells[di].portBits("Y") orelse return;
     var wide = false;
     var int_bits: usize = 0;
     for (y) |b| {

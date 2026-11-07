@@ -12,11 +12,11 @@ const rule = @import("../rule.zig");
 pub const delimiter: u8 = '|';
 
 const finding_fields = [_][]const u8{
-    "rule",           "severity",        "title",
-    "dst",            "dst_kind",        "dst_instance",
-    "dst_src",        "driver",          "driver_kind",
-    "driver_instance", "driver_src",     "message",
-    "waiver_id",      "waiver_reason",   "waiver_location",
+    "rule",            "severity",      "title",
+    "dst",             "dst_kind",      "dst_instance",
+    "dst_src",         "driver",        "driver_kind",
+    "driver_instance", "driver_src",    "message",
+    "waiver_id",       "waiver_reason", "waiver_location",
 };
 
 pub fn writeFindingsToon(
@@ -40,9 +40,9 @@ pub fn writeFindingsToon(
         const dst = try common.resolve(tmp, mod, &idx, f.dst);
         var cells = std.ArrayListUnmanaged(?[]const u8).empty;
         try cells.appendSlice(tmp, &.{
-            f.rule, common.severityWord(f.severity), common.ruleTitle(f.rule),
-            f.dst,          kindWord(dst.kind),
-            dst.instance,   dst.src,
+            f.rule,  common.severityWord(f.severity), common.ruleTitle(f.rule),
+            f.dst,   kindWord(dst.kind),              dst.instance,
+            dst.src,
         });
         if (f.driver) |d| {
             const drv = try common.resolve(tmp, mod, &idx, d);
@@ -61,11 +61,13 @@ pub fn writeFindingsToon(
 }
 
 const crossing_fields = [_][]const u8{
-    "id",           "kind",
-    "src",          "src_kind",     "src_instance",
-    "dst",          "dst_kind",     "dst_instance",
-    "src_clock",    "dst_clock",    "async_per_sdc",
-    "width",        "hops",
+    "id",            "kind",
+    "src",           "src_kind",
+    "src_instance",  "dst",
+    "dst_kind",      "dst_instance",
+    "src_clock",     "dst_clock",
+    "async_per_sdc", "width",
+    "hops",
 };
 
 pub fn writeCrossingsToon(
@@ -90,12 +92,12 @@ pub fn writeCrossingsToon(
         const dst = try common.resolve(tmp, mod, &idx, dst_name);
         var cells = std.ArrayListUnmanaged(Cell).empty;
         try cells.appendSlice(tmp, &.{
-            .{ .text = x.id }, .{ .text = @tagName(x.kind) },
-            .{ .text = src_name }, .{ .text = kindWord(src.kind) }, .{ .text = src.instance },
-            .{ .text = dst_name }, .{ .text = kindWord(dst.kind) }, .{ .text = dst.instance },
-            .{ .text = x.src_clk }, .{ .text = x.dst_clk },
-            .{ .bool = x.async_per_sdc },
-            .{ .int = @intCast(@max(x.lanes.len, 1)) },
+            .{ .text = x.id },                .{ .text = @tagName(x.kind) },
+            .{ .text = src_name },            .{ .text = kindWord(src.kind) },
+            .{ .text = src.instance },        .{ .text = dst_name },
+            .{ .text = kindWord(dst.kind) },  .{ .text = dst.instance },
+            .{ .text = x.src_clk },           .{ .text = x.dst_clk },
+            .{ .bool = x.async_per_sdc },     .{ .int = @intCast(@max(x.lanes.len, 1)) },
             .{ .int = @intCast(x.hops.len) },
         });
         try writeTypedRow(writer, cells.items);

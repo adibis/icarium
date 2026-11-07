@@ -152,7 +152,7 @@ pub fn collect(parent: std.mem.Allocator, mod: *const ir.types.Module) error{Out
     var grays = std.StringHashMapUnmanaged(void).empty;
     var reset_syncs = std.StringHashMapUnmanaged(void).empty;
     for (mod.cells) |c| {
-        const q = portBits(c, "Q") orelse continue;
+        const q = c.portBits("Q") orelse continue;
         for (q) |b| {
             if (b != .sig) continue;
             if (sync_bits.contains(b.sig)) try syncs.put(alloc, c.name, {});
@@ -201,11 +201,4 @@ fn isInputPort(mod: *const ir.types.Module, name: []const u8) bool {
         if (std.mem.eql(u8, p.name, name)) return p.direction == .input;
     }
     return false;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }

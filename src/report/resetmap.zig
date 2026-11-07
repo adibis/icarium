@@ -353,14 +353,7 @@ fn floppedDriver(
     c: ir.types.Cell,
     pin: []const u8,
 ) error{OutOfMemory}!bool {
-    const bits = portBits(c, pin) orelse return false;
+    const bits = c.portBits(pin) orelse return false;
     const fanin = try rule.context.backwardFlopFanin(tmp, mod, bits);
     return fanin.items.len > 0;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }

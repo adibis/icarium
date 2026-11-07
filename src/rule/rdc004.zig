@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -35,7 +34,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         if (ctx.reset_syncs.isMember(c.name)) continue;
         const ap = reset.cells.canonicalAsyncPin(c) orelse continue;
-        const rst = bus.portBits(c, ap.pin) orelse continue;
+        const rst = c.portBits(ap.pin) orelse continue;
         if (rst.len == 0 or rst[0] != .sig) continue;
         if (!isCombSource(ctx, rst[0].sig)) continue;
         _ = scratch.reset(.retain_capacity);

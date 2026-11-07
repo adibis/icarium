@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -34,7 +33,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
         if (ctx.reset_syncs.isMember(c.name)) continue;
-        const arst = bus.portBits(c, "ARST") orelse continue;
+        const arst = c.portBits("ARST") orelse continue;
         if (arst.len == 0 or arst[0] != .sig) continue;
         const drv = ctx.mod.driver_of.get(arst[0].sig) orelse continue;
         const di = drv.cell orelse continue;
@@ -42,9 +41,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         if (!std.mem.eql(u8, dc.type, "$mux") and !std.mem.eql(u8, dc.type, "$pmux")) continue;
         _ = scratch.reset(.retain_capacity);
         const phrase = try sourcesPhrase(ctx, scratch.allocator(), dc);
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "muxed async reset without local synchronizer: flop '{s}' reset pin is driven by a {s} selecting between {s}. The mux makes source selection explicit (why RDC-005 stays silent), but the selected reset's deassertion edge is still asynchronous to this flop's clock. Add a 2FF reset synchronizer in the consumer clock domain between the mux and this flop's reset pin.",
-            .{ c.name, dc.type, phrase });
+        const message = try std.fmt.allocPrint(ctx.tmp, "muxed async reset without local synchronizer: flop '{s}' reset pin is driven by a {s} selecting between {s}. The mux makes source selection explicit (why RDC-005 stays silent), but the selected reset's deassertion edge is still asynchronous to this flop's clock. Add a 2FF reset synchronizer in the consumer clock domain between the mux and this flop's reset pin.", .{ c.name, dc.type, phrase });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
@@ -60,7 +57,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
 fn sourcesPhrase(ctx: *context.Context, alloc: std.mem.Allocator, mux: @import("../ir.zig").types.Cell) error{OutOfMemory}![]const u8 {
     var legs = std.ArrayListUnmanaged(@import("../ir.zig").bits.Bit).empty;
     for ([_][]const u8{ "A", "B" }) |pin| {
-        if (bus.portBits(mux, pin)) |bits| try legs.appendSlice(alloc, bits);
+        if (mux.portBits(pin)) |bits| try legs.appendSlice(alloc, bits);
     }
     const ports = try context.backwardPortFanin(alloc, ctx.mod, legs.items);
     std.mem.sort([]const u8, ports, {}, struct {

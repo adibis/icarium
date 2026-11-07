@@ -30,7 +30,7 @@ pub fn asyncLoads(
     var found = std.ArrayListUnmanaged(Load).empty;
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var frontier = std.ArrayListUnmanaged(FrontBit).empty;
-    const q = portBits(mod.cells[start], "Q") orelse return &.{};
+    const q = mod.cells[start].portBits("Q") orelse return &.{};
     for (q) |b| {
         if (b == .sig) try frontier.append(alloc, .{ .bit = b.sig, .depth = 0, .via_comb = false, .comb = 0 });
     }
@@ -183,7 +183,7 @@ fn traceChain(
     var cur = tail;
     for (0..6) |_| {
         const c = mod.cells[cur];
-        const d = portBits(c, "D") orelse return null;
+        const d = c.portBits("D") orelse return null;
         if (d.len != 1) return null;
         if (d[0] != .sig) {
             return .{
@@ -230,7 +230,7 @@ fn stepThroughBufs(mod: *const ir.types.Module, bit: u32) ?BufStep {
         const ci = drv.cell orelse return null;
         const c = mod.cells[ci];
         if (std.mem.eql(u8, c.type, "$buf")) {
-            const a = portBits(c, "A") orelse return null;
+            const a = c.portBits("A") orelse return null;
             if (a.len != 1) return null;
             if (a[0] != .sig) return .{ .cell = null, .bit = a[0] };
             cur = a[0].sig;
@@ -256,11 +256,4 @@ pub fn paramPolarity(c: ir.types.Cell, pin: []const u8) trace.Polarity {
         return .high;
     }
     return .high;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }

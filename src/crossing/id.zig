@@ -7,7 +7,7 @@ const std = @import("std");
 // are future work, not silent breakage.
 pub fn compute(kind: []const u8, src: []const u8, dst: []const u8, src_clk: []const u8, dst_clk: []const u8) [32]u8 {
     var h = std.crypto.hash.sha2.Sha256.init(.{});
-    for ([_] []const u8{ kind, src, dst, src_clk, dst_clk }) |part| {
+    for ([_][]const u8{ kind, src, dst, src_clk, dst_clk }) |part| {
         h.update(part);
         h.update(&.{0});
     }

@@ -142,7 +142,7 @@ fn forwardCells(ctx: *context.Context, start: usize) error{OutOfMemory}![]usize 
     var seen = std.AutoHashMapUnmanaged(u32, void).empty;
     var expanded = std.AutoHashMapUnmanaged(usize, void).empty;
     var frontier = std.ArrayListUnmanaged(FrontierBit).empty;
-    const q = portBits(mod.cells[start], "Q") orelse return &.{};
+    const q = mod.cells[start].portBits("Q") orelse return &.{};
     for (q) |b| {
         if (b == .sig) try frontier.append(ctx.tmp, .{ .bit = b.sig, .depth = 0 });
     }
@@ -173,10 +173,3 @@ fn forwardCells(ctx: *context.Context, start: usize) error{OutOfMemory}![]usize 
 }
 
 const FrontierBit = struct { bit: u32, depth: u8 };
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
-}

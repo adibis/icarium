@@ -308,14 +308,14 @@ fn prepare(
     var srclist: std.ArrayListUnmanaged(Source) = .empty;
     for (mod.cells, 0..) |c, ci| {
         if (clock.cells.isSequential(c.type)) {
-            if (portBits(c, "Q")) |q| {
+            if (c.portBits("Q")) |q| {
                 for (q, 0..) |b, lane| {
                     if (b != .sig) continue;
                     try srclist.append(tmp, .{ .cell = ci, .port = "Q", .bit = b.sig, .lane = lane });
                 }
             }
         } else if (clock.cells.isMemRead(c.type)) {
-            if (portBits(c, "DATA")) |d| {
+            if (c.portBits("DATA")) |d| {
                 for (d, 0..) |b, lane| {
                     if (b != .sig) continue;
                     try srclist.append(tmp, .{ .cell = ci, .port = "DATA", .bit = b.sig, .lane = lane });
@@ -591,20 +591,13 @@ fn opaqueSource(c: ir.types.Cell) bool {
 }
 
 fn samePinBits(a: ir.types.Cell, b: ir.types.Cell, pin: []const u8) bool {
-    const ca = portBits(a, pin) orelse return false;
-    const cb = portBits(b, pin) orelse return false;
+    const ca = a.portBits(pin) orelse return false;
+    const cb = b.portBits(pin) orelse return false;
     if (ca.len == 0 or ca.len != cb.len) return false;
     for (ca, cb) |x, y| {
         if (x != .sig or y != .sig or x.sig != y.sig) return false;
     }
     return true;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
-    }
-    return null;
 }
 
 const Pair = struct {
@@ -971,7 +964,7 @@ const Enumerator = struct {
 
     // The controlled clock: the domain leaving the mux or gate output.
     fn controlOutDomain(en: *Enumerator, ci: usize) ?clock.trace.Domain {
-        const y = portBits(en.mod.cells[ci], "Y") orelse return null;
+        const y = en.mod.cells[ci].portBits("Y") orelse return null;
         for (y) |b| {
             if (b != .sig) continue;
             if (en.bit_domains.get(b.sig)) |d| return d;
@@ -980,7 +973,7 @@ const Enumerator = struct {
     }
 
     fn memClockDomain(en: *Enumerator, ci: usize) ?clock.trace.Domain {
-        const clk = portBits(en.mod.cells[ci], "CLK") orelse return null;
+        const clk = en.mod.cells[ci].portBits("CLK") orelse return null;
         for (clk) |b| {
             if (b != .sig) continue;
             if (en.bit_domains.get(b.sig)) |d| return d;

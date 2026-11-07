@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -36,7 +35,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         // Sync outputs driving foreign pins still answer below.
         if (ctx.reset_syncs.isMember(c.name)) continue;
         const ap = reset.cells.canonicalAsyncPin(c) orelse continue;
-        const arst = bus.portBits(c, ap.pin) orelse continue;
+        const arst = c.portBits(ap.pin) orelse continue;
         if (arst.len == 0 or arst[0] != .sig) continue;
         const cons: u8 = if (reset.chains.paramPolarity(c, ap.pin) == .high) '1' else '0';
         const drv = ctx.mod.driver_of.get(arst[0].sig) orelse continue;
@@ -98,9 +97,7 @@ fn emitFlopGroups(
     for (keys.items) |k| {
         const names = try sortedNames(ctx, groups.get(k).?);
         const desc = try dstDesc(ctx, names, "destination flop: {s}", "destination flops share this polarity mismatch from the same source (reset distribution tree): ");
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "reset polarity mismatch: consumer flop(s) expect reset asserted on '{c}' (ARST_POLARITY={c}), but the producer flop {s} drives its reset to '{c}' on assert (ARST_VALUE={c}); consumer(s) will never enter reset when the producer does. Add an inverter between them, or flip the consumer's reset edge sensitivity to match. {s}",
-            .{ k.cons, k.cons, ctx.mod.cells[k.producer].name, k.prod, k.prod, desc });
+        const message = try std.fmt.allocPrint(ctx.tmp, "reset polarity mismatch: consumer flop(s) expect reset asserted on '{c}' (ARST_POLARITY={c}), but the producer flop {s} drives its reset to '{c}' on assert (ARST_VALUE={c}); consumer(s) will never enter reset when the producer does. Add an inverter between them, or flip the consumer's reset edge sensitivity to match. {s}", .{ k.cons, k.cons, ctx.mod.cells[k.producer].name, k.prod, k.prod, desc });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
@@ -131,9 +128,7 @@ fn emitPortGroups(
         const declared: []const u8 = if (k.decl == '1') "high" else "low";
         const wired: []const u8 = if (k.cons == '1') "high" else "low";
         const desc = try dstDesc(ctx, names, "destination flop: {s}", "destination flops disagree with the port-declared polarity: ");
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "reset polarity mismatch with port-level declaration: port '{s}' is annotated (* reset_polarity = \"{s}\" *) (active-{s}, asserts on '{c}'), but the consumer flop(s) are wired active-{s} (ARST_POLARITY={c}); the declared port polarity disagrees with the flop's reset edge sensitivity. Fix the flop's edge to match the port declaration, or remove the (* reset_polarity *) attribute if the declaration is wrong. {s}",
-            .{ k.port, declared, declared, k.decl, wired, k.cons, desc });
+        const message = try std.fmt.allocPrint(ctx.tmp, "reset polarity mismatch with port-level declaration: port '{s}' is annotated (* reset_polarity = \"{s}\" *) (active-{s}, asserts on '{c}'), but the consumer flop(s) are wired active-{s} (ARST_POLARITY={c}); the declared port polarity disagrees with the flop's reset edge sensitivity. Fix the flop's edge to match the port declaration, or remove the (* reset_polarity *) attribute if the declaration is wrong. {s}", .{ k.port, declared, declared, k.decl, wired, k.cons, desc });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

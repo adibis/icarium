@@ -91,8 +91,8 @@ pub const Table = struct {
     pub fn chainDepth(t: *Table, mod: *const ir.types.Module, head: usize, head_clock: []const u8) error{OutOfMemory}!Entry {
         if (t.memo[head]) |e| return e;
         const c = mod.cells[head];
-        const d = portBits(c, "D");
-        const q = portBits(c, "Q");
+        const d = c.portBits("D");
+        const q = c.portBits("Q");
         if (d == null or q == null or d.?.len != 1 or q.?.len != 1) {
             if (try t.packedDepth(mod, head)) |e| {
                 t.memo[head] = e;
@@ -108,7 +108,7 @@ pub const Table = struct {
         try visited.put(t.alloc, head, {});
         var cur = head;
         while (true) {
-            const cq = portBits(mod.cells[cur], "Q").?[0];
+            const cq = mod.cells[cur].portBits("Q").?[0];
             if (cq != .sig) break;
             if (t.readers(mod, cq.sig) != 1) break;
             const db = stepThroughTransparent(mod, cq.sig) orelse break;
@@ -135,14 +135,14 @@ pub const Table = struct {
     // feeds logic, not a second stage.
     pub fn hasInterStageComb(t: *const Table, mod: *const ir.types.Module, head: usize) ?usize {
         const c = mod.cells[head];
-        const q = portBits(c, "Q") orelse return null;
+        const q = c.portBits("Q") orelse return null;
         if (q.len != 1 or q[0] != .sig) return null;
         const head_clock = (t.domains.get(head) orelse return null).name;
         const ci = singleConsumer(mod, q[0].sig) orelse return null;
         const m = mod.cells[ci];
         if (clock.cells.isSequential(m.type)) return null;
         if (clock.cells.isTransparent(m.type)) return null;
-        const y = portBits(m, "Y") orelse return null;
+        const y = m.portBits("Y") orelse return null;
         for (y) |yb| {
             if (yb != .sig) continue;
             if (singleConsumer(mod, yb.sig) == null) continue;
@@ -174,16 +174,16 @@ pub const Table = struct {
     // and $pmux nests never qualify, so chains stop in front of them.
     fn resetMuxDataLeg(t: *const Table, mod: *const ir.types.Module, head: usize) ?[]ir.bits.Bit {
         const c = mod.cells[head];
-        const d = portBits(c, "D") orelse return null;
+        const d = c.portBits("D") orelse return null;
         if (d.len == 0 or d[0] != .sig) return null;
         const drv = mod.driver_of.get(d[0].sig) orelse return null;
         const mci = drv.cell orelse return null;
         if (!std.mem.eql(u8, drv.port, "Y")) return null;
         const m = mod.cells[mci];
         if (!std.mem.eql(u8, m.type, "$mux")) return null;
-        const y = portBits(m, "Y") orelse return null;
-        const a = portBits(m, "A") orelse return null;
-        const b = portBits(m, "B") orelse return null;
+        const y = m.portBits("Y") orelse return null;
+        const a = m.portBits("A") orelse return null;
+        const b = m.portBits("B") orelse return null;
         if (y.len != d.len or a.len != d.len or b.len != d.len) return null;
         for (y, d) |yb, db| {
             if (yb != .sig or db != .sig or yb.sig != db.sig) return null;
@@ -191,8 +191,8 @@ pub const Table = struct {
         for (y) |yb| {
             if (t.readers(mod, yb.sig) != 1) return null;
         }
-        const a_const = allConst(a);
-        const b_const = allConst(b);
+        const a_const = ir.bits.allConst(a);
+        const b_const = ir.bits.allConst(b);
         if (a_const == b_const) return null;
         return if (b_const) a else b;
     }
@@ -203,8 +203,8 @@ pub const Table = struct {
     // (buses, gray counters, enables) is not this shape.
     fn packedDepth(t: *Table, mod: *const ir.types.Module, head: usize) error{OutOfMemory}!?Entry {
         const c = mod.cells[head];
-        const q = portBits(c, "Q") orelse return null;
-        const d = portBits(c, "D") orelse return null;
+        const q = c.portBits("Q") orelse return null;
+        const d = c.portBits("D") orelse return null;
         if (q.len < 2 or d.len != q.len) return null;
         for (q) |qb| if (qb != .sig) return null;
         var d_bits: []ir.bits.Bit = d;
@@ -262,8 +262,8 @@ pub fn build(
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type)) continue;
         if (clock.cells.isLatch(c.type)) continue;
-        const d = portBits(c, "D") orelse continue;
-        const q = portBits(c, "Q") orelse continue;
+        const d = c.portBits("D") orelse continue;
+        const q = c.portBits("Q") orelse continue;
         if (d.len != 1 or q.len != 1) continue;
         if (d[0] != .sig) continue;
         try d_bit_to_flop.put(alloc, d[0].sig, ci);
@@ -302,8 +302,8 @@ pub fn build(
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type)) continue;
         if (clock.cells.isLatch(c.type)) continue;
-        const d = portBits(c, "D") orelse continue;
-        const q = portBits(c, "Q") orelse continue;
+        const d = c.portBits("D") orelse continue;
+        const q = c.portBits("Q") orelse continue;
         if (d.len != 1 or q.len != 1) continue;
         const leg = t.resetMuxDataLeg(mod, ci) orelse continue;
         if (leg.len == 0 or leg[0] != .sig) continue;
@@ -317,11 +317,6 @@ fn oneStage(alloc: std.mem.Allocator, head: usize) error{OutOfMemory}![]usize {
     const out = try alloc.alloc(usize, 1);
     out[0] = head;
     return out;
-}
-
-fn allConst(bits: []ir.bits.Bit) bool {
-    for (bits) |b| if (b == .sig) return false;
-    return true;
 }
 
 // The bit's sole consuming cell, or null when the value
@@ -358,20 +353,13 @@ fn stepThroughTransparent(mod: *const ir.types.Module, bit: u32) ?u32 {
 // Output bit at the input's index: transparent cells pass
 // lane-to-lane, so the load position picks the driven bit.
 fn transparentOut(c: ir.types.Cell, port: []const u8, bit: u32) ?u32 {
-    const a = portBits(c, port) orelse return null;
-    const y = portBits(c, "Y") orelse return null;
+    const a = c.portBits(port) orelse return null;
+    const y = c.portBits("Y") orelse return null;
     for (a, 0..) |b, i| {
         if (b == .sig and b.sig == bit) {
             if (i < y.len and y[i] == .sig) return y[i].sig;
             return null;
         }
-    }
-    return null;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
     }
     return null;
 }

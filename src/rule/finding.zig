@@ -2,7 +2,7 @@ const std = @import("std");
 const registry = @import("registry.zig");
 
 // One rule verdict on one crossing: owned message, borrowed
-// names. Findings order by (rule, dst, message) for reruns.
+// names. Findings order by (rule, dst, driver, message) for reruns.
 // Driver stays null where the rule cannot name one; reporters
 // render the receiver side alone rather than guess. The waiver
 // hit arrives post-check from the suppression layer; rules
@@ -26,6 +26,10 @@ pub const Finding = struct {
         if (r != .eq) return r == .lt;
         const d = std.mem.order(u8, a.dst, b.dst);
         if (d != .eq) return d == .lt;
+        const da = a.driver orelse "";
+        const db = b.driver orelse "";
+        const v = std.mem.order(u8, da, db);
+        if (v != .eq) return v == .lt;
         return std.mem.order(u8, a.message, b.message) == .lt;
     }
 };

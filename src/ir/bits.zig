@@ -32,3 +32,41 @@ pub fn listFromJson(alloc: std.mem.Allocator, v: std.json.Value) ![]Bit {
     for (items, 0..) |item, i| out[i] = try fromJson(item);
     return out;
 }
+
+// No signal bits: the net is tied off, so consumers
+// see the constant alone. Empty means malformed, not const.
+pub fn allConst(s: []const Bit) bool {
+    if (s.len == 0) return false;
+    for (s) |b| if (b == .sig) return false;
+    return true;
+}
+
+// Only constants are statically known selects; anything else
+// needs value propagation we deliberately do not have (v1).
+pub fn constSel(s: []const Bit) ?bool {
+    if (s.len == 0) return null;
+    var val: ?bool = null;
+    for (s) |b| switch (b) {
+        .zero => {
+            if (val != null and val.? != false) return null;
+            val = false;
+        },
+        .one => {
+            if (val != null and val.? != true) return null;
+            val = true;
+        },
+        else => return null,
+    };
+    return val;
+}
+
+// Strict 0/1: x/z are unknown, not driven values,
+// and a reset leg must be a known value to count.
+pub fn is01Const(list: []const Bit) bool {
+    if (list.len == 0) return false;
+    for (list) |b| switch (b) {
+        .zero, .one => {},
+        else => return false,
+    };
+    return true;
+}

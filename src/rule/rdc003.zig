@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -98,13 +97,13 @@ fn syncResetBits(
     ci: usize,
 ) ?[]ir.bits.Bit {
     const c = ctx.mod.cells[ci];
-    if (bus.portBits(c, "SRST")) |srst| {
+    if (c.portBits("SRST")) |srst| {
         if (srst.len > 0) return srst;
     }
     const fr = by_cell.get(ci) orelse return null;
     if (fr.sync.kind != .mux) return null;
     const mi = fr.sync.mux orelse return null;
-    const s = bus.portBits(ctx.mod.cells[mi], "S") orelse return null;
+    const s = ctx.mod.cells[mi].portBits("S") orelse return null;
     if (s.len == 0) return null;
     return s;
 }

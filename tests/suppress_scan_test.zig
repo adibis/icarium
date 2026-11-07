@@ -29,10 +29,8 @@ test "scan apply excuses tagged receivers only" {
 
 test "rule honors stay inside the attribute vocabulary" {
     const vocab = [_][]const u8{
-        "cdc_sync",   "cdc_static", "cdc_handshake", "cdc_gray",
-        "reset_sync", "reset_polarity",
-        "glitchless_clock_mux",
-        "scan_en",
+        "cdc_sync",   "cdc_static",     "cdc_handshake",        "cdc_gray",
+        "reset_sync", "reset_polarity", "glitchless_clock_mux", "scan_en",
     };
     for (rule.registry.rules) |r| {
         for (r.honors) |h| {

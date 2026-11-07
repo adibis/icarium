@@ -33,7 +33,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     defer scratch.deinit();
     for (mod.cells, 0..) |c, ci| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
-        const d = portBits(c, "D") orelse continue;
+        const d = c.portBits("D") orelse continue;
         const dom = ctx.table.domainOf(ci) orelse continue;
         if (std.mem.eql(u8, dom.name, "unknown")) continue;
         if (ctx.marks.hasSync(c.name)) continue;
@@ -61,9 +61,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             try descs.append(ctx.tmp, try std.fmt.allocPrint(ctx.tmp, "{s} (clock={s})", .{ fp.name, fp.clk }));
         }
         const joined = try std.mem.join(ctx.tmp, ", ", descs.items);
-        const message = try std.fmt.allocPrint(ctx.tmp,
-            "glitchy combinational source on synchronizer {s} (clk={s}): D pin is driven by combinational logic with no registering flop, reaching unregistered top-level port(s): {s}",
-            .{ c.name, dom.name, joined });
+        const message = try std.fmt.allocPrint(ctx.tmp, "glitchy combinational source on synchronizer {s} (clk={s}): D pin is driven by combinational logic with no registering flop, reaching unregistered top-level port(s): {s}", .{ c.name, dom.name, joined });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,
@@ -146,13 +144,6 @@ fn portOfBit(mod: *const ir.types.Module, bit: u32) ?ir.types.ModulePort {
         for (p.bits) |b| {
             if (b == .sig and b.sig == bit) return p;
         }
-    }
-    return null;
-}
-
-fn portBits(c: ir.types.Cell, want: []const u8) ?[]ir.bits.Bit {
-    for (c.ports) |p| {
-        if (std.mem.eql(u8, p.name, want)) return p.bits;
     }
     return null;
 }

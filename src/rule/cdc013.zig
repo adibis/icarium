@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
@@ -34,8 +33,8 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
     const sp = src_clk.period orelse return null;
     const dp = dst_clk.period orelse return null;
     if (!(sp * 1.5 < dp)) return null;
-    const d = bus.portBits(ctx.mod.cells[sc], "D") orelse return null;
-    const q = bus.portBits(ctx.mod.cells[sc], "Q") orelse return null;
+    const d = ctx.mod.cells[sc].portBits("D") orelse return null;
+    const q = ctx.mod.cells[sc].portBits("Q") orelse return null;
     if (d.len != 1 or q.len != 1) return null;
     if (d[0] != .sig or q[0] != .sig) return null;
     if (ctx.marks.hasHandshake(ctx.mod.cells[sc].name)) return null;
@@ -65,8 +64,8 @@ fn isToggleD(ctx: *context.Context, d_bit: u32, q_bit: u32) bool {
     if (!std.mem.eql(u8, drv.port, "Y")) return false;
     const c = mod.cells[ci];
     if (!std.mem.eql(u8, c.type, "$mux")) return false;
-    const a = bus.portBits(c, "A") orelse return false;
-    const b = bus.portBits(c, "B") orelse return false;
+    const a = c.portBits("A") orelse return false;
+    const b = c.portBits("B") orelse return false;
     if (a.len != 1 or b.len != 1) return false;
     if (a[0] != .sig or b[0] != .sig) return false;
     const legs = [2][2]u32{ .{ a[0].sig, b[0].sig }, .{ b[0].sig, a[0].sig } };
@@ -77,7 +76,7 @@ fn isToggleD(ctx: *context.Context, d_bit: u32, q_bit: u32) bool {
         if (!std.mem.eql(u8, ndrv.port, "Y")) continue;
         const n = mod.cells[nci];
         if (not_types.get(n.type) == null) continue;
-        const na = bus.portBits(n, "A") orelse continue;
+        const na = n.portBits("A") orelse continue;
         if (na.len == 1 and na[0] == .sig and na[0].sig == q_bit) return true;
     }
     return false;
@@ -96,7 +95,7 @@ fn hasXorTail(ctx: *context.Context, head: usize, head_clock: []const u8) error{
     const entry = try ctx.table.chainDepth(mod, head, head_clock);
     if (entry.stages.len < 2) return false;
     const tail = entry.stages[entry.stages.len - 1];
-    const tq = bus.portBits(mod.cells[tail], "Q") orelse return false;
+    const tq = mod.cells[tail].portBits("Q") orelse return false;
     if (tq.len != 1 or tq[0] != .sig) return false;
     const tail_q = tq[0].sig;
     const loads = mod.loads_of.get(tail_q) orelse return false;
@@ -114,8 +113,8 @@ fn hasXorTail(ctx: *context.Context, head: usize, head_clock: []const u8) error{
         if (!std.mem.eql(u8, loc.port, "D")) continue;
         const dom = ctx.table.domainOf(ci) orelse continue;
         if (!std.mem.eql(u8, dom.name, head_clock)) continue;
-        const mq = bus.portBits(m, "Q") orelse continue;
-        const md = bus.portBits(m, "D") orelse continue;
+        const mq = m.portBits("Q") orelse continue;
+        const md = m.portBits("D") orelse continue;
         if (mq.len != 1 or md.len != 1) continue;
         if (mq[0] != .sig) continue;
         follow_q = mq[0].sig;

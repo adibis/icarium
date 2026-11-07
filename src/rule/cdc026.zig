@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
@@ -227,7 +226,7 @@ fn exclusive(ctx: *context.Context, ssel: ?clock.trace.LegSel, dsel: ?clock.trac
 }
 
 fn selBit(c: ir.types.Cell) ?u32 {
-    const s = bus.portBits(c, "S") orelse return null;
+    const s = c.portBits("S") orelse return null;
     if (s.len == 0 or s[0] != .sig) return null;
     return s[0].sig;
 }
@@ -302,7 +301,7 @@ fn muxConds(
             try b.append(alloc, l);
         }
     }
-    const s = bus.portBits(c, "S") orelse return try alloc.dupe(u8, "malformed mux");
+    const s = c.portBits("S") orelse return try alloc.dupe(u8, "malformed mux");
     const ref = if (s.len > 0 and s[0] == .sig) try driveRef(ctx, alloc, s[0].sig) else try alloc.dupe(u8, "constant");
     const ja = try joinLegs(alloc, a.items);
     const jb = try joinLegs(alloc, b.items);

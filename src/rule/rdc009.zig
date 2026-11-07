@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const finding = @import("finding.zig");
@@ -34,7 +33,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     for (ctx.mod.cells, 0..) |c, dc| {
         if (!clock.cells.isSequential(c.type) or clock.cells.isLatch(c.type)) continue;
-        const d = bus.portBits(c, "D") orelse continue;
+        const d = c.portBits("D") orelse continue;
         _ = scratch.reset(.retain_capacity);
         const srcs = try dataFanin(ctx, scratch.allocator(), d);
         if (srcs.len == 0) continue;
@@ -58,9 +57,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
         // Uncomparable sources aggregate per destination: one caveat,
         // never silence and never one row per unknown pair.
         if (unknowns > 0) {
-            const message = try std.fmt.allocPrint(ctx.tmp,
-                "reset domain comparison incomplete at {s}: {d} source{s} with unresolved reset origins cannot prove same-domain release; resolve the reset drivers or waive after review",
-                .{ c.name, unknowns, if (unknowns == 1) "" else "s" });
+            const message = try std.fmt.allocPrint(ctx.tmp, "reset domain comparison incomplete at {s}: {d} source{s} with unresolved reset origins cannot prove same-domain release; resolve the reset drivers or waive after review", .{ c.name, unknowns, if (unknowns == 1) "" else "s" });
             try out.append(ctx.tmp, .{
                 .rule = rule.id,
                 .severity = .warn,
@@ -143,7 +140,7 @@ fn domainOf(
 ) error{OutOfMemory}!Domain {
     const c = ctx.mod.cells[ci];
     const ap = reset.cells.canonicalAsyncPin(c) orelse return .{ .tags = &.{}, .syncs = &.{}, .unknown = false };
-    const bits = bus.portBits(c, ap.pin) orelse return .{ .tags = &.{}, .syncs = &.{}, .unknown = false };
+    const bits = c.portBits(ap.pin) orelse return .{ .tags = &.{}, .syncs = &.{}, .unknown = false };
     var tags = std.ArrayListUnmanaged([]const u8).empty;
     var syncs = std.ArrayListUnmanaged(usize).empty;
     var unknown = false;
@@ -323,7 +320,7 @@ fn transitivePorts(
 // pin reads as absent so the caller falls through to D.
 fn resetBits(c: ir.types.Cell) ?[]ir.bits.Bit {
     const ap = reset.cells.canonicalAsyncPin(c) orelse return null;
-    const bits = bus.portBits(c, ap.pin) orelse return null;
+    const bits = c.portBits(ap.pin) orelse return null;
     for (bits) |b| {
         if (b == .sig) return bits;
     }
@@ -331,7 +328,7 @@ fn resetBits(c: ir.types.Cell) ?[]ir.bits.Bit {
 }
 
 fn dataBits(c: ir.types.Cell) ?[]ir.bits.Bit {
-    return bus.portBits(c, "D");
+    return c.portBits("D");
 }
 
 fn addTag(alloc: std.mem.Allocator, tags: *std.ArrayListUnmanaged([]const u8), kind: []const u8, ref: []const u8) error{OutOfMemory}!void {
@@ -389,9 +386,7 @@ fn fire(
     const dname = ctx.mod.cells[dc].name;
     const sdom = try renderDomain(ctx.tmp, src_dom);
     const ddom = try renderDomain(ctx.tmp, dst_dom);
-    const message = try std.fmt.allocPrint(ctx.tmp,
-        "unqualified data crossing reset domains: {s} (reset {s}) feeds {s} (reset {s}); the source can come out of reset while the receiver samples",
-        .{ sname, sdom, dname, ddom });
+    const message = try std.fmt.allocPrint(ctx.tmp, "unqualified data crossing reset domains: {s} (reset {s}) feeds {s} (reset {s}); the source can come out of reset while the receiver samples", .{ sname, sdom, dname, ddom });
     return .{
         .rule = rule.id,
         .severity = rule.severity,

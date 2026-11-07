@@ -1,5 +1,4 @@
 const std = @import("std");
-const bus = @import("bus.zig");
 const clock = @import("../clock.zig");
 const context = @import("context.zig");
 const crossing = @import("../crossing.zig");
@@ -29,8 +28,8 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var seen = std.HashMapUnmanaged(Triple, void, TripleCtx, std.hash_map.default_max_load_percentage).empty;
     for (ctx.mod.cells, 0..) |c, ci| {
         if (!isCdcLatch(c.type)) continue;
-        const q = bus.portBits(c, "Q") orelse continue;
-        const d = bus.portBits(c, "D") orelse continue;
+        const q = c.portBits("Q") orelse continue;
+        const d = c.portBits("D") orelse continue;
         if (q.len == 0 or d.len == 0) continue;
         const dsts = try dstByClock(ctx, q);
         if (dsts.count() == 0) continue;

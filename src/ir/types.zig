@@ -37,6 +37,15 @@ pub const Cell = struct {
     src: ?[]const u8,
     instance_path: [][]const u8,
     blackbox: bool,
+
+    // Linear scan: cells carry few ports, and every caller
+    // wants the same lookup — one method, not fourteen copies.
+    pub fn portBits(self: Cell, want: []const u8) ?[]bits.Bit {
+        for (self.ports) |p| {
+            if (std.mem.eql(u8, p.name, want)) return p.bits;
+        }
+        return null;
+    }
 };
 
 pub const ModulePort = struct {
