@@ -1,0 +1,8 @@
+/* Architecture diagrams render at column width; the SVG
+   viewBox keeps them sharp at any size. */
+.hextra-content img[src*="/images/"] {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 1.5rem auto;
+}

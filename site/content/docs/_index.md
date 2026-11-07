@@ -14,7 +14,7 @@ structurally, enumerates crossings, and runs a rule set over them.
 - **CDC**: unsynchronized control crossings, synchronizer depth and
   placement, combinational logic around synchronizers, bus crossings
   (gray/gating), muxed and generated clocks, and unresolved clock
-  association. See [Rules](/docs/rules/) for the full catalog.
+  association. See [Rules]({{% relref "docs/rules/_index.md" %}}) for the full catalog.
 - **RDC**: async resets driven from foreign domains, combinational or
   muxed reset sources, and reset-synchronizer chain integrity.
 
@@ -26,11 +26,7 @@ timing signoff; it catches the crossing bugs before signoff gets them.
 
 ## Pipeline
 
-```text
-SystemVerilog → yosys → netlist.json ─┐
-                                       ├─→ clock/reset trace → crossings → rules → findings
-constraints.sdc ──────────────────────┘
-```
+![icarium pipeline](/images/overview/pipeline.svg)
 
 Start with [Getting started]({{% relref "docs/getting-started.md" %}}),
 or jump to the [CLI reference]({{% relref "docs/cli.md" %}}), the

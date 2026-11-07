@@ -40,11 +40,9 @@ comparable across tools.
 
 The 983 MB flat top (178,656 sources) checks streamed in 65
 minutes: 637,274 chunks, 1,977,807 findings across 18 rules,
-peak RSS 14.8 GB. Five early runs died past 130 GB; the
-streaming design (per-range ledgers, per-cell walk arenas, a
-linear report writer) is what fits it in RAM. Rooting the
-divided and serial clocks cut unknown flops from 10,911 to
-63; CDC-025 fell from 11,026 to 153 endpoints.
+peak RSS 14.8 GB. Peak memory follows one pair budget, never
+the widest broadcast; declared divided and serial roots hold
+unknown-domain flops to 63, mostly tie-offs and DFT muxing.
 
 ## Recall gate
 

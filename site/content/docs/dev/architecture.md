@@ -10,28 +10,7 @@ one concern, each `src/<area>.zig` re-exports it.
 
 ## Pipeline
 
-```text
-elaborate.sh → netlist.json ─┐
-                              ├─ ir/load ─→ Module IR
-constraints.sdc ──────────────┘        │
-                                       ▼
-                              sdc/model ─→ clocks, groups
-                                       │
-                    ┌──────────────────┼──────────────────┐
-                    ▼                  ▼                  ▼
-              clock/trace        reset/trace        sync/table
-              (domains)          (chains)           (memos)
-                    │                  │                  │
-                    └──────────────────┼──────────────────┘
-                                       ▼
-                              crossing/enumerate
-                              (pairs → crossings)
-                                       │
-                              ┌────────┴────────┐
-                              ▼                 ▼
-                       rule/registry      report/*
-                       (CDC/RDC rules)    (text/json/sarif/toon)
-```
+![icarium pipeline](/images/overview/pipeline.svg)
 
 ## Modules
 

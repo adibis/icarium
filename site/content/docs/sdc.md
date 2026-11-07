@@ -31,6 +31,6 @@ nothing.
 
 `set_case_analysis` is skipped in v1: constant propagation from
 SDC is not modeled. Tie a source constant with `(* cdc_static *)`
-instead (see [Suppressions](/docs/suppressions/)).
+instead (see [Suppressions]({{% relref "docs/suppressions.md" %}})).
 
 Example SDC files ship per design under `bench/sdc/`.

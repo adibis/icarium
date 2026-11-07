@@ -1,0 +1,22 @@
+<script>
+  (function () {
+    function darkSrc(src) {
+      return src.replace(/\.svg(\?.*)?$/, "-dark.svg$1");
+    }
+    function lightSrc(src) {
+      return src.replace(/-dark\.svg(\?.*)?$/, ".svg$1");
+    }
+    function syncDiagrams() {
+      var dark = document.documentElement.classList.contains("dark");
+      document.querySelectorAll('img[src^="/images/"], img[src*="/images/"]').forEach(function (img) {
+        var next = dark ? darkSrc(img.getAttribute("src")) : lightSrc(img.getAttribute("src"));
+        if (next !== img.getAttribute("src")) img.setAttribute("src", next);
+      });
+    }
+    syncDiagrams();
+    new MutationObserver(syncDiagrams).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  })();
+</script>

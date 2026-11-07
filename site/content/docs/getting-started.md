@@ -14,10 +14,10 @@ weight: 2
 ## Build
 
 ```sh
-git clone https://github.com/adibis/icarium   # DEPLOY: confirm URL
+git clone https://github.com/adibis/icarium
 cd icarium
 zig build          # builds ./zig-out/bin/icarium
-zig build test     # unit tests (239 tests)
+zig build test     # unit tests (240 tests)
 ```
 
 `zig build e2e` runs the SystemVerilog end-to-end suite; it needs
@@ -41,8 +41,8 @@ view, or `--format json` for the machine-readable report.
 
 Designs too big to materialize stream instead: `--stream` walks the
 netlist in chunks and keeps only findings plus small accumulators.
-The full EarlGrey top (178,656 sources) checks this way in under an
-hour. See [CLI reference]({{% relref "docs/cli.md" %}}) for chunk
+The full EarlGrey top (178,656 sources) checks this way in about
+an hour. See [CLI reference]({{% relref "docs/cli.md" %}}) for chunk
 and pair-budget flags.
 
 ## Next steps

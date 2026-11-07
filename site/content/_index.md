@@ -32,19 +32,15 @@ layout: hextra-home
   </div>
 </div>
 
-## Why icarium
+## How it runs
 
-{{< hextra/feature-grid >}}
-  {{< hextra/feature-card
-    title="Full-chip scale"
-    subtitle="Streams billion-pair designs without materializing them: the 983 MB EarlGrey flat top checks in 65 minutes at 15 GB peak RSS."
-  >}}
-  {{< hextra/feature-card
-    title="JSON-native, spec-aligned"
-    subtitle="Findings, waivers, baselines, and domain maps are versioned JSON schemas, with Accellera 1.0 Tcl interchange as an accessory."
-  >}}
-  {{< hextra/feature-card
-    title="Waiver-benchmarked"
-    subtitle="OpenTitan ships CDC/RDC waivers; icarium replays them as a recall gate, so every release proves it still catches what the waivers excuse."
-  >}}
-{{< /hextra/feature-grid >}}
+![icarium pipeline](/images/overview/pipeline.svg)
+
+## Benchmarks at a glance
+
+| tier | scope | result |
+| ---- | ----- | ------ |
+| 1 | 8 hand fixtures | 19/19 reference pairs, 0 missed |
+| 2 | 5 OpenTitan blocks | 17/17 reference pairs, 0 missed |
+| 3 | full EarlGrey top | 65 min streamed, 14.8 GB peak |
+| recall | OpenTitan waivers | 12 entries measured, 0 missed |

@@ -44,6 +44,6 @@ downgrade, or dropped entry versus the blessed baseline
 deliberate scope change. Needs fusesoc plus slang-capable
 Yosys for the tier-2 netlists, so CI does not gate it.
 
-Current state: spi_device 11/11 endpoint recall, zero missed
-everywhere measured, 528 chip-scope entries pending the
+Current state: 12 entries measured (9 full, 2 partial, 1
+rule-only), zero missed; 528 chip-scope entries pending the
 full-top netlist they name.

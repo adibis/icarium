@@ -9,6 +9,8 @@ weight: 62
 consuming each walked chunk through the rules immediately and
 keeping only findings plus small accumulators.
 
+![streamed checking](/images/overview/streaming.svg)
+
 ## How a run flows
 
 1. Sources split into cell-run-aligned chunks (chunk edges

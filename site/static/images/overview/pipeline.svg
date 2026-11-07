@@ -1,0 +1,40 @@
+<svg viewBox="0 0 1000 360" xmlns="http://www.w3.org/2000/svg" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect x="5" y="118" width="120" height="64" rx="8" fill="#eff6ff" stroke="#0369a1" stroke-width="2"/>
+  <text x="65" y="145" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">design.sv</text>
+  <text x="65" y="164" text-anchor="middle" font-size="11.5" fill="#64748b">systemverilog</text>
+  <rect x="150" y="118" width="90" height="64" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+  <text x="195" y="145" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">yosys</text>
+  <text x="195" y="164" text-anchor="middle" font-size="11.5" fill="#64748b">elaborate</text>
+  <rect x="265" y="118" width="140" height="64" rx="8" fill="#eff6ff" stroke="#0369a1" stroke-width="2"/>
+  <text x="335" y="145" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">netlist.json</text>
+  <text x="335" y="164" text-anchor="middle" font-size="11.5" fill="#64748b">flat netlist</text>
+  <rect x="265" y="252" width="140" height="64" rx="8" fill="#eff6ff" stroke="#0369a1" stroke-width="2"/>
+  <text x="335" y="279" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">constraints.sdc</text>
+  <text x="335" y="298" text-anchor="middle" font-size="11.5" fill="#64748b">clocks · groups</text>
+  <rect x="445" y="118" width="110" height="64" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+  <text x="500" y="145" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">trace</text>
+  <text x="500" y="164" text-anchor="middle" font-size="11.5" fill="#64748b">clocks·resets</text>
+  <rect x="580" y="118" width="120" height="64" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+  <text x="640" y="145" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">crossings</text>
+  <text x="640" y="164" text-anchor="middle" font-size="11.5" fill="#64748b">pairs→records</text>
+  <rect x="725" y="118" width="100" height="64" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+  <text x="775" y="145" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">rules</text>
+  <text x="775" y="164" text-anchor="middle" font-size="11.5" fill="#64748b">36 cdc/rdc</text>
+  <rect x="850" y="118" width="145" height="64" rx="8" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+  <text x="922" y="141" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">findings</text>
+  <text x="922" y="160" text-anchor="middle" font-size="11" fill="#64748b">text·json</text>
+  <text x="922" y="174" text-anchor="middle" font-size="11" fill="#64748b">sarif·toon</text>
+  <line x1="125" y1="150" x2="146" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="240" y1="150" x2="261" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="405" y1="150" x2="441" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="555" y1="150" x2="576" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="700" y1="150" x2="721" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <line x1="825" y1="150" x2="846" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <path d="M 405 284 L 425 284 L 425 150" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="500" y="330" text-anchor="middle" font-size="12.5" fill="#64748b">elaborate once · trace structurally · enumerate crossings · run rules · emit findings</text>
+</svg>
