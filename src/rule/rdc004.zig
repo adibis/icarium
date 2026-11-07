@@ -26,7 +26,7 @@ pub const rule = registry.Rule{
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     var out = std.ArrayListUnmanaged(finding.Finding).empty;
     // Walks die per flop: reset cones span the design, and one
-    // retained walk per flop buried the full-top once pass.
+    // retained walk per flop exhausts memory at full-chip scale.
     var backing = ctx.table.workArena();
     defer backing.deinit();
     var scratch = std.heap.ArenaAllocator.init(backing.allocator());

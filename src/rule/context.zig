@@ -35,9 +35,8 @@ pub const Context = struct {
     cfg: Config,
     alloc: std.mem.Allocator,
 
-    // Binary search over the sorted bus index: the linear scan
-    // this replaced cost O(buses) per crossing per rule, which is
-    // the Verilator-#8100 shape that buried full-chip runs.
+    // Binary search over the sorted bus index: a linear scan
+    // costs O(buses) per crossing per rule — quadratic at scale.
     pub fn isBusMember(ctx: *const Context, x: crossing.enumerate.Crossing) bool {
         if (x.kind != .flop_flop_bit and x.kind != .port_flop and x.kind != .port_flop_untyped) return false;
         const xdc = x.dst.cell orelse return false;

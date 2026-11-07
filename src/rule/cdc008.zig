@@ -44,7 +44,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     }
     if (clock_bits.count() == 0) return &.{};
     // Walks die per cell: clock cones span the design, and one
-    // retained walk per cell buried the full-top once pass.
+    // retained walk per cell exhausts memory at full-chip scale.
     var backing = ctx.table.workArena();
     defer backing.deinit();
     const parent = backing.allocator();

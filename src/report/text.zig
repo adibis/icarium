@@ -44,9 +44,7 @@ pub fn writeText(
 }
 
 // Buckets earn headers only when a rule spans instances;
-// single-bucket groups read flat. One resolve per item: the
-// old per-bucket rescan re-resolved the slice per bucket,
-// quadratic in group size, and buried the full-top writer.
+// single-bucket groups read flat.
 fn writeGroup(
     alloc: std.mem.Allocator,
     writer: *std.Io.Writer,
@@ -55,6 +53,7 @@ fn writeGroup(
     slice: []const rule.finding.Finding,
 ) error{ OutOfMemory, WriteFailed }!void {
     if (slice.len == 0) return;
+    // One resolve per item: per-bucket rescans go quadratic.
     const inst = try alloc.alloc([]const u8, slice.len);
     for (slice, 0..) |f, i| inst[i] = (try common.resolve(alloc, mod, idx, f.dst)).instance;
     var multi = false;

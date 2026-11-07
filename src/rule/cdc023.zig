@@ -71,7 +71,7 @@ fn netNames(ctx: *context.Context) error{OutOfMemory}!std.AutoHashMapUnmanaged(u
 fn combineSinks(ctx: *context.Context, bit: u32) error{OutOfMemory}![]usize {
     var sinks = std.ArrayListUnmanaged(usize).empty;
     // Walks die per flop: clock cones span the design, and one
-    // retained walk per flop buried the full-top once pass.
+    // retained walk per flop exhausts memory at full-chip scale.
     var backing = ctx.table.workArena();
     defer backing.deinit();
     var scratch = std.heap.ArenaAllocator.init(backing.allocator());

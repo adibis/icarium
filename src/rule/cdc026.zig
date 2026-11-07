@@ -89,7 +89,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         while (iit.next()) |ie| {
             ie.value_ptr.sortAll(ctx);
             // Print order keys on the joined string, formatted
-            // once per group: per-crossing formats were the waste.
+            // once per group: per-crossing formats would dominate.
             const joined = try std.fmt.allocPrint(ctx.tmp, "{s}|{s}", .{ ctx.mod.cells[oe.key_ptr.*].name, ie.key_ptr.* });
             try keys.append(ctx.tmp, .{ .order = joined, .group = ie.value_ptr });
         }

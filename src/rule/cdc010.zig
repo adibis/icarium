@@ -38,7 +38,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     for (mod.cells, 0..) |c, ci| {
         if (!net_cells.contains(ci)) continue;
         // Walks die per cell: clock cones span the design, and
-        // retaining one per clock cell buried the full-top run.
+        // retaining one per clock cell exhausts memory at full-chip scale.
         _ = scratch.reset(.retain_capacity);
         const alloc = scratch.allocator();
         const ctrls = controlPins(ctx, alloc, c);
