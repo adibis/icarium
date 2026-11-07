@@ -37,7 +37,7 @@ layout: hextra-home
 {{< hextra/feature-grid >}}
   {{< hextra/feature-card
     title="Full-chip scale"
-    subtitle="Streams billion-pair designs without materializing them: the 983 MB EarlGrey flat top checks in 59 minutes at 15 GB peak RSS."
+    subtitle="Streams billion-pair designs without materializing them: the 983 MB EarlGrey flat top checks in 65 minutes at 15 GB peak RSS."
   >}}
   {{< hextra/feature-card
     title="JSON-native, spec-aligned"
