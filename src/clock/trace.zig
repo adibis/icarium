@@ -432,7 +432,7 @@ const Walker = struct {
     fn throughCell(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         if (cells.isTransparent(c.type)) return w.throughTransparent(bit, c);
-        if (cells.isClockMux(c.type)) return w.throughMux(ci);
+        if (cells.isClockMux(c.type)) return w.throughMux(bit, ci);
         if (cells.isClockGate(c.type)) return w.throughGate(bit, ci);
         if (std.mem.eql(u8, c.type, "$or") or std.mem.eql(u8, c.type, "$logic_or")) return w.throughOrMux(bit, ci);
         if (cells.isSequential(c.type)) return w.throughSequential(ci);
@@ -462,7 +462,7 @@ const Walker = struct {
         return w.withNote(dom, "inverted clock");
     }
 
-    fn throughMux(w: *Walker, ci: usize) error{OutOfMemory}!Domain {
+    fn throughMux(w: *Walker, bit: u32, ci: usize) error{OutOfMemory}!Domain {
         const c = w.mod.cells[ci];
         const a = portBits(c, "A") orelse return w.make("unknown", "", &.{"malformed clock mux"});
         const b = portBits(c, "B") orelse return w.make("unknown", "", &.{"malformed clock mux"});
@@ -473,6 +473,9 @@ const Walker = struct {
                 return w.make("unknown", "", &.{"clock mux static leg unresolved"});
             return w.withNote(dom, if (sel) "clock mux static select B" else "clock mux static select A");
         }
+        // A constant data leg under a dynamic select is a gate
+        // (S&B / ~S|B): the gate path counts the live leg for us.
+        if (allConst(a) or allConst(b)) return w.throughGate(bit, ci);
         // Dynamic selects are recorded before legs resolve: the
         // select domain stands even when a leg does not.
         const sel = try w.resolveBits(s);
@@ -770,6 +773,14 @@ const Walker = struct {
         return any;
     }
 
+    // A data leg with no signal bits is tied off: the mux
+    // degenerates, and the live leg decides alone.
+    fn allConst(s: []const ir.bits.Bit) bool {
+        if (s.len == 0) return false;
+        for (s) |b| if (b == .sig) return false;
+        return true;
+    }
+
     // Only constants are statically known selects; anything else
     // needs value propagation we deliberately do not have (v1).
     fn constSel(s: []const ir.bits.Bit) ?bool {
@@ -811,12 +822,12 @@ const Walker = struct {
         return w.flopDriver(bit) != null;
     }
 
-    // The sequential cell driving a leg, if any, through
-    // buffers: enables report their master, so counting needs
-    // the cell to tell dividers from enables.
+    // The sequential cell driving a leg through buffers, if any.
+    // Declared roots stop the walk: rooted nets count as clocks.
     fn flopDriver(w: *Walker, bit: u32) ?usize {
         var cur = bit;
         for (0..8) |_| {
+            if (w.roots.get(cur) != null) return null;
             const drv = w.mod.driver_of.get(cur) orelse return null;
             const dci = drv.cell orelse return null;
             const c = w.mod.cells[dci];

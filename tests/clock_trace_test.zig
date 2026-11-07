@@ -331,6 +331,54 @@ test "dynamic mux yields a union with legs" {
     try std.testing.expectEqualStrings("port:sel", dom.sels[1].sel_dom);
 }
 
+const mux_gate =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "sel": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [6]}
+    \\      },
+    \\      "cells": {
+    \\        "mux_and": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": ["0"], "B": [2], "S": [4], "Y": [10]}
+    \\        },
+    \\        "f_and": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [10], "D": [5], "Q": [6]}
+    \\        },
+    \\        "mux_or": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": ["1"], "B": [2], "S": [4], "Y": [11]}
+    \\        },
+    \\        "f_or": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [5], "Q": [6]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "mux with constant leg resolves as a gate" {
+    var l = try loadAll(mux_gate,
+        \\create_clock -name ca -period 10 [get_ports ca]
+    );
+    defer freeAll(&l);
+    const and_dom = domFor(&l, "f_and").?;
+    try std.testing.expectEqualStrings("ca", and_dom.name);
+    const or_dom = domFor(&l, "f_or").?;
+    try std.testing.expectEqualStrings("ca", or_dom.name);
+}
+
 test "static mux resolves its leg" {
     var l = try loadAll(muxed, mux_sdc);
     defer freeAll(&l);
