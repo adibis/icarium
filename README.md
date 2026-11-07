@@ -1,38 +1,39 @@
 # icarium
 
-Open-source structural CDC/RDC checker in Zig. Full-chip SystemVerilog,
-JSON-native formats, Accellera 1.0 interchange.
+Open-source structural CDC/RDC checker in Zig. Elaborated
+SystemVerilog in, findings out — JSON-native, benchmarked
+against OpenTitan's own waivers up to the full EarlGrey top.
 
-Status: scaffold, netlist ingestion, SDC constraints.
+## Status
+
+36 rules (CDC-001–026 minus reserved 007, RDC-001–011), six
+report formats, streamed full-chip checking. See the
+[docs](https://adibis.github.io/icarium/) for usage,
+rule reference, and benchmarks.
 
 ## Build
 
-Requires the Zig version in `pins.json` (check with
-`sh scripts/check-pins.sh`).
-
 ```sh
-zig build          # builds ./zig-out/bin/icarium
+zig build          # ./zig-out/bin/icarium
 zig build test     # unit tests
-zig build e2e      # SystemVerilog end-to-end suite (needs yosys on PATH)
 ```
 
-Run `sh scripts/precommit-check.sh` before every commit: it checks the
-diff and the commit message, and requires green build, unit tests,
-and e2e.
+Yosys 0.70 on `PATH` enables elaboration and the
+end-to-end suite. Pins live in `pins.json`; check them with
+`sh scripts/check-pins.sh`.
+
+## Check a design
+
+```sh
+sh scripts/elaborate.sh --top spi_device --out spi.json design.sv
+./zig-out/bin/icarium check --yosys-json spi.json --top spi_device --sdc spi.sdc
+```
 
 ## Layout
 
-Small topic files; unit tests mirror `src` under `tests/`
-(one `*_test.zig` per unit, aggregated by `tests/all.zig`).
-
-- `src/main.zig` — CLI entry and dispatch
-- `src/cli/` — argument matching, per-command runners
-- `src/ir/` — elaborated-netlist ingestion (Module IR)
-- `src/sdc/` — SDC subset parser and clock model
-- `tests/e2e/` — SystemVerilog designs with hand-written goldens;
-  one directory per case, run by `tests/e2e/run.sh`
-- `pins.json` — machine-readable dependency pins
-- `bench/` — benchmark oracle, results, triage log
-- `fixtures/` — paired bad/good rule fixtures
-
-License: Apache-2.0 (see LICENSE).
+- `src/` — the checker, one concern per directory
+- `tests/` — unit tests mirroring `src`, plus `e2e/`
+- `fixtures/` — paired failing/passing SystemVerilog per rule
+- `schema/` — versioned JSON contracts
+- `bench/` — differentials, recall gate, reports
+- `site/` — documentation source (Hugo)
