@@ -48,3 +48,8 @@ Separately from scale tiers, OpenTitan's own Meridian
 waivers replay as a recall gate: every waived entry gets a
 verdict (full, partial, rule-only, missed). See
 [Recall gate]({{% relref "docs/dev/recall.md" %}}).
+
+For checker-vs-checker comparison, the standalone
+[benchmark corpus]({{% relref "docs/benchmark-corpus/_index.md" %}})
+measures any tool against ground truth instead of against
+another tool's output.

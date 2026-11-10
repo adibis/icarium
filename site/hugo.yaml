@@ -44,9 +44,12 @@ menu:
     - name: Benchmarks
       pageRef: /docs/benchmarks
       weight: 3
+    - name: Corpus
+      pageRef: /docs/benchmark-corpus
+      weight: 4
     - name: About
       pageRef: /about
-      weight: 4
+      weight: 5
     - name: search
       weight: 5
       params:
