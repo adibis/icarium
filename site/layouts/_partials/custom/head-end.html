@@ -2,8 +2,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
 <style>
-  :root,
-  :host {
-    --hx-font-sans: 'Literata', Georgia, Cambria, 'Noto Serif', 'Droid Serif', ui-serif, serif;
+  /* Chrome (nav, sidebar, footer) stays in the system sans;
+     page prose reads in Literata. Code keeps the theme mono. */
+  main#content {
+    font-family: 'Literata', Georgia, Cambria, ui-serif, serif;
+  }
+  main#content pre,
+  main#content code,
+  main#content kbd {
+    font-family: var(--hx-font-mono);
   }
 </style>

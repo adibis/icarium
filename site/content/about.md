@@ -14,4 +14,6 @@ to the full EarlGrey top.
   JSON schemas under `schema/` are the native contract.
 
 Status: tier-3 complete — the full flat top checks streamed
-in about an hour. See [Benchmarks]({{% relref "docs/benchmarks.md" %}}).
+in about an hour. See [Benchmarks]({{% relref "docs/benchmarks.md" %}}),
+and the standalone [benchmark corpus]({{% relref "docs/benchmark-corpus/_index.md" %}})
+for checker-vs-checker comparison.

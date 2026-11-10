@@ -3,32 +3,18 @@ title: icarium
 layout: hextra-home
 ---
 
-<style>
-  :root { --icarium-dark: #18181b; --icarium-amber: #df8e1d; }
-  .icarium-hero {
-    width: 100vw; position: relative; left: 50%;
-    transform: translateX(-50%); margin-top: -2rem;
-    background: var(--icarium-dark); color: #fff;
-  }
-  @media (min-width: 768px) { .icarium-hero { margin-top: -3rem; } }
-  .hextra-footer > div:has(.hextra-theme-toggle) { display: none; }
-  .hextra-footer > div:has(.hextra-theme-toggle) + hr { display: none; }
-</style>
-
 <div class="not-prose icarium-hero">
-  <div style="max-width: 1400px; margin: 0 auto; padding: 3rem 3rem 2.75rem;">
-    <span style="display: inline-flex; font: 600 0.6875rem var(--font-mono); color: #f2b84b; background: rgba(242, 184, 75, 0.14); border: 1px solid rgba(242, 184, 75, 0.35); padding: 0.3rem 0.6rem; border-radius: 20px; letter-spacing: 0.03em;">OPEN SOURCE &middot; APACHE-2.0</span>
-    <h1 style="font: 700 clamp(2rem, 4.5vw, 3.125rem)/1.08 var(--font-sans); letter-spacing: -0.02em; margin: 1.25rem 0 0; max-width: 800px; color: #fff;">Structural CDC/RDC checking, fast enough for full-chip runs.</h1>
-    <p style="font: 400 1.0625rem/1.55 var(--font-sans); color: #c4c4c4; max-width: 640px; margin: 1rem 0 0;">icarium checks clock-domain and reset-domain crossings in elaborated SystemVerilog. Zig-native, JSON-first, benchmarked against OpenTitan's own waivers — including the full EarlGrey top.</p>
-    <div style="display: flex; gap: 0.9rem; margin-top: 1.6rem; align-items: center; flex-wrap: wrap;">
-      <a href="docs/getting-started/" style="font: 600 0.875rem var(--font-sans); background: #df8e1d; color: #18181b; padding: 0.75rem 1.5rem; border-radius: 0.4rem; text-decoration: none;">Get started &rarr;</a>
-      <a href="docs/rules/" style="font: 600 0.875rem var(--font-sans); color: #fff; border: 1px solid rgba(255, 255, 255, 0.3); padding: 0.7rem 1.4rem; border-radius: 0.4rem; text-decoration: none;">Browse the rules &rarr;</a>
-    </div>
-    <div style="margin-top: 1.75rem; max-width: 640px; background: #101012; border: 1px solid rgba(255,255,255,0.12); border-radius: 0.5rem; padding: 1rem 1.25rem; font: 400 0.8125rem/1.7 var(--font-mono); color: #e5e5e5;">
-      <div><span style="color:#f2b84b;">$</span> zig build</div>
-      <div><span style="color:#f2b84b;">$</span> sh scripts/elaborate.sh --top spi_device --out spi.json design.sv</div>
-      <div><span style="color:#f2b84b;">$</span> ./zig-out/bin/icarium check --yosys-json spi.json --top spi_device --sdc spi.sdc</div>
-    </div>
+  <span class="icarium-badge">OPEN SOURCE &middot; APACHE-2.0</span>
+  <h1>Structural CDC/RDC checking, fast enough for full-chip runs.</h1>
+  <p>icarium checks clock-domain and reset-domain crossings in elaborated SystemVerilog. Zig-native, JSON-first, benchmarked against OpenTitan's own waivers — including the full EarlGrey top.</p>
+  <div class="icarium-cta">
+    <a class="icarium-cta-primary" href="docs/getting-started/">Get started &rarr;</a>
+    <a class="icarium-cta-ghost" href="docs/rules/">Browse the rules &rarr;</a>
+  </div>
+  <div class="icarium-term">
+    <div><span class="p">$</span> zig build</div>
+    <div><span class="p">$</span> sh scripts/elaborate.sh --top spi_device --out spi.json design.sv</div>
+    <div><span class="p">$</span> ./zig-out/bin/icarium check --yosys-json spi.json --top spi_device --sdc spi.sdc</div>
   </div>
 </div>
 
@@ -43,4 +29,4 @@ layout: hextra-home
 | 1 | 8 hand fixtures | snapshots green, ms each |
 | 2 | 5 OpenTitan blocks | 39,739 findings, slowest 7s |
 | 3 | full EarlGrey top | 65 min streamed, 14.8 GB peak |
-| recall | OpenTitan waivers | 540 entries, 0 missed |
+| recall | OpenTitan waivers | 465 entries, 0 missed |

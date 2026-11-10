@@ -17,7 +17,7 @@ weight: 2
 git clone https://github.com/adibis/icarium
 cd icarium
 zig build          # builds ./zig-out/bin/icarium
-zig build test     # unit tests (240 tests)
+zig build test     # unit tests (247 tests)
 ```
 
 `zig build e2e` runs the SystemVerilog end-to-end suite; it needs

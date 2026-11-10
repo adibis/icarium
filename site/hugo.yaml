@@ -13,8 +13,12 @@ params:
 
   navbar:
     displayTitle: true
-    displayLogo: false
+    displayLogo: true
     width: wide
+    logo:
+      path: images/logo.svg
+      width: "22"
+      height: "22"
 
   page:
     width: wide
@@ -68,8 +72,7 @@ markup:
   highlight:
     noClasses: false
     style: monokai
-    lineNos: true
-    lineNumbersInTable: false
+    lineNos: false
   goldmark:
     renderer:
       unsafe: true

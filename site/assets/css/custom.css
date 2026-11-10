@@ -1,8 +1,100 @@
+/* Homepage hero: a contained dark panel, never full-bleed.
+   Full-viewport tricks fight the theme column and cause
+   sideways scroll; a rounded panel cannot. */
+.icarium-hero {
+  background: #18181b;
+  color: #fff;
+  border-radius: 0.75rem;
+  padding: 2.5rem 2rem;
+  margin: 0 0 2.5rem;
+}
+@media (min-width: 768px) {
+  .icarium-hero {
+    padding: 3rem 3rem 2.75rem;
+  }
+}
+.icarium-badge {
+  display: inline-block;
+  font: 600 0.6875rem/1 var(--hx-font-sans);
+  letter-spacing: 0.06em;
+  color: #f2b84b;
+  background: rgba(242, 184, 75, 0.14);
+  border: 1px solid rgba(242, 184, 75, 0.35);
+  padding: 0.45rem 0.7rem;
+  border-radius: 20px;
+}
+.icarium-hero h1 {
+  font: 700 clamp(1.75rem, 4vw, 2.75rem)/1.12 'Literata', Georgia, serif;
+  letter-spacing: -0.02em;
+  margin: 1.25rem 0 0;
+  max-width: 16em;
+  color: #fff;
+  border: none;
+}
+.icarium-hero p {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: #c9c9c9;
+  max-width: 38em;
+  margin: 1rem 0 0;
+}
+.icarium-cta {
+  display: flex;
+  gap: 0.9rem;
+  margin-top: 1.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.icarium-cta a {
+  font: 600 0.875rem var(--hx-font-sans);
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.4rem;
+  text-decoration: none;
+}
+.icarium-cta-primary {
+  background: #df8e1d;
+  color: #18181b !important;
+}
+.icarium-cta-primary:hover {
+  background: #f2b84b;
+}
+.icarium-cta-ghost {
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.icarium-cta-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.icarium-term {
+  margin-top: 1.75rem;
+  max-width: 44em;
+  background: #101012;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  font: 400 0.8125rem/1.7 var(--hx-font-mono);
+  color: #e5e5e5;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.icarium-term .p {
+  color: #f2b84b;
+  user-select: none;
+}
+
 /* Architecture diagrams render at column width; the SVG
    viewBox keeps them sharp at any size. */
-.hextra-content img[src*="/images/"] {
+main#content img[src*="/images/"] {
   width: 100%;
   height: auto;
   display: block;
   margin: 1.5rem auto;
+}
+
+/* The footer theme switcher duplicates the navbar one. */
+.hextra-footer > div:has(.hextra-theme-toggle) {
+  display: none;
+}
+.hextra-footer > div:has(.hextra-theme-toggle) + hr {
+  display: none;
 }
