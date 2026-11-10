@@ -1,7 +1,7 @@
 // CDC-015: a 2FF chain in dst_clk whose ARST comes from a flop
 // registered in src_clk. Depth checks pass; the reset path is
-// where the chain loses steady state. (RDC-001 fires on the
-// same shape; the reference fires both.)
+// where the chain loses steady state, so RDC-001 fires on
+// the same shape beside CDC-015.
 // RDC-009 stays silent: the foreign reset still releases after
 // the shared global root, so source data settles first.
 // RDC-010 frames the reset side as a single-flop chain serving

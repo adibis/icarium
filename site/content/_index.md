@@ -40,7 +40,7 @@ layout: hextra-home
 
 | tier | scope | result |
 | ---- | ----- | ------ |
-| 1 | 8 hand fixtures | 19/19 reference pairs, 0 missed |
-| 2 | 5 OpenTitan blocks | 17/17 reference pairs, 0 missed |
+| 1 | 8 hand fixtures | snapshots green, ms each |
+| 2 | 5 OpenTitan blocks | 39,739 findings, slowest 7s |
 | 3 | full EarlGrey top | 65 min streamed, 14.8 GB peak |
-| recall | OpenTitan waivers | 12 entries measured, 0 missed |
+| recall | OpenTitan waivers | 540 entries, 0 missed |
