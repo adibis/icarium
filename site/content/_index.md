@@ -13,8 +13,10 @@ layout: hextra-home
   </div>
   <div class="icarium-term">
     <div><span class="p">$</span> zig build</div>
-    <div><span class="p">$</span> sh scripts/elaborate.sh --top spi_device --out spi.json design.sv</div>
-    <div><span class="p">$</span> ./zig-out/bin/icarium check --yosys-json spi.json --top spi_device --sdc spi.sdc</div>
+    <div><span class="p">$</span> sh scripts/elaborate.sh --top spi_device \</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;--out spi.json design.sv</div>
+    <div><span class="p">$</span> ./zig-out/bin/icarium check --yosys-json spi.json \</div>
+    <div>&nbsp;&nbsp;&nbsp;&nbsp;--top spi_device --sdc spi.sdc</div>
   </div>
 </div>
 

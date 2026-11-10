@@ -46,7 +46,6 @@ def main():
         firing.setdefault(rid, [])
         silence.setdefault(rid, [])
     lines = ["---", "title: Coverage", "weight: 30", "---", "",
-             "# Coverage", "",
              f"Tier 1 holds {len(manifests)} cases across {len(rules)} rules. "
              "Firing counts cases whose oracle expects the rule; silence counts "
              "empty-oracle cases built for it. Every rule fires in at least two "

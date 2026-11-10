@@ -56,10 +56,12 @@ def sdcblock(path):
 
 def page(r, weight):
     d, bad, good = load_fixture(r)
-    L = ["---", f"title: {r['id']}", f"weight: {weight}", "---", "",
-         f"# {r['id']}: {r['title']}", "",
+    # Bare (* mark *) reads as emphasis; code-span it.
+    doc = re.sub(r"\(\* ([a-z_]+) \*\)", r"`(* \1 *)`", r["doc"])
+    L = ["---", f"title: \"{r['id']}: {r['title']}\"", f"linkTitle: {r['id']}",
+         f"weight: {weight}", "---", "",
          f"**Severity:** {SEV.get(r['sev'], r['sev'])}", ""]
-    L += [r["doc"], ""]
+    L += [doc, ""]
     if r["honors"]:
         marks = ", ".join(f"`(* {h} *)`" for h in r["honors"])
         L += ["## Suppression marks", "",
@@ -84,8 +86,7 @@ def page(r, weight):
 
 
 def index(rules):
-    L = ["---", "title: Rules", "weight: 40", "---", "",
-         "# Rule catalog", "",
+    L = ["---", "title: Rule catalog", "linkTitle: Rules", "weight: 40", "---", "",
          "One page per rule: what it flags, which suppression marks it",
          "honors, and the paired failing/passing fixtures. Pages are",
          "generated from `icarium rules --doc` — see",

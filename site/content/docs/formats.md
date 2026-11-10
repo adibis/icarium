@@ -3,7 +3,6 @@ title: Formats
 weight: 12
 ---
 
-# Formats
 
 icarium is JSON-native: every artifact it reads or writes is a
 versioned JSON schema under `schema/`. Tcl exists only at the

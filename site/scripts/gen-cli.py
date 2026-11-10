@@ -16,8 +16,6 @@ title: CLI reference
 weight: 10
 ---
 
-# CLI reference
-
 Every command reads an elaborated netlist from
 `scripts/elaborate.sh` (`--yosys-json`) plus an optional SDC file
 (`--sdc`). `check` is the main entry point; `domains`, `resets`,

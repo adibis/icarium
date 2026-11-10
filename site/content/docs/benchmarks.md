@@ -3,7 +3,6 @@ title: Benchmarks
 weight: 50
 ---
 
-# Benchmarks
 
 Three tiers of self-measurement, from hand fixtures to the full
 chip. Machine: Apple M4 Pro arm64, 25.8 GB. Tools: icarium

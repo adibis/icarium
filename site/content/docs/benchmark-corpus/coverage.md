@@ -3,8 +3,6 @@ title: Coverage
 weight: 30
 ---
 
-# Coverage
-
 Tier 1 holds 206 cases across 36 rules. Firing counts cases whose oracle expects the rule; silence counts empty-oracle cases built for it. Every rule fires in at least two cases; silence guards the rules whose approved pattern is worth pinning.
 
 | rule | firing | silence |

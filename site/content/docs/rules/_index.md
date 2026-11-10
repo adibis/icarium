@@ -1,9 +1,8 @@
 ---
-title: Rules
+title: Rule catalog
+linkTitle: Rules
 weight: 40
 ---
-
-# Rule catalog
 
 One page per rule: what it flags, which suppression marks it
 honors, and the paired failing/passing fixtures. Pages are

@@ -3,7 +3,6 @@ title: SDC subset
 weight: 11
 ---
 
-# SDC subset
 
 icarium reads a structural SDC subset: clocks, asynchrony, and
 pin delays. Anything else warns and is skipped — except file

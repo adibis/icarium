@@ -3,7 +3,6 @@ title: Contributing
 weight: 64
 ---
 
-# Contributing
 
 ## Before every commit
 

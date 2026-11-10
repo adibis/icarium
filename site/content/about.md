@@ -1,8 +1,7 @@
 ---
-title: About
+title: About icarium
+linkTitle: About
 ---
-
-# About icarium
 
 icarium is an open-source structural CDC/RDC checker: Zig,
 JSON-native, benchmarked against OpenTitan's own waivers up

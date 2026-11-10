@@ -3,7 +3,6 @@ title: Recall gate
 weight: 63
 ---
 
-# Recall gate
 
 OpenTitan ships CDC/RDC waivers for EarlGrey. icarium treats
 them as the benchmark: with no waiver file applied, the tool
@@ -24,8 +23,8 @@ Each in-scope oracle entry gets one verdict:
   neither waived endpoint.
 - **missed** — nothing fired and no unknown-family finding
   overlaps: true misses, must stay near zero.
-- **modeling-gap** — only CDC-011/021/025 overlap: we see the
-  structure but cannot clock it yet.
+- **modeling-gap** — only CDC-011/021/025 overlap: the checker
+  sees the structure but cannot clock it yet.
 
 Entries outside measurement (reserved-only, clock-model,
 out-of-scope, chip-scope) stay pending: counted, never in

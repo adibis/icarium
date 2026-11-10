@@ -7,6 +7,9 @@
   border-radius: 0.75rem;
   padding: 2.5rem 2rem;
   margin: 0 0 2.5rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 @media (min-width: 768px) {
   .icarium-hero {
@@ -30,6 +33,7 @@
   max-width: 16em;
   color: #fff;
   border: none;
+  overflow-wrap: break-word;
 }
 .icarium-hero p {
   font-size: 1.0625rem;
@@ -76,6 +80,8 @@
   color: #e5e5e5;
   overflow-x: auto;
   white-space: nowrap;
+  scrollbar-width: thin;
+  min-width: 0;
 }
 .icarium-term .p {
   color: #f2b84b;
@@ -91,10 +97,13 @@ main#content img[src*="/images/"] {
   margin: 1.5rem auto;
 }
 
-/* The footer theme switcher duplicates the navbar one. */
+/* The footer and sidebar theme switchers duplicate the navbar one. */
 .hextra-footer > div:has(.hextra-theme-toggle) {
   display: none;
 }
 .hextra-footer > div:has(.hextra-theme-toggle) + hr {
+  display: none;
+}
+aside div.hx\:sticky:has(.hextra-theme-toggle) {
   display: none;
 }

@@ -3,7 +3,6 @@ title: Suppressions
 weight: 13
 ---
 
-# Suppressions
 
 Four mechanisms, from most local to most global. All of them
 annotate findings; none of them delete crossings.

@@ -3,7 +3,6 @@ title: Architecture
 weight: 61
 ---
 
-# Architecture
 
 Small topic files, CMSIS/Linux style: each `src/<area>/` holds
 one concern, each `src/<area>.zig` re-exports it.
