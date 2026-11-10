@@ -37,9 +37,10 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["dst", "driver", "message", "waiver"],
+              "required": ["severity", "dst", "driver", "message", "waiver"],
               "additionalProperties": false,
               "properties": {
+                "severity": {"enum": ["error", "warning", "note"]},
                 "dst": {"$ref": "#/$defs/endpoint"},
                 "driver": {
                   "anyOf": [{"$ref": "#/$defs/endpoint"}, {"type": "null"}]

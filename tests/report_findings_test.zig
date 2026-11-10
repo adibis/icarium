@@ -79,6 +79,7 @@ const golden =
     \\      "title": "Unsynchronized control crossing",
     \\      "items": [
     \\        {
+    \\          "severity": "error",
     \\          "dst": {
     \\            "name": "d",
     \\            "kind": "port",
@@ -90,6 +91,7 @@ const golden =
     \\          "waiver": null
     \\        },
     \\        {
+    \\          "severity": "error",
     \\          "dst": {
     \\            "name": "u_blk.$procdff$1",
     \\            "kind": "cell",
@@ -113,6 +115,7 @@ const golden =
     \\      "title": "Muxed async reset without a local synchronizer",
     \\      "items": [
     \\        {
+    \\          "severity": "warning",
     \\          "dst": {
     \\            "name": "ghost",
     \\            "kind": "other",

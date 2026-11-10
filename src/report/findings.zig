@@ -55,9 +55,17 @@ pub fn writeJsonOptions(
     while (i < ordered.len) {
         var j = i + 1;
         while (j < ordered.len and std.mem.eql(u8, ordered[j].rule, ordered[i].rule)) j += 1;
+        // Group severity is the max over items: mixed rules record
+        // notes beside defects, so the first-sorted item would lie.
+        // Enum order is severity rank (err < warn < note).
+        var gsev = rule.registry.Severity.note;
+        for (ordered[i..j]) |f| {
+            if (@backingInt(f.severity) < @backingInt(gsev)) gsev = f.severity;
+        }
         var items = std.json.Array.init(tmp);
         for (ordered[i..j]) |f| {
             var item = std.json.ObjectMap.empty;
+            try item.put(tmp, "severity", .{ .string = common.severityWord(f.severity) });
             try item.put(tmp, "dst", try endpoint(tmp, mod, &idx, f.dst));
             if (f.driver) |d| {
                 try item.put(tmp, "driver", try endpoint(tmp, mod, &idx, d));
@@ -82,7 +90,7 @@ pub fn writeJsonOptions(
         }
         var g = std.json.ObjectMap.empty;
         try g.put(tmp, "rule", .{ .string = ordered[i].rule });
-        try g.put(tmp, "severity", .{ .string = common.severityWord(ordered[i].severity) });
+        try g.put(tmp, "severity", .{ .string = common.severityWord(gsev) });
         try g.put(tmp, "title", .{ .string = common.ruleTitle(ordered[i].rule) });
         try g.put(tmp, "items", .{ .array = items });
         try groups.append(.{ .object = g });
