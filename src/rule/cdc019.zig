@@ -109,7 +109,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
             }
         }.less);
         const desc = try laneDesc(ctx, names.items);
-        const message = try std.fmt.allocPrint(ctx.tmp, "independently-synced one-hot decode across CDC: comb cell {s} drives {d} separate WIDTH=1 source flops ({s}) that each cross independently to clock domain {s}. The shared decoder makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.", .{ ctx.mod.cells[k.drv].name, names.items.len, desc, k.clk });
+        const message = try std.fmt.allocPrint(ctx.tmp, "independently-synced one-hot decode across CDC: comb cell {s} drives {d} separate WIDTH=1 source flops ({s}) that each cross independently to clock domain {s}. The shared driver makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.", .{ ctx.mod.cells[k.drv].name, names.items.len, desc, k.clk });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

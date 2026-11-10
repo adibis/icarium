@@ -103,7 +103,7 @@ fn noteChain(
         .zero => '0',
         else => '?',
     };
-    const message = try std.fmt.allocPrint(ctx.tmp, "reset synchronizer {s} <- {s} ({d} stages) on {s}, {s}, head D '{c}', async root {s}; serves {d} on-chip consumer{s}", .{ tail, head, ch.flops.len, clk, word, dc, tar.ref, ncon, if (ncon == 1) "" else "s" });
+    const message = try std.fmt.allocPrint(ctx.tmp, "reset synchronizer {s} <- {s} ({d} stage{s}) on {s}, {s}, head D '{c}', async root {s}; serves {d} on-chip consumer{s}", .{ tail, head, ch.flops.len, if (ch.flops.len == 1) "" else "s", clk, word, dc, tar.ref, ncon, if (ncon == 1) "" else "s" });
     return .{
         .rule = rule.id,
         .severity = .note,
