@@ -1,7 +1,7 @@
 ---
 linkTitle: "Corpus"
 title: Benchmark corpus
-weight: 40
+weight: 55
 ---
 
 The corpus is an independent CDC/RDC benchmark: small designs with

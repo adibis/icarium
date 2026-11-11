@@ -4,8 +4,7 @@ weight: 13
 ---
 
 Four mechanisms, from most local to most global. All of them
-annotate findings; the [crossings]({{% relref "docs/concepts.md" %}})
-stay enumerated either way.
+annotate findings; the crossings stay enumerated either way.
 
 ## Verilog attributes
 

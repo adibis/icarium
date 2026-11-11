@@ -42,7 +42,7 @@ minutes: 637,274 chunks, 1,977,807 findings across 18 rules,
 peak RSS 14.8 GB. Streaming caps memory at one pair budget
 instead of the widest broadcast (see
 [Streaming]({{% relref "docs/dev/streaming.md" %}})). 63 flops
-stay [unknown]({{% relref "docs/concepts.md" %}}): 28 undriven
+stay unknown (unassignable to any declared clock): 28 undriven
 analog and scan-gated pins, plus 35 scan-muxed clocks whose
 undeclared scan legs fail validation. `--ignore-scan-mode`
 waives the scan-clocked paths.

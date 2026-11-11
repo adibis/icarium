@@ -30,8 +30,8 @@ Each line names a clock, gives its period (any consistent
 time unit — only the CDC-009/013 ratios consume it), and
 roots it on an input port. Names are yours. A clock with no
 `create_clock` is not a slow clock or a related clock — it
-is [unknown]({{% relref "docs/concepts.md" %}}), and the
-checker says so (see the third break).
+is unknown, and the checker says so with CDC-021 (see the
+third break).
 
 ## Declare the relationship
 

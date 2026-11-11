@@ -9,21 +9,19 @@ icarium is an open-source structural CDC (clock-domain crossing) and RDC
 netlist — Yosys, the open-source synthesizer, elaborates the
 SystemVerilog first — plus an SDC constraints file, then traces
 clocks and resets structurally, enumerates crossings, and runs
-a rule set over them. New here? Start with
-[Concepts]({{% relref "docs/concepts.md" %}}).
+a rule set over them. New here? Work the
+[Guides]({{% relref "docs/guides/_index.md" %}}).
 
 ## What it checks
 
 - **CDC**: signals sampled across clock domains — missing
   synchronizers, shallow chains, logic around synchronizers,
   bus crossings, and clocks the constraints never declare.
-  See [Concepts]({{% relref "docs/concepts.md" %}}) for the
-  vocabulary, [Rules]({{% relref "docs/rules/_index.md" %}})
-  for the full catalog.
+  See [Rules]({{% relref "docs/rules/_index.md" %}}) for the
+  full catalog.
 - **RDC**: the same races in reset trees — async resets
   released from foreign clock domains, combinational or muxed
-  reset sources, and reset-synchronizer chain integrity. See
-  [Concepts]({{% relref "docs/concepts.md" %}}) for reset domains.
+  reset sources, and reset-synchronizer chain integrity.
 
 ## What it is not
 
