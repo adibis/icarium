@@ -85,16 +85,25 @@ def page(r, weight):
     return "\n".join(L)
 
 
+def first_sentence(doc):
+    one = re.sub(r"\s+", " ", doc).strip()
+    head = one.split(". ")[0]
+    if not head.endswith("."):
+        head += "."
+    return re.sub(r"\(\* ([a-z_]+) \*\)", r"`(* \1 *)`", head)
+
+
 def index(rules):
     L = ["---", "title: Rule catalog", "linkTitle: Rules", "weight: 40", "---", "",
          "One page per rule: what it flags, which suppression marks it",
          "honors, and the paired failing/passing fixtures. Pages are",
          "generated from `icarium rules --doc` — see",
          "`site/scripts/gen-rules.py`.", "",
-         "| Rule | Severity | Title |", "| ---- | -------- | ----- |"]
+         "| Rule | Severity | What it flags |", "| ---- | -------- | ------------- |"]
     for r in rules:
         slug = r["id"].lower()
-        L.append(f"| [{r['id']}]({slug}/) | {SEV.get(r['sev'], r['sev'])} | {r['title']} |")
+        L.append(f"| [{r['title']}]({slug}/) ({r['id']}) "
+                 f"| {SEV.get(r['sev'], r['sev'])} | {first_sentence(r['doc'])} |")
     return "\n".join(L) + "\n"
 
 

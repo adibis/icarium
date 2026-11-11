@@ -3,7 +3,6 @@ title: Streaming
 weight: 62
 ---
 
-
 `--stream` checks designs no materialized report can hold by
 consuming each walked chunk through the rules immediately and
 keeping only findings plus small accumulators.

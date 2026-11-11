@@ -24,7 +24,7 @@ layout: hextra-home
 
 ![icarium pipeline](/images/overview/pipeline.svg)
 
-## Benchmarks at a glance
+## [Benchmarks at a glance]({{% relref "docs/benchmarks.md" %}})
 
 | tier | scope | result |
 | ---- | ----- | ------ |

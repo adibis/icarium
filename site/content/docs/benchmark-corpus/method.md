@@ -3,7 +3,6 @@ title: Method
 weight: 20
 ---
 
-
 A case is a scenario with a verdict: `design.sv`, `design.sdc`,
 and a `manifest.json` pinning the exact expected findings. The
 manifest is ground truth — the runner diffs the checker against

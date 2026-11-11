@@ -17,7 +17,7 @@ weight: 2
 git clone https://github.com/adibis/icarium
 cd icarium
 zig build          # builds ./zig-out/bin/icarium
-zig build test     # unit tests (247 tests)
+zig build test     # unit tests
 ```
 
 `zig build e2e` runs the SystemVerilog end-to-end suite; it needs
@@ -25,7 +25,13 @@ yosys on `PATH` and skips cleanly without it.
 
 ## First check
 
-Elaborate a design, then check it:
+Elaboration turns SystemVerilog into the flat netlist icarium
+reads: `scripts/elaborate.sh` runs Yosys (`read_verilog -sv`,
+`hierarchy -check -top`, `proc`, `flatten`) with no
+optimization passes, so flops and muxes stay visible. With
+your own `design.sv` and a hand-written `spi.sdc` (see
+[SDC subset]({{% relref "docs/sdc.md" %}}); examples under
+`bench/sdc/`):
 
 ```sh
 sh scripts/elaborate.sh --top spi_device --out spi.json design.sv

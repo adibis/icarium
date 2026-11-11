@@ -15,8 +15,19 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CASES = os.path.join(ROOT, "submodules", "icarium_benchmark", "cases", "tier1")
 OUT = os.path.join(ROOT, "site", "content", "docs", "benchmark-corpus", "coverage.md")
+TITLES = os.path.join(ROOT, "tests", "snapshots", "rules-doc.txt")
 
 PREFIX = re.compile(r"^(?:fx_)?((?:cdc|rdc)\d+)_")
+TITLE = re.compile(r"^(\S+) \[\w+\] (.*)$")
+
+
+def titles():
+    out = {}
+    for line in open(TITLES):
+        m = TITLE.match(line.rstrip("\n"))
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
 
 
 def main():
@@ -45,23 +56,27 @@ def main():
     for rid in sorted(rules):
         firing.setdefault(rid, [])
         silence.setdefault(rid, [])
+    names = titles()
+    missing = sorted(rules - set(names))
+    if missing:
+        raise SystemExit(f"gen-corpus: no pinned title for {missing}")
     lines = ["---", "title: Coverage", "weight: 30", "---", "",
              f"Tier 1 holds {len(manifests)} cases across {len(rules)} rules. "
              "Firing counts cases whose oracle expects the rule; silence counts "
              "empty-oracle cases built for it. Every rule fires in at least two "
              "cases; silence guards the rules whose approved pattern is worth pinning.",
              "",
-             "| rule | firing | silence |",
-             "|---|---|---|"]
+             "| rule | what it catches | firing | silence |",
+             "|---|---|---|---|"]
     for rid in sorted(rules):
-        lines.append(f"| {rid} | {len(firing[rid])} | {len(silence[rid])} |")
+        lines.append(f"| {rid} | {names[rid]} | {len(firing[rid])} | {len(silence[rid])} |")
     if unattributed:
         lines += ["",
                   "Unattributed silence (" + ", ".join(f"`{c}`" for c in sorted(unattributed)) + "):",
                   "end-to-end quiet designs with no single target rule.",
                   ""]
     lines += ["",
-              "Case-level oracles live in the corpus repo: each case pairs",
+              "Case-level verdicts live in the corpus repo: each case pairs",
               "`design.sv` and `design.sdc` with a `manifest.json` pinning the",
               "exact expected findings.",
               ""]

@@ -3,7 +3,6 @@ title: Formats
 weight: 12
 ---
 
-
 icarium is JSON-native: every artifact it reads or writes is a
 versioned JSON schema under `schema/`. Tcl exists only at the
 edges, as converters.
@@ -29,7 +28,10 @@ never parses it back.
 
 ## Accellera 1.0 interchange
 
-`import-meridian` converts `set_rule_status` Tcl waiver files to
-native `waivers.json` through a signed rule map
-(`bench/meridian_map.json`). The Tcl stays outside the tool;
-JSON is the contract.
+`icarium import-meridian --in WAIVERS.tcl --map bench/meridian_map.json
+--out waivers.json` converts `set_rule_status` Tcl waiver files
+(OpenTitan's Meridian waiver format) to native `waivers.json`
+through a reviewed rule map that pins each foreign rule id to
+its icarium equivalent. The Tcl stays outside the tool; JSON
+is the contract. The same waivers drive the
+[recall gate]({{% relref "docs/dev/recall.md" %}}).

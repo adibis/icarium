@@ -3,7 +3,6 @@ title: Recall gate
 weight: 63
 ---
 
-
 OpenTitan ships CDC/RDC waivers for EarlGrey. icarium treats
 them as the benchmark: with no waiver file applied, the tool
 must catch everything the waivers excuse. `bench/recall.py`
@@ -17,19 +16,23 @@ waiver files through a signed rule map
 Each in-scope oracle entry gets one verdict:
 
 - **full / partial** — a mapped rule fired overlapping both /
-  one endpoint. Single-ended waivers reach full on their one
-  end: weaker evidence, counted honestly.
+  one endpoint. A waiver naming a single endpoint reaches
+  full on that one end; the oracle cannot ask for more than
+  the waiver names.
 - **rule-only** — a mapped rule fired on the block but reaches
   neither waived endpoint.
-- **missed** — nothing fired and no unknown-family finding
+- **missed** — nothing fired and no CDC-011/021/025 finding
   overlaps: true misses, must stay near zero.
 - **modeling-gap** — only CDC-011/021/025 overlap: the checker
   sees the structure but cannot clock it yet.
 
-Entries outside measurement (reserved-only, clock-model,
-out-of-scope, chip-scope) stay pending: counted, never in
-the denominator. Extras never block — recall counts what the
-waivers excuse that we also flag.
+Entries stay pending — counted, never in the denominator —
+when their rules are reserved-only, when the entry names no
+endpoints (clock-model), when its endpoints lie outside the
+checked netlist (out-of-scope), or when judging needs the
+full chip (chip-scope, measured only with `--chip`). Extras
+never block — recall counts what the waivers excuse that the
+checker also flags.
 
 ## Running it
 

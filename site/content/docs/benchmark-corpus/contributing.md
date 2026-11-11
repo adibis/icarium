@@ -3,7 +3,6 @@ title: Contributing
 weight: 40
 ---
 
-
 One scenario per case: one bug shape, or one silence proof.
 A case that needs two paragraphs to explain its verdict is two
 cases.

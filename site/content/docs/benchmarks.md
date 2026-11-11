@@ -3,21 +3,27 @@ title: Benchmarks
 weight: 50
 ---
 
-
 Three tiers of self-measurement, from hand fixtures to the full
 chip. Machine: Apple M4 Pro arm64, 25.8 GB. Tools: icarium
 Release, Yosys 0.70.
 
 ## Tier-1: 8 hand fixtures
 
-Crossing, domain, reset, and clock snapshots over eight small
-designs (gated, muxed, divided, and negedge clocks; sync and
-async resets; memory and multi-clock cases). The e2e suite
-replays every snapshot; each design checks in milliseconds.
+Eight small designs covering gated, muxed, divided, and
+negedge clocks, sync and async resets, and memory and
+multi-clock cases. Each elaborates and checks in milliseconds;
+each present output is diffed byte-for-byte (`cmp`) against
+its golden: always stats, plus clocks, domains, resets, and
+crossings where the case defines them. Any modeling change
+shows up immediately.
 
 ## Tier-2: 5 OpenTitan blocks
 
-Full rule checks with findings, timed release-fast:
+Full rule checks on real blocks, timed with optimized
+release builds.
+Crossings counts source-to-sink bit pairs: wide buses
+multiply it fast, which is why spi_device dominates the
+tier while gpio barely registers.
 
 | design | time | crossings | findings |
 |---|---|---|---|
@@ -27,25 +33,28 @@ Full rule checks with findings, timed release-fast:
 | alert_handler | 1.93s | 3,228 | 230 |
 | lc_ctrl | 2.68s | 580,400 | 173 |
 
-Cost tracks pairs, not netlist size: spi_device's wide bus
-fanout dominates the tier.
+Check time tracks pairs, not netlist size.
 
 ## Tier-3: full EarlGrey top
 
 The 983 MB flat top (178,656 sources) checks streamed in 65
 minutes: 637,274 chunks, 1,977,807 findings across 18 rules,
-peak RSS 14.8 GB. Peak memory follows one pair budget, never
-the widest broadcast; declared divided and serial roots hold
-unknown-domain flops to 63: 28 undriven analog and scan-gated
-pins, 35 scan-muxed clocks whose undeclared scan legs the
-union validator refuses. `--ignore-scan-mode` waives the
-scan-clocked paths.
+peak RSS 14.8 GB. Streaming caps memory at one pair budget
+instead of the widest broadcast (see
+[Streaming]({{% relref "docs/dev/streaming.md" %}})). 63 flops
+stay [unknown]({{% relref "docs/concepts.md" %}}): 28 undriven
+analog and scan-gated pins, plus 35 scan-muxed clocks whose
+undeclared scan legs fail validation. `--ignore-scan-mode`
+waives the scan-clocked paths.
 
 ## Recall gate
 
-Separately from scale tiers, OpenTitan's own Meridian
-waivers replay as a recall gate: every waived entry gets a
-verdict (full, partial, rule-only, missed). See
+Separately from scale tiers, OpenTitan's Meridian waivers
+(Tcl `set_rule_status` files, converted via
+[Accellera 1.0 interchange]({{% relref "docs/formats.md" %}}))
+replay as a recall gate over 465 blessed entries: every
+waived violation gets a verdict (full, partial, rule-only,
+modeling-gap, missed), with zero missed. See
 [Recall gate]({{% relref "docs/dev/recall.md" %}}).
 
 For checker-vs-checker comparison, the standalone

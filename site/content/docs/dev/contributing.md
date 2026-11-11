@@ -3,7 +3,6 @@ title: Contributing
 weight: 64
 ---
 
-
 ## Before every commit
 
 ```sh

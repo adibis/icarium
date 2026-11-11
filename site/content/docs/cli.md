@@ -3,10 +3,15 @@ title: CLI reference
 weight: 10
 ---
 
-Every command reads an elaborated netlist from
-`scripts/elaborate.sh` (`--yosys-json`) plus an optional SDC file
-(`--sdc`). `check` is the main entry point; `domains`, `resets`,
-and `crossings` expose the intermediate models for debugging.
+`check` is the main entry point: it reads an elaborated netlist
+from `scripts/elaborate.sh` (`--yosys-json`) plus an optional
+SDC file (`--sdc`). `domains`, `resets`, and `crossings` read
+the same inputs to expose the intermediate models for debugging —
+which flop belongs to which clock, which reset releases it,
+and which signal paths cross domains. `stats` takes the
+netlist alone, `clocks` takes only an SDC file, `rules`
+documents the catalog without inputs, and `import-meridian`
+converts Tcl waiver files.
 
 ## Exit codes
 

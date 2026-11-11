@@ -3,9 +3,9 @@ title: Suppressions
 weight: 13
 ---
 
-
 Four mechanisms, from most local to most global. All of them
-annotate findings; none of them delete crossings.
+annotate findings; the [crossings]({{% relref "docs/concepts.md" %}})
+stay enumerated either way.
 
 ## Verilog attributes
 
@@ -15,7 +15,7 @@ Assert intent in the RTL where the structure is genuinely safe:
 | ---- | ------- |
 | `(* cdc_sync *)` / `(* async_reg *)` | vetted synchronizer cell |
 | `(* cdc_static *)` | source held constant |
-| `(* cdc_handshake *)` | capture register of a handshake |
+| `(* cdc_handshake *)` | destination register of a handshake pair |
 | `(* reset_sync *)` / `(* reset_synchronizer *)` | vetted reset synchronizer |
 
 Each [rule]({{% relref "docs/rules/_index.md" %}}) lists the marks it honors.
@@ -37,4 +37,5 @@ design with known debt.
 
 `// icarium: disable-rule CDC-001 reason...` comments waive by
 source location when the waived RTL cannot carry an attribute.
-`--ignore-scan-mode` waives scan-tagged clock and reset paths.
+`--ignore-scan-mode` waives findings on flops whose clock or
+reset fans in from a `(* scan_en *)` net.
