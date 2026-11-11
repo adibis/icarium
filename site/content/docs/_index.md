@@ -37,6 +37,7 @@ crossing bugs before signoff gets them.
 ![icarium pipeline](/images/overview/pipeline.svg)
 
 Start with [Getting started]({{% relref "docs/getting-started.md" %}}),
+then work the [Guides]({{% relref "docs/guides/_index.md" %}}),
 or jump to the [CLI reference]({{% relref "docs/cli.md" %}}), the
 [rule catalog]({{% relref "docs/rules/_index.md" %}}), or
 [how it is benchmarked]({{% relref "docs/benchmarks.md" %}}).

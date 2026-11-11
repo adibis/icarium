@@ -53,6 +53,7 @@ and pair-budget flags.
 
 ## Next steps
 
+- [Guides]({{% relref "docs/guides/_index.md" %}}) — worked walkthroughs: first run, findings, constraints
 - [CLI reference]({{% relref "docs/cli.md" %}}) — every command and flag
 - [SDC subset]({{% relref "docs/sdc.md" %}}) — which constraints icarium reads
 - [Rules]({{% relref "docs/rules/_index.md" %}}) — what each rule flags and how to fix it
