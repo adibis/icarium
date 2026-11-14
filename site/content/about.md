@@ -14,5 +14,5 @@ to the full EarlGrey top.
 
 Status: tier-3 complete — the full flat top checks streamed
 in about an hour. See [Benchmarks]({{% relref "docs/benchmarks.md" %}}),
-and the standalone [benchmark corpus]({{% relref "docs/benchmark-corpus/_index.md" %}})
-for checker-vs-checker comparison.
+and [cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests), a
+tool-neutral suite any CDC/RDC checker can run.

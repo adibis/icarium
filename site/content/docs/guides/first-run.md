@@ -90,8 +90,7 @@ for the full decode.)
 
 ## Fix the RTL — on a copy
 
-Don't edit the fixture in place: the corpus and the test
-suites read it. Copy it to scratch and edit the copy:
+Don't edit the fixture in place: the test suites read it. Copy it to scratch and edit the copy:
 
 ```sh
 mkdir -p /tmp/cdc-run

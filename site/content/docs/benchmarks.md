@@ -66,7 +66,12 @@ neither endpoint; it is a diagnostic, not a match. One top
 entry is a known modeling gap. See
 [Recall gate]({{% relref "docs/dev/recall.md" %}}).
 
-For checker-vs-checker comparison, the standalone
-[benchmark corpus]({{% relref "docs/benchmark-corpus/_index.md" %}})
-measures any tool against ground truth instead of against
-another tool's output.
+## Test suite
+
+[cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests) is a
+separate, tool-neutral suite: 206 small designs, each with the
+exact findings a correct checker reports, including the
+designs where it must report nothing. Any CDC/RDC checker can
+run it. Every case also compiles in Verilator and Xezim, so a
+failure is about the crossing, never the SystemVerilog.
+icarium passes all 206.

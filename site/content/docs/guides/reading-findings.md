@@ -30,12 +30,12 @@ you start reading: the capture flop, then what feeds it.
 ## Grouped findings pin one end
 
 Some rules cover several endpoints with one finding. This
-CDC-019 (corpus case `fx_cdc019_bad_onehot_decode`) names
+CDC-019 ([cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests) case `fx_cdc019_bad_onehot_decode`) names
 four source flops but pins the first:
 
 ```text
 CDC-019 [warning] Independently-synced one-hot decode across CDC (1 finding)
-  $procdff$21 @ submodules/icarium_benchmark/cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:18.5-23.8: independently-synced one-hot decode across CDC: comb cell $shift$submodules/icarium_benchmark/cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:14$9 drives 4 separate WIDTH=1 source flops ($procdff$21, $procdff$22, $procdff$23, $procdff$24) that each cross independently to clock domain dst_clk. The shared driver makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.
+  $procdff$21 @ cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:18.5-23.8: independently-synced one-hot decode across CDC: comb cell $shift$cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:14$9 drives 4 separate WIDTH=1 source flops ($procdff$21, $procdff$22, $procdff$23, $procdff$24) that each cross independently to clock domain dst_clk. The shared driver makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.
 ```
 
 Read the pinned line first, then the message's list. Which
@@ -52,18 +52,18 @@ waiver with an expiry date explaining why the structure is
 safe anyway.
 
 **Warning** is a question with two answers. Take CDC-024,
-one source fanning to two synchronizers (corpus case
+one source fanning to two synchronizers (test-suite case
 `cdc024_fanout_pair`, elaborated and checked the same way):
 
 ```text
 CDC-024 [warning] Single source fanning to multiple synchronizers (1 finding)
-  $procdff$10 @ submodules/icarium_benchmark/cases/tier1/cdc024_fanout_pair/design.sv:16.5-16.36: fanout to 2 synchronizers: source $procdff$10 reaches independent sync chains in domain cb (chain heads: $procdff$7, $procdff$9); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values
+  $procdff$10 @ cases/tier1/cdc024_fanout_pair/design.sv:16.5-16.36: fanout to 2 synchronizers: source $procdff$10 reaches independent sync chains in domain cb (chain heads: $procdff$7, $procdff$9); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values
 ```
 
 Outcome one: the destinations stay independent — no shared
 downstream logic — and the warning waives with that reason.
 Outcome two: they recombine, and the checker proves it with
-a second warning on the same source. The corpus case
+a second warning on the same source. The test-suite case
 `cdc005_reconvergent_pair` is that design — elaborate and
 check it the same way (top `cdc005_reconvergent_pair`, its
 `design.sdc`, `--format ids`):
