@@ -72,6 +72,7 @@ entry is a known modeling gap. See
 separate, tool-neutral suite: 206 small designs, each with the
 exact findings a correct checker reports, including the
 designs where it must report nothing. Any CDC/RDC checker can
-run it. Every case also compiles in Verilator and Xezim, so a
-failure is about the crossing, never the SystemVerilog.
+run it. Every case also compiles in Verilator, Xezim and slang
+and synthesizes cleanly in Yosys, so a failure is about the
+crossing, never the SystemVerilog.
 icarium passes all 206.
