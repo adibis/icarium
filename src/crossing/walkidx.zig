@@ -2,6 +2,7 @@ const std = @import("std");
 const clock = @import("../clock.zig");
 const ir = @import("../ir.zig");
 const reset = @import("../reset.zig");
+const sdc = @import("../sdc.zig");
 
 pub const SinkClass = enum { d, srst, arst, clk };
 
@@ -57,12 +58,14 @@ fn laneParallel(cell_type: []const u8) bool {
 }
 
 // One resolved fanout edge: every string decision the walker
-// needs, answered once at build instead of per visit. Loads on
-// null cells, blackboxes, and opaque memories are dropped here;
+// needs, answered once at build instead of per visit. Cell-less
+// hash locs, blackboxes, and opaque memories are dropped here;
 // the walker skipped all three without emitting, so the index
-// only stores edges it would have acted on.
+// only stores edges it would have acted on. Null-cell loads are
+// typed output ports, added explicitly: block exits the walker
+// ends with a pair instead of walking past.
 pub const Load = struct {
-    cell: usize,
+    cell: ?usize,
     pin: []const u8,
     lane: usize,
     sink: ?SinkClass,
@@ -109,6 +112,7 @@ pub const Index = struct {
         alloc: std.mem.Allocator,
         mod: *const ir.types.Module,
         controls: []const clock.trace.ControlPin,
+        model: *const sdc.model.Model,
     ) error{OutOfMemory}!Index {
         var max_bit: u32 = 0;
         for (mod.cells) |c| {
@@ -149,6 +153,16 @@ pub const Index = struct {
                 off[b + 1] += 1;
             }
         }
+        // Untyped ports stay invisible: no declared clock, unknown
+        // noise either way. Port typing resolves once at build.
+        for (mod.ports) |p| {
+            if (p.direction != .output) continue;
+            if (sdc.model.portClock(model, p.name) == null) continue;
+            for (p.bits) |b| {
+                if (b != .sig) continue;
+                off[b.sig + 1] += 1;
+            }
+        }
         var total: u32 = 0;
         for (0..@as(usize, max_bit) + 1) |b| {
             const n = off[b + 1];
@@ -186,6 +200,26 @@ pub const Index = struct {
             }
             if (b == max_bit) break;
             b += 1;
+        }
+        // Port loads append after cell loads per bit, in netlist
+        // port order: existing hop paths never shift, and ports
+        // need no per-bit scan of their own.
+        for (mod.ports) |p| {
+            if (p.direction != .output) continue;
+            if (sdc.model.portClock(model, p.name) == null) continue;
+            for (p.bits, 0..) |bit, lane| {
+                if (bit != .sig) continue;
+                flat[cursor[bit.sig]] = .{
+                    .cell = null,
+                    .pin = p.name,
+                    .lane = lane,
+                    .sink = null,
+                    .control = false,
+                    .pin_ctl = false,
+                    .pin_b = false,
+                };
+                cursor[bit.sig] += 1;
+            }
         }
 
         return .{

@@ -1,6 +1,8 @@
 // Scan case: scan_en gates one clock and muxes one reset, so
 // two flops sit on scan-tagged paths while the third stays a
 // clean functional crossing. The flag waives the tagged pair.
+// The mux select stays a kept CDC-010: its dst is the mux,
+// not a flop, so scan waiver never applies to it.
 module scan_ignored (
     input  logic clk_a,
     input  logic clk_b,

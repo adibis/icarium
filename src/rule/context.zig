@@ -129,8 +129,6 @@ pub fn clockNetworkCells(
 
 const FaninBit = struct { bit: u32, depth: u8 };
 
-// Flop cells whose Q feeds the bits through combinational logic.
-// Ports and constants end the walk; twelve hops bound it.
 // Backward BFS through combinational cells, collecting the
 // top-level input ports reached. Flop Q stops the walk: a
 // flopped source belongs to RDC-004's case, never this one.
@@ -171,6 +169,8 @@ pub fn backwardPortFanin(
     return out.toOwnedSlice(alloc);
 }
 
+// Flop cells whose Q feeds the bits through combinational logic.
+// Ports and constants end the walk; twelve hops bound it.
 // Cost: O(12-hop cone), visited-guarded; callers pay per call.
 pub fn backwardFlopFanin(
     alloc: std.mem.Allocator,
@@ -203,4 +203,13 @@ pub fn backwardFlopFanin(
         }
     }
     return flops;
+}
+
+pub fn portOfBit(mod: *const ir.types.Module, bit: u32) ?[]const u8 {
+    for (mod.ports) |p| {
+        for (p.bits) |b| {
+            if (b == .sig and b.sig == bit) return p.name;
+        }
+    }
+    return null;
 }

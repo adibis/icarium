@@ -786,3 +786,51 @@ test "sources sharing a gate enumerate independently" {
         try std.testing.expectEqualStrings("g1", l.mod.cells[x.hops[0]].name);
     }
 }
+
+const out_port =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [10]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [10]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const out_port_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name virt -period 10
+    \\set_output_delay -clock virt [get_ports q]
+;
+
+const out_port_untyped_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name virt -period 10
+;
+
+test "typed output ports sink pairs, untyped stay invisible" {
+    var l = try loadAll(out_port, out_port_sdc);
+    defer freeAll(&l);
+    const x = xFor(&l, .flop_port, 10, 10).?;
+    try std.testing.expectEqualStrings("ca", x.src_clk);
+    try std.testing.expectEqualStrings("virt", x.dst_clk);
+    try std.testing.expect(x.async_per_sdc);
+    try std.testing.expect(x.dst.cell == null);
+    try std.testing.expectEqualStrings("q", x.dst.port);
+    try std.testing.expectEqual(@as(usize, 0), x.instance_path.len);
+
+    var u = try loadAll(out_port, out_port_untyped_sdc);
+    defer freeAll(&u);
+    try std.testing.expect(xFor(&u, .flop_port, 10, 10) == null);
+}

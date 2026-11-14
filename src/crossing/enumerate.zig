@@ -14,6 +14,7 @@ pub const Kind = enum {
     port_flop,
     port_flop_untyped,
     port_flop_bus,
+    flop_port,
     clock_sink,
     clock_control,
 };
@@ -204,7 +205,7 @@ fn buildChunk(
     stream: bool,
 ) error{OutOfMemory}![]Crossing {
     en.pair_alloc = build_alloc;
-    var plist: std.ArrayListUnmanaged(Pair) = .{ .items = @constCast(pairs), .capacity = pairs.len };
+    var plist: std.ArrayListUnmanaged(Pair) = .{ .items = @constCast(pairs), .capacity = pairs.len, .pointer_stability = .{} };
     var out: std.ArrayListUnmanaged(Crossing) = .empty;
     // Presized: millions of pairs double the list into gigabytes
     // of retained arena slack; enumeration holds one vector.
@@ -287,6 +288,7 @@ fn prepare(
     tmp: std.mem.Allocator,
     mod: *const ir.types.Module,
     clock_asg: *const clock.trace.Assignment,
+    model: *const sdc.model.Model,
 ) error{OutOfMemory}!Prepared {
     const clock_of = try keep.alloc(?*const clock.trace.Domain, mod.cells.len);
     @memset(clock_of, null);
@@ -303,7 +305,7 @@ fn prepare(
             return std.mem.lessThan(u8, a.pin, b.pin);
         }
     }.less);
-    const widx = try walkidx.Index.build(tmp, mod, controls);
+    const widx = try walkidx.Index.build(tmp, mod, controls, model);
 
     var srclist: std.ArrayListUnmanaged(Source) = .empty;
     for (mod.cells, 0..) |c, ci| {
@@ -359,7 +361,7 @@ pub fn enumerate(
     var idx_arena = std.heap.ArenaAllocator.init(parent);
     defer idx_arena.deinit();
     const tmp = idx_arena.allocator();
-    const prep = try prepare(alloc, tmp, mod, clock_asg);
+    const prep = try prepare(alloc, tmp, mod, clock_asg, model);
     const sources = prep.sources;
 
     const nchunks = @max(@min(sources.len, std.Thread.getCpuCount() catch 1), 1);
@@ -460,7 +462,11 @@ fn runOne(
     for (idx, 0..) |*v, i| v.* = i;
     std.mem.sort(usize, idx, w.pairs.items, struct {
         fn less(ps: []Pair, a: usize, b: usize) bool {
-            return ps[a].dst_cell < ps[b].dst_cell;
+            const da = ps[a].dst_cell;
+            const db = ps[b].dst_cell;
+            if ((da == null) != (db == null)) return da == null;
+            if (da) |va| return va < db.?;
+            return false;
         }
     }.less);
     var i: usize = 0;
@@ -523,7 +529,7 @@ pub fn streamBatches(
     var idx_arena = std.heap.ArenaAllocator.init(parent);
     defer idx_arena.deinit();
     const tmp = idx_arena.allocator();
-    const prep = try prepare(keep, tmp, mod, clock_asg);
+    const prep = try prepare(keep, tmp, mod, clock_asg, model);
     const sources = prep.sources;
 
     const per = @max(chunk_sources, 1);
@@ -605,7 +611,7 @@ const Pair = struct {
     src_port: []const u8,
     src_bit: u32,
     src_lane: usize,
-    dst_cell: usize,
+    dst_cell: ?usize,
     dst_pin: []const u8,
     dst_bit: u32,
     dst_lane: usize,
@@ -660,23 +666,31 @@ const Enumerator = struct {
             const b = queue.items[head];
             head += 1;
             for (idx.loads(b)) |ld| {
+                // Typed output ports end the cone with a pair. Port
+                // sources skip: port-to-port pairs have no consumer yet.
+                if (ld.cell == null) {
+                    if (src_cell == null) continue;
+                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, null, ld.pin, b, ld.lane, null, false);
+                    continue;
+                }
+                const lc = ld.cell.?;
                 // Control arrivals emit, then keep walking: the value
                 // still reaches the clock, so the glitch path survives.
                 if (ld.control) {
-                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ld.cell, ld.pin, b, ld.lane, null, true);
+                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, lc, ld.pin, b, ld.lane, null, true);
                 }
                 if (ld.sink) |cls| {
                     // Same-cell pairs are self-feedback, never
                     // crossings: a flop's Q reaching its own D
                     // through comb is a counter, not a CDC.
-                    if (src_cell != null and src_cell.? == ld.cell) continue;
-                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, ld.cell, ld.pin, b, ld.lane, cls, false);
-                } else if (idx.cells[ld.cell].seq_or_memclock) {
+                    if (src_cell != null and src_cell.? == lc) continue;
+                    try en.emit(pairs, src_cell, src_port, src_bit, src_lane, lc, ld.pin, b, ld.lane, cls, false);
+                } else if (idx.cells[lc].seq_or_memclock) {
                     // Unclassified sequential inputs end the walk:
                     // boundaries cut, never go transparent.
                     continue;
                 } else {
-                    try en.propagate(ld.cell, ld, b, gen, &queue, tmp);
+                    try en.propagate(lc, ld, b, gen, &queue, tmp);
                 }
             }
         }
@@ -689,7 +703,7 @@ const Enumerator = struct {
         src_port: []const u8,
         src_bit: u32,
         src_lane: usize,
-        ci: usize,
+        ci: ?usize,
         pin: []const u8,
         b: u32,
         dst_lane: usize,
@@ -742,8 +756,14 @@ const Enumerator = struct {
     // The dispatcher additionally routes untyped-kind pairs past
     // per-pair rules; their paths serve the check_all owners.
     fn knownPair(en: *Enumerator, pr: Pair) bool {
-        const dd = en.dstDomain(pr) orelse return false;
-        if (std.mem.eql(u8, dd.name, "unknown")) return false;
+        if (pr.dst_cell == null) {
+            // Port destinations resolve through SDC typing, never
+            // the flop table; the walk only emits typed ports.
+            if (en.typedClock(pr.dst_pin) == null) return false;
+        } else {
+            const dd = en.dstDomain(pr) orelse return false;
+            if (std.mem.eql(u8, dd.name, "unknown")) return false;
+        }
         if (pr.src_cell) |_| {
             const sd = en.srcDomain(pr) orelse return false;
             if (std.mem.eql(u8, sd.name, "unknown")) return false;
@@ -822,6 +842,8 @@ const Enumerator = struct {
             .clock_control
         else if (pr.dst_class == .clk)
             .clock_sink
+        else if (pr.dst_cell == null)
+            .flop_port
         else if (pr.src_cell == null)
             if (en.typedClock(pr.src_port)) |_| .port_flop else .port_flop_untyped
         else
@@ -840,7 +862,6 @@ const Enumerator = struct {
             const h = id.compute(@tagName(kind), src_name, dst_name, src_clk, dst_clk);
             break :blk try en.alloc.dupe(u8, &h);
         };
-        const dc = en.mod.cells[pr.dst_cell];
         return .{
             .id = ident,
             .hop_count = pr.hops_len,
@@ -862,7 +883,9 @@ const Enumerator = struct {
             .async_per_sdc = en.asyncFor(pr),
             .hops = pr.hops,
             .lanes = &.{},
-            .instance_path = try en.dupePath(dc),
+            // Ports carry no hierarchy: nothing reads the path, and
+            // inventing one would forge matchable ancestry.
+            .instance_path = if (pr.dst_cell) |dc| try en.dupePath(en.mod.cells[dc]) else &.{},
             .src_loc = try en.cellLoc(pr.src_cell),
             .dst_loc = try en.cellLoc(pr.dst_cell),
         };
@@ -882,6 +905,9 @@ const Enumerator = struct {
             if (pr.src_cell) |sc| {
                 if (en.mod.cells[sc].blackbox) continue;
             }
+            // Port destinations group by bit only: bus keys anchor
+            // on cells, and port buses have no rule consumer yet.
+            if (pr.dst_cell == null) continue;
             if (pr.dst_control or pr.dst_class == .clk) continue;
             if (!en.asyncFor(pr)) continue;
             try cand.append(en.pair_alloc, i);
@@ -895,7 +921,10 @@ const Enumerator = struct {
                     if (sa != pb.src_cell.?) return sa < pb.src_cell.?;
                 }
                 if (!std.mem.eql(u8, pa.src_port, pb.src_port)) return std.mem.lessThan(u8, pa.src_port, pb.src_port);
-                if (pa.dst_cell != pb.dst_cell) return pa.dst_cell < pb.dst_cell;
+                if ((pa.dst_cell == null) != (pb.dst_cell == null)) return pa.dst_cell == null;
+                if (pa.dst_cell) |da| {
+                    if (da != pb.dst_cell.?) return da < pb.dst_cell.?;
+                }
                 return std.mem.lessThan(u8, pa.dst_pin, pb.dst_pin);
             }
         }.less);
@@ -947,9 +976,13 @@ const Enumerator = struct {
     }
 
     fn dstDomain(en: *Enumerator, pr: Pair) ?clock.trace.Domain {
-        if (pr.dst_control) return en.controlOutDomain(pr.dst_cell);
-        if (clock.cells.isMemoryClock(en.mod.cells[pr.dst_cell].type)) return en.memClockDomain(pr.dst_cell);
-        return en.clockAt(pr.dst_cell);
+        // Port destinations have no flop row; typedClock names
+        // their domain, and callers branch before asking here.
+        if (pr.dst_cell == null) return null;
+        const dc = pr.dst_cell.?;
+        if (pr.dst_control) return en.controlOutDomain(dc);
+        if (clock.cells.isMemoryClock(en.mod.cells[dc].type)) return en.memClockDomain(dc);
+        return en.clockAt(dc);
     }
 
     fn srcDomain(en: *Enumerator, pr: Pair) ?clock.trace.Domain {
@@ -962,7 +995,6 @@ const Enumerator = struct {
         return en.clockAt(ci);
     }
 
-    // The controlled clock: the domain leaving the mux or gate output.
     fn controlOutDomain(en: *Enumerator, ci: usize) ?clock.trace.Domain {
         const y = en.mod.cells[ci].portBits("Y") orelse return null;
         for (y) |b| {
@@ -991,6 +1023,12 @@ const Enumerator = struct {
     }
 
     fn dstClock(en: *Enumerator, pr: Pair) error{OutOfMemory}![]const u8 {
+        if (pr.dst_cell == null) {
+            // Untyped fallback labels the port: a port: destination
+            // is clocked-but-undeclared, never CDC-025 unknown.
+            if (en.typedClock(pr.dst_pin)) |c| return en.alloc.dupe(u8, c);
+            return std.fmt.allocPrint(en.alloc, "port:{s}", .{pr.dst_pin});
+        }
         if (en.dstDomain(pr)) |d| return en.alloc.dupe(u8, d.name);
         return en.alloc.dupe(u8, "unknown");
     }
@@ -998,11 +1036,25 @@ const Enumerator = struct {
     // Async when any leg pair is async: a muxed clock is only as
     // synchronous as its least synchronous leg. Unknown forces true.
     fn asyncFor(en: *Enumerator, pr: Pair) bool {
-        // Same clock net beats every doubt, including unknown: one
-        // wire means one edge, whatever the tracer resolved. Opaque
-        // sources stay out: unclocked data proves nothing by net.
+        // Same net beats every doubt, unknown included: one wire
+        // is one edge. Opaque sources and port ends skip the guard.
         if (pr.src_cell) |sc| {
-            if (!opaqueSource(en.mod.cells[sc]) and sameClockNet(en.mod, sc, pr.dst_cell)) return false;
+            if (pr.dst_cell) |dc| {
+                if (!opaqueSource(en.mod.cells[sc]) and sameClockNet(en.mod, sc, dc)) return false;
+            }
+        }
+        if (pr.dst_cell == null) {
+            const dst_name = en.typedClock(pr.dst_pin) orelse return true;
+            if (pr.src_cell) |_| {
+                const src = en.srcDomain(pr) orelse return true;
+                if (std.mem.eql(u8, src.name, "unknown")) return true;
+                for (src.legs) |sl| {
+                    if (en.model.areAsync(sl, dst_name)) return true;
+                }
+                return false;
+            }
+            const src_name = en.srcClockName(pr.src_port) orelse return true;
+            return en.model.areAsync(src_name, dst_name);
         }
         const dst = en.dstDomain(pr) orelse return true;
         if (std.mem.eql(u8, dst.name, "unknown")) return true;
@@ -1059,8 +1111,6 @@ fn readEnabled(c: ir.types.Cell) bool {
 
 // Lane-parallel output for an arrival lane, or null to fan out.
 // $pmux option legs wrap lane-modulo across the output width.
-// Integer twin of the retired string-keyed outLane: same
-// lane-or-broadcast verdict from the resolved load and cell.
 fn outLaneFast(info: walkidx.CellInfo, ld: walkidx.Load, out_len: usize) ?usize {
     if (ld.pin_ctl) return null;
     if (!info.parallel) return null;
@@ -1074,6 +1124,9 @@ fn sameBusKey(a: Pair, b: Pair) bool {
     if (a.src_cell) |sa| {
         if (sa != b.src_cell.?) return false;
     }
-    return std.mem.eql(u8, a.src_port, b.src_port) and
-        a.dst_cell == b.dst_cell and std.mem.eql(u8, a.dst_pin, b.dst_pin);
+    if ((a.dst_cell == null) != (b.dst_cell == null)) return false;
+    if (a.dst_cell) |da| {
+        if (da != b.dst_cell.?) return false;
+    }
+    return std.mem.eql(u8, a.src_port, b.src_port) and std.mem.eql(u8, a.dst_pin, b.dst_pin);
 }

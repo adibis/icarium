@@ -954,3 +954,65 @@ test "toggle flop leg counts as a second clock" {
     try std.testing.expectEqualStrings("unknown", dom.name);
     try std.testing.expectEqualStrings("clock gate with multiple clock legs", dom.notes[0]);
 }
+
+const roots_all =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk_a": {"direction": "input", "bits": [2]},
+    \\        "clk_b": {"direction": "input", "bits": [3]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [5]},
+    \\        "q2": {"direction": "output", "bits": [6]},
+    \\        "q3": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "netnames": {
+    \\        "div_clk": {"hide_name": 0, "bits": [8]}
+    \\      },
+    \\      "cells": {
+    \\        "f_a": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [5]}
+    \\        },
+    \\        "f_b": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [3], "D": [4], "Q": [6]}
+    \\        },
+    \\        "gbuf": {
+    \\          "type": "$buf",
+    \\          "port_directions": {"A": "input", "Y": "output"},
+    \\          "connections": {"A": [8], "Y": [9]}
+    \\        },
+    \\        "f_div": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [9], "D": [4], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "every declared clock roots a traced domain" {
+    var l = try loadAll(roots_all, "create_clock -name a -period 10 [get_ports clk_a]\ncreate_clock -name b -period 10 [get_ports clk_b]\ncreate_generated_clock -name div -source a -divide_by 2 [get_nets div_clk]\n");
+    defer freeAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), l.awarns.items.len);
+    var it = l.sdc_mod.clocks.iterator();
+    while (it.next()) |e| {
+        var seen = false;
+        for (l.asg.flops) |f| {
+            for (f.domain.legs) |leg| {
+                if (std.mem.eql(u8, leg, e.key_ptr.*)) {
+                    seen = true;
+                    break;
+                }
+            }
+            if (seen) break;
+        }
+        try std.testing.expect(seen);
+    }
+}

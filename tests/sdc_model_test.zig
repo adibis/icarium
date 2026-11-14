@@ -58,10 +58,12 @@ test "port typing resolves exact and glob" {
         \\create_clock -name io -period 40
         \\set_input_delay -clock clk [get_ports data]
         \\set_input_delay -clock io [get_ports io_*]
+        \\set_output_delay -clock io [get_ports od]
     );
     defer mod.deinit();
     try std.testing.expectEqualStrings("clk", sdc.model.portClock(&mod, "data").?);
     try std.testing.expectEqualStrings("io", sdc.model.portClock(&mod, "io_sda").?);
+    try std.testing.expectEqualStrings("io", sdc.model.portClock(&mod, "od").?);
     try std.testing.expect(sdc.model.portClock(&mod, "other") == null);
 }
 

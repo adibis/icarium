@@ -20,8 +20,8 @@ pub const rule = registry.Rule{
     .check_all = checkAll,
 };
 
-// Each control pin's flop fanin must share a gated clock, or
-// the async transition chops the output. Ports defer out.
+// Control fanin must share a gated clock, or the async edge
+// chops the output. Untyped ports defer: no clock, no verdict.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     const mod = ctx.mod;
     // Walks root here, never in tmp: the network walk is design-
@@ -50,7 +50,6 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             if (bits.len == 0) continue;
             if (anyGlitchless(ctx, bits)) continue;
             const fanin = try context.backwardFlopFanin(alloc, ctx.mod, bits);
-            if (fanin.items.len == 0) continue;
             std.mem.sort(usize, fanin.items, {}, struct {
                 fn less(_: void, a: usize, b: usize) bool {
                     return a < b;
@@ -72,9 +71,52 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                     .message = message,
                 });
             }
+            try portDriven(ctx, alloc, c.name, c.type, cp, bits, gated, &out);
         }
     }
     return out.toOwnedSlice(ctx.tmp);
+}
+
+// A port with a declared clock is a known domain, same as a
+// flop; the single-leg Domain reuses the async test exactly.
+fn portDriven(
+    ctx: *context.Context,
+    alloc: std.mem.Allocator,
+    cname: []const u8,
+    ctype: []const u8,
+    cp: []const u8,
+    bits: []ir.bits.Bit,
+    gated: GatedDomains,
+    out: *std.ArrayListUnmanaged(finding.Finding),
+) error{OutOfMemory}!void {
+    const pfan = try context.backwardPortFanin(alloc, ctx.mod, bits);
+    defer alloc.free(pfan);
+    std.mem.sort([]const u8, pfan, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.less);
+    for (pfan) |pn| {
+        const pclk = sdc.model.portClock(ctx.model, pn) orelse sdc.model.rootClock(ctx.model, pn) orelse continue;
+        var legs = [_][]const u8{pclk};
+        const sdom = clock.trace.Domain{
+            .name = pclk,
+            .root = pclk,
+            .notes = &.{},
+            .legs = legs[0..],
+            .sels = &.{},
+            .muxes = &.{},
+        };
+        if (!allAsync(ctx, sdom, gated)) continue;
+        const doms = try describeDomains(ctx, gated);
+        const message = try std.fmt.allocPrint(ctx.tmp, "clock-network cell {s} ({s}) control pin {s} is driven by port {s} in domain {s}, asynchronous to the cell's clock-input domain(s) ({s}); an async control transition can chop the output clock into runt pulses on every downstream flop. Synchronize {s} into one of the gated-clock domains", .{ cname, ctype, cp, pn, pclk, doms, pn });
+        try out.append(ctx.tmp, .{
+            .rule = rule.id,
+            .severity = rule.severity,
+            .dst = cname,
+            .message = message,
+        });
+    }
 }
 
 const explicit_controls = std.StaticStringMap([]const []const u8).initComptime(.{
@@ -147,13 +189,13 @@ fn clockInputDomains(
         if (seen.contains(fb.bit)) continue;
         try seen.put(alloc, fb.bit, {});
         const drv = mod.driver_of.get(fb.bit) orelse {
-            if (portOfBit(mod, fb.bit)) |pn| {
+            if (context.portOfBit(mod, fb.bit)) |pn| {
                 if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(alloc, clk);
             }
             continue;
         };
         const sci = drv.cell orelse {
-            if (portOfBit(mod, fb.bit)) |pn| {
+            if (context.portOfBit(mod, fb.bit)) |pn| {
                 if (sdc.model.rootClock(ctx.model, pn)) |clk| try clocks.append(alloc, clk);
             }
             continue;
@@ -228,12 +270,3 @@ fn describeDomains(ctx: *context.Context, gated: GatedDomains) error{OutOfMemory
 }
 
 const FrontierBit = struct { bit: u32, depth: u8 };
-
-fn portOfBit(mod: *const ir.types.Module, bit: u32) ?[]const u8 {
-    for (mod.ports) |p| {
-        for (p.bits) |b| {
-            if (b == .sig and b.sig == bit) return p.name;
-        }
-    }
-    return null;
-}

@@ -314,6 +314,46 @@ test "only and skip filter by rule id" {
     try std.testing.expectEqual(@as(usize, 0), missed.len);
 }
 
+const boundary =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [4]},
+    \\        "q": {"direction": "output", "bits": [10]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [10]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const boundary_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name virt -period 10
+    \\set_input_delay -clock ca [get_ports d]
+    \\set_output_delay -clock virt [get_ports q]
+;
+
+test "boundary crossings fire with the port message" {
+    var l = try loadAll(boundary, boundary_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l, null, null);
+    try std.testing.expectEqual(@as(usize, 1), fs.len);
+    try std.testing.expectEqualStrings("CDC-001", fs[0].rule);
+    try std.testing.expectEqual(rule.registry.Severity.err, fs[0].severity);
+    try std.testing.expectEqualStrings("q", fs[0].dst);
+    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "boundary crossing") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "through port q") != null);
+}
+
 test "registry finds rules and stays sorted" {
     try std.testing.expect(rule.registry.find("CDC-001") != null);
     try std.testing.expect(rule.registry.find("CDC-999") == null);

@@ -3,6 +3,9 @@
 # untyped-port noise stays out of the head-to-head numbers.
 create_clock -name clk -period 10 [get_ports clk_i]
 create_clock -name clk_kmac -period 10 [get_ports clk_kmac_i]
+# LC enables broadcast to receivers across the chip, outside every
+# clock declared here: one virtual clock models all of them async.
+create_clock -name virt_ext -period 10
 set_clock_groups -asynchronous -group {clk} -group {clk_kmac}
 set_input_delay -clock clk [get_ports regs_tl_i]
 set_input_delay -clock clk [get_ports dmi_tl_i]
@@ -23,3 +26,23 @@ set_input_delay -clock clk [get_ports scan_rst_ni]
 set_input_delay -clock clk [get_ports scanmode_i]
 set_input_delay -clock clk_kmac [get_ports kmac_data_i]
 set_input_delay -clock clk_kmac [get_ports rst_kmac_ni]
+set_output_delay -clock virt_ext [get_ports lc_otp_vendor_test_o]
+set_output_delay -clock virt_ext [get_ports lc_otp_program_o]
+set_output_delay -clock virt_ext [get_ports lc_init_done_o]
+set_output_delay -clock virt_ext [get_ports lc_dft_en_o]
+set_output_delay -clock virt_ext [get_ports lc_raw_test_rma_o]
+set_output_delay -clock virt_ext [get_ports lc_nvm_debug_en_o]
+set_output_delay -clock virt_ext [get_ports lc_hw_debug_clr_o]
+set_output_delay -clock virt_ext [get_ports lc_hw_debug_en_o]
+set_output_delay -clock virt_ext [get_ports lc_cpu_en_o]
+set_output_delay -clock virt_ext [get_ports lc_creator_seed_sw_rw_en_o]
+set_output_delay -clock virt_ext [get_ports lc_owner_seed_sw_rw_en_o]
+set_output_delay -clock virt_ext [get_ports lc_iso_part_sw_rd_en_o]
+set_output_delay -clock virt_ext [get_ports lc_iso_part_sw_wr_en_o]
+set_output_delay -clock virt_ext [get_ports lc_seed_hw_rd_en_o]
+set_output_delay -clock virt_ext [get_ports lc_rma_state_o]
+set_output_delay -clock virt_ext [get_ports lc_keymgr_en_o]
+set_output_delay -clock virt_ext [get_ports lc_escalate_en_o]
+set_output_delay -clock virt_ext [get_ports lc_check_byp_en_o]
+set_output_delay -clock virt_ext [get_ports lc_clk_byp_req_o]
+set_output_delay -clock virt_ext [get_ports lc_nvm_rma_req_o]

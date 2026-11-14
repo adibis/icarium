@@ -25,9 +25,10 @@ pub const rule = registry.Rule{
 // or a gate sits between the stages (that shape is CDC-014's).
 pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!?finding.Finding {
     if (!x.async_per_sdc) return null;
-    const single = x.kind == .flop_flop_bit or x.kind == .port_flop;
+    const single = x.kind == .flop_flop_bit or x.kind == .port_flop or x.kind == .flop_port;
     if (!single) return null;
     if (ctx.isBusMember(x)) return null;
+    if (x.kind == .flop_port) return portCheck(ctx, x);
     if (!std.mem.eql(u8, x.dst.port, "D")) return null;
     const dc = x.dst.cell orelse return null;
     const dt = ctx.mod.cells[dc].type;
@@ -53,6 +54,23 @@ pub fn check(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfM
         .rule = rule.id,
         .severity = rule.severity,
         .dst = dst_name,
+        .message = message,
+    };
+}
+
+// A typed output port in an async clock ends what the tool can
+// see: the outside may sync, but nothing inside the block does.
+fn portCheck(ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!?finding.Finding {
+    const sc = x.src.cell orelse return null;
+    const sname = ctx.mod.cells[sc].name;
+    if (ctx.marks.hasStatic(sname)) return null;
+    if (sync.primitives.isSyncPrimitive(ctx.mod.cells[sc].type, ctx.cfg.sync_primitives)) return null;
+    const src_desc = try std.fmt.allocPrint(ctx.tmp, "flop {s}", .{sname});
+    const message = try std.fmt.allocPrint(ctx.tmp, "unsynchronized boundary crossing {s} -> {s} (src: {s}): leaves the block through port {s} with no synchronizer inside the block", .{ x.src_clk, x.dst_clk, src_desc, x.dst.port });
+    return .{
+        .rule = rule.id,
+        .severity = rule.severity,
+        .dst = x.dst.port,
         .message = message,
     };
 }

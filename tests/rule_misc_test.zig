@@ -553,6 +553,102 @@ test "a select async to every gated clock fires CDC-010" {
     }
 }
 
+const mux_port_ctl =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "sel": {"direction": "input", "bits": [10]},
+    \\        "d": {"direction": "input", "bits": [6]},
+    \\        "q": {"direction": "output", "bits": [7]}
+    \\      },
+    \\      "cells": {
+    \\        "mx": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [2], "B": [3], "S": [10], "Y": [11]}
+    \\        },
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [6], "Q": [13]}
+    \\        },
+    \\        "f": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [13], "Q": [12]}
+    \\        },
+    \\        "s2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [11], "D": [12], "Q": [7]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const mux_port_async_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\create_clock -name cc -period 11
+    \\set_clock_groups -asynchronous -group {ca} -group {cb} -group {cc}
+    \\set_input_delay -clock ca [get_ports d]
+    \\set_input_delay -clock cc [get_ports sel]
+;
+
+const mux_port_sync_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca [get_ports d]
+    \\set_input_delay -clock ca [get_ports sel]
+;
+
+const mux_port_untyped_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb}
+    \\set_input_delay -clock ca [get_ports d]
+;
+
+fn countRule(fs: []const rule.finding.Finding, id: []const u8) usize {
+    var n: usize = 0;
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, id)) n += 1;
+    }
+    return n;
+}
+
+test "a port select async to every gated clock fires CDC-010" {
+    var l = try loadAll(mux_port_ctl, mux_port_async_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 1), countRule(fs, "CDC-010"));
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, "CDC-010")) {
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "driven by port sel") != null);
+        }
+    }
+}
+
+test "a port select sharing a gated clock stays silent" {
+    var l = try loadAll(mux_port_ctl, mux_port_sync_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), countRule(fs, "CDC-010"));
+}
+
+test "an untyped port select stays silent" {
+    var l = try loadAll(mux_port_ctl, mux_port_untyped_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    try std.testing.expectEqual(@as(usize, 0), countRule(fs, "CDC-010"));
+}
+
 const mux_shared =
     \\{
     \\  "modules": {
