@@ -1,5 +1,3 @@
-# DEPLOY: baseURL + GitHub URLs are placeholders until the repo has a
-# remote. Confirm owner/repo name before the first Pages deploy.
 baseURL: https://adibis.github.io/icarium/
 locale: en-us
 title: icarium
