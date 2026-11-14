@@ -1,0 +1,39 @@
+name: release
+# A v* tag builds icarium for each target from one Linux runner (Zig
+# cross-compiles; there are no native dependencies) and attaches the
+# tarballs and their checksums to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned Zig version
+        id: pins
+        run: echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ steps.pins.outputs.zig }}
+      - run: zig build test --summary all
+      - name: Build each target
+        run: |
+          mkdir -p dist
+          for t in x86_64-linux-musl aarch64-linux-musl x86_64-macos aarch64-macos; do
+            name="icarium-${GITHUB_REF_NAME}-${t}"
+            zig build -Dtarget="$t" -Doptimize=ReleaseSafe --prefix "out/$name"
+            cp LICENSE README.md "out/$name/"
+            tar -C out -czf "dist/$name.tar.gz" "$name"
+          done
+          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+      - name: Take this tag's section of NOTES.md
+        run: |
+          awk -v want="## ${GITHUB_REF_NAME}" '$0 == want {on=1; next} /^## / {on=0} on' NOTES.md > notes.md
+          test -s notes.md || { echo "NOTES.md has no '## ${GITHUB_REF_NAME}' section"; exit 1; }
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "icarium $GITHUB_REF_NAME" --notes-file notes.md --verify-tag
