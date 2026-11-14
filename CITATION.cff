@@ -1,0 +1,23 @@
+# See https://citation-file-format.github.io/
+cff-version: 1.2.0
+title: icarium
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+type: software
+authors:
+  - given-names: Aditya
+    family-names: Shevade
+  - name: icarium contributors
+repository-code: "https://github.com/adibis/icarium"
+url: "https://adibis.github.io/icarium/"
+abstract: >-
+  icarium is an open-source structural checker for clock-domain and
+  reset-domain crossings in SystemVerilog designs elaborated by Yosys.
+keywords:
+  - CDC
+  - RDC
+  - clock domain crossing
+  - SystemVerilog
+  - EDA
+license: Apache-2.0
+version: 0.1.0

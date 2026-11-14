@@ -1,0 +1,10 @@
+# Licensing for files without their own SPDX header, per https://reuse.software.
+# "aggregate" also gives files that carry only a license header their
+# copyright line.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Aditya Shevade and the icarium contributors"
+SPDX-License-Identifier = "Apache-2.0"
