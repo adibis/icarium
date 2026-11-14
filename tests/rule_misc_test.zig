@@ -1130,7 +1130,7 @@ const toggle_fast_sdc =
     \\set_input_delay -clock fc 1.0 [get_ports en]
 ;
 
-test "a fast toggle without an XOR tail fires CDC-013 alone" {
+test "a fast toggle fires CDC-013 alone" {
     var l = try loadAll(toggle_fast, toggle_fast_sdc);
     defer freeAll(&l);
     const fs = try checkAll(&l);

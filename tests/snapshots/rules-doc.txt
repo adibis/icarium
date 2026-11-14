@@ -90,8 +90,9 @@ fixtures: fixtures/CDC-012
 CDC-013 [warn] Toggle-synchronizer event loss on fast-to-slow crossing
 A toggling source runs fast to slow past the period ratio:
 two toggles between destination samples cancel to zero edges
-and both events are silently lost. Handshake, backpressure,
-or the canonical XOR-tail pulse synchronizer closes it.
+and both events are silently lost. A handshake or
+backpressure closes it. An XOR tail does not: it turns each
+toggle into a pulse, but cancelled toggles never reach it.
 honors: cdc_handshake
 fixtures: fixtures/CDC-013
 

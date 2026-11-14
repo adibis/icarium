@@ -237,7 +237,7 @@ const golden =
     \\                "text": "Toggle-synchronizer event loss on fast-to-slow crossing"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "A toggling source runs fast to slow past the period ratio:\ntwo toggles between destination samples cancel to zero edges\nand both events are silently lost. Handshake, backpressure,\nor the canonical XOR-tail pulse synchronizer closes it."
+    \\                "text": "A toggling source runs fast to slow past the period ratio:\ntwo toggles between destination samples cancel to zero edges\nand both events are silently lost. A handshake or\nbackpressure closes it. An XOR tail does not: it turns each\ntoggle into a pulse, but cancelled toggles never reach it."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "warning"

@@ -1,7 +1,9 @@
-// CDC-013: the canonical pulse synchronizer. The toggle source
-// matches the classifier, but the destination rebuilds one pulse
-// per event from tail ^ tail_d, which is the fix, not the bug.
-module good_xor_tail (
+// CDC-013: a pulse synchronizer (toggle source, 2FF chain, XOR
+// tail) crossing 2 ns into 20 ns. The XOR tail turns each toggle
+// into one pulse, but two events between destination samples
+// still cancel to no edge: only a handshake or backpressure
+// closes event loss.
+module bad_xor_tail (
     input  logic src_clk,
     input  logic dst_clk,
     input  logic rst_n,
