@@ -5,7 +5,7 @@ weight: 2
 
 ## Prerequisites
 
-- **Zig 0.16** (exact pin in `pins.json`; check with
+- **Zig 0.17** (exact pin in `pins.json`; check with
   `sh scripts/check-pins.sh`).
 - **Yosys 0.70** on `PATH` for elaborating SystemVerilog and for the
   end-to-end suite. Install with Homebrew: `brew install yosys`.

@@ -25,7 +25,7 @@ snapshots.
 - Comments explain *why*, never the obvious *what*. Keep
   inline comments short; file and contract headers may run
   longer when the contract needs it.
-- Zig 0.16, `zig fmt` clean, no warnings.
+- Zig 0.17, `zig fmt` clean, no warnings.
 - New behavior needs a fixture or e2e case, not just a unit
   test: the SystemVerilog suite is the contract.
 

@@ -1,4 +1,16 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
+comptime {
+    // Pin the toolchain: a wrong zig fails here with one line,
+    // not deep in a build error. Keep in sync with pins.json.
+    if (builtin.zig_version.major != 0 or builtin.zig_version.minor != 17) {
+        @compileError(std.fmt.comptimePrint(
+            "icarium needs Zig 0.17 (see pins.json); this is {}.{}",
+            .{ builtin.zig_version.major, builtin.zig_version.minor },
+        ));
+    }
+}
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -11,12 +23,6 @@ pub fn build(b: *std.Build) void {
     });
     const exe = b.addExecutable(.{ .name = "icarium", .root_module = exe_mod });
     b.installArtifact(exe);
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
-    const run_step = b.step("run", "Run icarium");
-    run_step.dependOn(&run_cmd.step);
 
     const core = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),

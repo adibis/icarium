@@ -40,7 +40,7 @@ pub fn today(io: std.Io) Date {
     const md = yd.calculateMonthDay();
     return .{
         .year = @intCast(yd.year),
-        .month = @intFromEnum(md.month),
+        .month = @backingInt(md.month),
         .day = @intCast(md.day_index + 1),
     };
 }
