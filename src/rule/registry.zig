@@ -42,8 +42,10 @@ const sync = @import("../sync.zig");
 
 pub const Severity = enum { err, warn, note };
 
-// One struct per rule: dispatch, flags, docs, and fixtures all
-// generate from this list, so a rule is one file plus one row.
+// One struct per rule: flags, docs, and fixtures generate
+// from this list. Chunk-folding rules add one row to accum_mods
+// or range_mods below; their dispatch generates from that row,
+// so a rule stays one file plus data rows.
 pub const Rule = struct {
     id: []const u8,
     severity: Severity,
@@ -86,6 +88,24 @@ const scopes = std.StaticStringMap(Scope).initComptime(.{
 fn scopeOf(id: []const u8) Scope {
     return scopes.get(id) orelse unreachable;
 }
+
+// One row per chunk-folding rule: id, Run state field, module.
+// accumulateOne/finishOne unroll from accum_mods, the range
+// driver from range_mods; the comptime checks below fail the
+// build when a row and its scope disagree.
+const accum_mods = .{
+    .{ .id = "CDC-011", .field = "acc011", .M = cdc011 },
+    .{ .id = "CDC-018", .field = "acc018", .M = cdc018 },
+    .{ .id = "CDC-019", .field = "acc019", .M = cdc019 },
+    .{ .id = "CDC-025", .field = "acc025", .M = cdc025 },
+    .{ .id = "CDC-026", .field = "acc026", .M = cdc026 },
+};
+
+const range_mods = .{
+    .{ .id = "CDC-005", .field = "r005", .M = cdc005 },
+    .{ .id = "CDC-020", .field = "r020", .M = cdc020 },
+    .{ .id = "CDC-024", .field = "r024", .M = cdc024 },
+};
 
 pub const rules = [_]Rule{
     cdc001.rule,
@@ -148,9 +168,9 @@ fn knownAttr(name: []const u8) bool {
 }
 
 comptime {
-    // Twenty rules times map lookups outgrows the default
+    // Dozens of rules times map lookups outgrows the default
     // budget; the loop is finite, so raise the ceiling.
-    @setEvalBranchQuota(10000);
+    @setEvalBranchQuota(100000);
     // Strictly sorted doubles as unique: any duplicate or
     // misordering fails the build at the offending row.
     for (rules[0 .. rules.len - 1], rules[1..]) |a, b| {
@@ -170,7 +190,24 @@ comptime {
             .xing => if (r.check == null) @compileError("xing rule needs check"),
             .batch, .once, .accum, .range => if (r.check_all == null) @compileError("whole rule needs check_all"),
         }
+        // Folding scopes need their dispatch row, or the rule
+        // silently never runs under streaming.
+        if (scopeOf(r.id) == .accum and !hasMod(accum_mods, r.id)) @compileError("accum rule missing from accum_mods");
+        if (scopeOf(r.id) == .range and !hasMod(range_mods, r.id)) @compileError("range rule missing from range_mods");
     }
+    for (accum_mods) |am| {
+        if (scopeOf(am.id) != .accum) @compileError("accum_mods row is not an accum rule");
+    }
+    for (range_mods) |rm| {
+        if (scopeOf(rm.id) != .range) @compileError("range_mods row is not a range rule");
+    }
+}
+
+fn hasMod(comptime mods: anytype, id: []const u8) bool {
+    inline for (mods) |m| {
+        if (std.mem.eql(u8, id, m.id)) return true;
+    }
+    return false;
 }
 
 pub fn find(id: []const u8) ?Rule {
@@ -228,20 +265,16 @@ pub const Run = struct {
     }
 
     fn accumulateOne(r: *Run, id: []const u8, ctx: *context.Context, x: crossing.enumerate.Crossing) error{OutOfMemory}!void {
-        if (std.mem.eql(u8, id, "CDC-011")) return cdc011.accumulate(&r.acc011, ctx, x);
-        if (std.mem.eql(u8, id, "CDC-018")) return cdc018.accumulate(&r.acc018, ctx, x);
-        if (std.mem.eql(u8, id, "CDC-019")) return cdc019.accumulate(&r.acc019, ctx, x);
-        if (std.mem.eql(u8, id, "CDC-025")) return cdc025.accumulate(&r.acc025, ctx, x);
-        if (std.mem.eql(u8, id, "CDC-026")) return cdc026.accumulate(&r.acc026, ctx, x);
+        inline for (accum_mods) |am| {
+            if (std.mem.eql(u8, id, am.id)) return am.M.accumulate(&@field(r, am.field), ctx, x);
+        }
         unreachable;
     }
 
     fn finishOne(r: *Run, id: []const u8, ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
-        if (std.mem.eql(u8, id, "CDC-011")) return cdc011.finish(&r.acc011, ctx);
-        if (std.mem.eql(u8, id, "CDC-018")) return cdc018.finish(&r.acc018, ctx);
-        if (std.mem.eql(u8, id, "CDC-019")) return cdc019.finish(&r.acc019, ctx);
-        if (std.mem.eql(u8, id, "CDC-025")) return cdc025.finish(&r.acc025, ctx);
-        if (std.mem.eql(u8, id, "CDC-026")) return cdc026.finish(&r.acc026, ctx);
+        inline for (accum_mods) |am| {
+            if (std.mem.eql(u8, id, am.id)) return am.M.finish(&@field(r, am.field), ctx);
+        }
         unreachable;
     }
 
@@ -255,9 +288,9 @@ pub const Run = struct {
         skip: ?[]const []const u8,
     ) error{OutOfMemory}!void {
         for (ctx.crossings) |x| {
-            if (enabled("CDC-005", only, skip)) try cdc005.accumulate(&r.r005, ctx, x);
-            if (enabled("CDC-020", only, skip)) try cdc020.accumulate(&r.r020, ctx, x);
-            if (enabled("CDC-024", only, skip)) try cdc024.accumulate(&r.r024, ctx, x);
+            inline for (range_mods) |rm| {
+                if (enabled(rm.id, only, skip)) try rm.M.accumulate(&@field(r, rm.field), ctx, x);
+            }
         }
     }
 
@@ -270,18 +303,14 @@ pub const Run = struct {
         only: ?[]const []const u8,
         skip: ?[]const []const u8,
     ) error{OutOfMemory}!void {
-        if (enabled("CDC-005", only, skip)) for (try cdc005.finish(&r.r005, ctx)) |f| {
-            if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
-        };
-        if (enabled("CDC-020", only, skip)) for (try cdc020.finish(&r.r020, ctx)) |f| {
-            if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
-        };
-        if (enabled("CDC-024", only, skip)) for (try cdc024.finish(&r.r024, ctx)) |f| {
-            if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
-        };
-        r.r005 = .{};
-        r.r020 = .{};
-        r.r024 = .{};
+        inline for (range_mods) |rm| {
+            if (enabled(rm.id, only, skip)) for (try rm.M.finish(&@field(r, rm.field), ctx)) |f| {
+                if (try fresh(ctx.tmp, r.alloc, &r.seen, f)) try r.out.append(r.alloc, try retain(r.alloc, f));
+            };
+        }
+        inline for (range_mods) |rm| {
+            @field(r, rm.field) = .{};
+        }
         r.range_arena.deinit();
         r.range_arena = std.heap.ArenaAllocator.init(r.gpa);
     }

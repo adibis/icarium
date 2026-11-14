@@ -254,7 +254,7 @@ pub fn build(parent: std.mem.Allocator, parsed: []const commands.Parsed) !Model 
     };
 }
 
-// One call from file bytes to model; the CLI stays thin.
+// The CLI stays thin: one call from file bytes to model.
 pub fn fromSlice(
     parent: std.mem.Allocator,
     scratch: std.mem.Allocator,
