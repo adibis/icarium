@@ -37,3 +37,14 @@ sh scripts/elaborate.sh --top spi_device --out spi.json design.sv
 - `schema/` — versioned JSON contracts
 - `bench/` — differentials, recall gate, reports
 - `site/` — documentation source (Hugo)
+- `submodules/icarium_benchmark/` — separate benchmark
+  corpus repo (nested checkout, own history)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). One concern per
+PR; new behavior needs a fixture or e2e case.
+
+## License
+
+Apache-2.0; see [LICENSE](LICENSE).

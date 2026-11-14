@@ -1,5 +1,7 @@
 # Local planning notes; never part of the shipped tree.
 plan/
+# Nested standalone repos; each manages its own history.
+submodules/
 # Zig build outputs.
 zig-out/
 .zig-cache/
