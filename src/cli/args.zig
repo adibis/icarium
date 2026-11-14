@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 
 pub const Command = enum { help, version, stats, clocks, domains, resets, crossings, check, rules, import_meridian };

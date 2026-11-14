@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 pub const cdc001 = @import("rule/cdc001.zig");
 pub const cdc002 = @import("rule/cdc002.zig");
 pub const cdc003 = @import("rule/cdc003.zig");

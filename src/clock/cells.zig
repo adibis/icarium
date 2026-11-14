@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 
 // Sequential cell types from `proc` on the pinned Yosys: every one

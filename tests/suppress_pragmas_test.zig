@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const ir = @import("icarium").ir;
 const rule = @import("icarium").rule;

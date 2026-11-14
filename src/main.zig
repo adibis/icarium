@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const args = @import("cli/args.zig");
 const check = @import("cli/check.zig");

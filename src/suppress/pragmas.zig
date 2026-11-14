@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const common = @import("../report.zig").common;
 const ir = @import("../ir.zig");

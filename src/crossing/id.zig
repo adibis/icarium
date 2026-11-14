@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 
 // Stable IDs: SHA-256 over the record's identity, truncated to 128

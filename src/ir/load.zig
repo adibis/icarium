@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const bits = @import("bits.zig");
 const path = @import("path.zig");

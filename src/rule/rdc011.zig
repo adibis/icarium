@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const context = @import("context.zig");
 const finding = @import("finding.zig");

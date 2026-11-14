@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const clock = @import("../clock.zig");
 const id = @import("id.zig");
