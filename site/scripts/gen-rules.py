@@ -58,7 +58,7 @@ def page(r, weight):
     d, bad, good = load_fixture(r)
     # Bare (* mark *) reads as emphasis; code-span it.
     doc = re.sub(r"\(\* ([a-z_]+) \*\)", r"`(* \1 *)`", r["doc"])
-    L = ["---", f"title: \"{r['id']}: {r['title']}\"", f"linkTitle: {r['id']}",
+    L = ["---", f"title: \"{r['id']}: {r['title']}\"", f"linkTitle: \"{r['id']} {r['title']}\"",
          f"weight: {weight}", "---", "",
          f"**Severity:** {SEV.get(r['sev'], r['sev'])}", ""]
     L += [doc, ""]

@@ -52,9 +52,18 @@ waives the scan-clocked paths.
 Separately from scale tiers, OpenTitan's Meridian waivers
 (Tcl `set_rule_status` files, converted via
 [Accellera 1.0 interchange]({{% relref "docs/formats.md" %}}))
-replay as a recall gate over 465 blessed entries: every
-waived violation gets a verdict (full, partial, rule-only,
-modeling-gap, missed), with zero missed. See
+replay as a recall gate over 465 in-scope entries. An entry is
+found when a finding lands on both of its endpoints (full) or
+one (partial):
+
+| design | entries | full | partial | rule only | missed |
+| ------ | ------: | ---: | ------: | --------: | -----: |
+| 5 blocks | 21 | 9 | 10 | 2 | 0 |
+| EarlGrey top | 444 | 49 | 220 | 174 | 0 |
+
+"Rule only" means the mapped rule fired in the design but on
+neither endpoint; it is a diagnostic, not a match. One top
+entry is a known modeling gap. See
 [Recall gate]({{% relref "docs/dev/recall.md" %}}).
 
 For checker-vs-checker comparison, the standalone

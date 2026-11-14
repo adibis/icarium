@@ -20,15 +20,44 @@ layout: hextra-home
   </div>
 </div>
 
+## What a finding looks like
+
+A flop in clock `cb` samples a flop in clock `ca`, and the SDC declares the two clocks
+asynchronous:
+
+```systemverilog {filename="bad_sync_missing.sv",linenos=table,linenostart=9}
+always_ff @(posedge ca) src_q <= d;
+always_ff @(posedge cb) dst_q <= src_q;
+```
+
+```text
+$ icarium check --yosys-json design.json --top bad_sync_missing --sdc clocks.sdc
+CDC-001 [error] Unsynchronized control crossing (1 finding)
+  $procdff$3 @ bad_sync_missing.sv:10.3-10.42 <- $procdff$4 @ bad_sync_missing.sv:9.3-9.38:
+  unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop
+  $procdff$3 has no second-stage synchronizer (chain depth = 1)
+```
+
+The source locations point at the two `always_ff` lines. Findings name the flops by their
+Yosys cell (`$procdff$3`) for now; RTL signal names are next on the list.
+
 ## How it runs
 
 ![icarium pipeline](/images/overview/pipeline.svg)
 
-## [Benchmarks at a glance]({{% relref "docs/benchmarks.md" %}})
+## Benchmarks
 
-| tier | scope | result |
-| ---- | ----- | ------ |
-| 1 | 8 hand fixtures | snapshots green, ms each |
-| 2 | 5 OpenTitan blocks | 39,739 findings, slowest 7s |
-| 3 | full EarlGrey top | 65 min streamed, 14.8 GB peak |
-| recall | OpenTitan waivers | 465 entries, 0 missed |
+OpenTitan's repository carries Meridian waivers: CDC violations its designers reviewed
+and signed off as safe. Each one is a crossing a checker should report, so icarium is
+scored against them. A waived violation counts as found only when a finding lands on one
+or both of its endpoints.
+
+| design | waived violations | both endpoints | one endpoint | rule only | missed | icarium findings |
+| ------ | ----------------: | -------------: | -----------: | --------: | -----: | ---------------: |
+| 5 OpenTitan blocks | 21 | 9 | 10 | 2 | 0 | 39,739 |
+| full EarlGrey top | 444 | 49 | 220 | 174 | 0 | 1,977,807 |
+
+"Rule only" means the expected rule fired in that design, but not on the waived signals; the one remaining top entry is a known modeling gap.
+The finding counts are high because each bit of a bus is reported on its own; grouping
+by signal is in progress. Full method and per-block numbers are on the
+[benchmarks page]({{% relref "docs/benchmarks.md" %}}).
