@@ -7,7 +7,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Read pinned Zig version
         id: pins
-        run: echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.pins.outputs.zig }}
@@ -20,24 +21,54 @@ jobs:
       - uses: actions/checkout@v4
       - name: Read pinned Zig version
         id: pins
-        run: echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.pins.outputs.zig }}
-      - name: Install Yosys if packaged
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq yosys || echo "yosys unavailable, e2e will skip"
+      # Ubuntu's packaged Yosys (0.33) is below the 0.67 minimum. This dated
+      # OSS CAD Suite build carries Yosys 0.70+16.
+      - id: yosys-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/oss-cad-suite
+          key: oss-cad-suite-20261014-${{ runner.os }}
+      - name: Download Yosys
+        if: steps.yosys-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-14/oss-cad-suite-linux-x64-20261014.tgz | tar -xz -C ~
+      - run: |
+          echo "$HOME/oss-cad-suite/bin" >> "$GITHUB_PATH"
+      - run: yosys -V
       - name: Install jsonschema for schema-gated suites
         run: pip install jsonschema || echo "jsonschema unavailable, schema-gated suites will skip"
       - name: Install toon-format for TOON round-trip proof
         run: pip install toon-format || echo "toon-format unavailable, round-trip will skip"
       - name: TOON size proof (skips without yosys)
-        run: sh bench/toon-tokens.sh; code=$?; if [ $code -eq 3 ]; then echo "toon proof skipped: yosys not installed"; else exit $code; fi
+        run: |
+          sh bench/toon-tokens.sh; code=$?; if [ $code -eq 3 ]; then echo "toon proof skipped: yosys not installed"; else exit $code; fi
       - run: zig build
       - name: End-to-end suite (skips without yosys)
-        run: sh tests/e2e/run.sh; code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi
+        run: |
+          sh tests/e2e/run.sh; code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi
       - name: Rule fixtures (skips without yosys)
-        run: sh fixtures/run.sh; code=$?; if [ $code -eq 3 ]; then echo "fixtures skipped: yosys not installed"; else exit $code; fi
+        run: |
+          sh fixtures/run.sh; code=$?; if [ $code -eq 3 ]; then echo "fixtures skipped: yosys not installed"; else exit $code; fi
       - name: Schema validation (skips without yosys/jsonschema)
         run: sh scripts/validate-schemas.sh; code=$?; if [ $code -eq 3 ]; then echo "schemas skipped"; else exit $code; fi
       - name: Suppression suite (skips without yosys/jsonschema)
         run: sh tests/suppress/run.sh; code=$?; if [ $code -eq 3 ]; then echo "suppress skipped"; else exit $code; fi
+  contributors:
+    # Every commit author must have signed CONTRIBUTORS (the DCO).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: sh scripts/check-contributors.sh "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fsfe/reuse-action@v5

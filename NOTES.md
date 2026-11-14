@@ -6,6 +6,8 @@ First public release: a structural CDC/RDC checker for elaborated SystemVerilog.
 
 - **36 rules:** CDC-001 to CDC-026 (CDC-007 reserved) and RDC-001 to RDC-011, each with
   failing and passing fixtures. `icarium rules` lists them.
+- **Binaries** for Linux and macOS (x86_64, arm64), with `elaborate.sh` beside
+  `icarium` in `bin/`.
 - **Input:** a Yosys JSON netlist from `scripts/elaborate.sh` (stock `read_verilog -sv` or
   the slang front end) plus an SDC subset: clocks, generated clocks, asynchronous clock
   groups, and port typing with `set_input_delay`/`set_output_delay`.
