@@ -46,6 +46,9 @@ downgrade, or dropped entry versus the blessed baseline
 deliberate scope change. Misses are never blessed; blessed
 gaps hold as tripwires. Needs fusesoc plus slang-capable
 Yosys for the tier-2 netlists, so CI does not gate it.
+`--chip` additionally measures the chip-scope entries
+against a streamed full-top run (about an hour plus
+matching).
 
 Current state: 465 blessed entries (58 full, 230 partial,
 176 rule-only), zero missed, 1 modeling-gap tripwire. The
