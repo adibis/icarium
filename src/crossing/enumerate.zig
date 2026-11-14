@@ -882,7 +882,7 @@ const Enumerator = struct {
             },
             .src_clk = src_clk,
             .dst_clk = dst_clk,
-            .async_per_sdc = en.asyncFor(pr),
+            .async_per_sdc = en.declaredAsyncFor(pr),
             .hops = pr.hops,
             .lanes = &.{},
             // Ports carry no hierarchy: nothing reads the path, and
@@ -1038,6 +1038,14 @@ const Enumerator = struct {
     // Async when any leg pair is async: a muxed clock is only as
     // synchronous as its least synchronous leg. Unknown forces true.
     fn asyncFor(en: *Enumerator, pr: Pair) bool {
+        return en.asyncWhen(pr, true);
+    }
+
+    fn declaredAsyncFor(en: *Enumerator, pr: Pair) bool {
+        return en.asyncWhen(pr, false);
+    }
+
+    fn asyncWhen(en: *Enumerator, pr: Pair, undeclared: bool) bool {
         // Same net beats every doubt, unknown included: one wire
         // is one edge. Opaque sources and port ends skip the guard.
         if (pr.src_cell) |sc| {
@@ -1051,12 +1059,12 @@ const Enumerator = struct {
                 const src = en.srcDomain(pr) orelse return true;
                 if (std.mem.eql(u8, src.name, "unknown")) return true;
                 for (src.legs) |sl| {
-                    if (en.model.areAsync(sl, dst_name)) return true;
+                    if (en.model.asyncWhen(sl, dst_name, undeclared)) return true;
                 }
                 return false;
             }
             const src_name = en.srcClockName(pr.src_port) orelse return true;
-            return en.model.areAsync(src_name, dst_name);
+            return en.model.asyncWhen(src_name, dst_name, undeclared);
         }
         const dst = en.dstDomain(pr) orelse return true;
         if (std.mem.eql(u8, dst.name, "unknown")) return true;
@@ -1065,14 +1073,14 @@ const Enumerator = struct {
             if (std.mem.eql(u8, src.name, "unknown")) return true;
             for (src.legs) |sl| {
                 for (dst.legs) |dl| {
-                    if (en.model.areAsync(sl, dl)) return true;
+                    if (en.model.asyncWhen(sl, dl, undeclared)) return true;
                 }
             }
             return false;
         }
         const src_name = en.srcClockName(pr.src_port) orelse return true;
         for (dst.legs) |dl| {
-            if (en.model.areAsync(src_name, dl)) return true;
+            if (en.model.asyncWhen(src_name, dl, undeclared)) return true;
         }
         return false;
     }

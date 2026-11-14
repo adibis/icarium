@@ -208,7 +208,7 @@ fn pushDistinctUsize(alloc: std.mem.Allocator, list: *std.ArrayListUnmanaged(usi
 fn relate(ctx: *context.Context, sl: []const u8, dl: []const u8, ssel: ?clock.trace.LegSel, dsel: ?clock.trace.LegSel) Rel {
     if (exclusive(ctx, ssel, dsel)) return .exclusive;
     if (std.mem.eql(u8, sl, "unknown") or std.mem.eql(u8, dl, "unknown")) return .unknown;
-    if (ctx.model.areAsync(sl, dl)) return .async;
+    if (ctx.model.declaredAsync(sl, dl)) return .async;
     return .sync;
 }
 

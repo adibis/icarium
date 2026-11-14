@@ -232,11 +232,11 @@ fn allAsync(ctx: *context.Context, sdom: clock.trace.Domain, gated: GatedDomains
         for (gated.cells.items) |gc| {
             const gdom = ctx.table.domainOf(gc) orelse continue;
             for (gdom.legs) |gl| {
-                if (!ctx.model.areAsync(sl, gl)) return false;
+                if (!ctx.model.declaredAsync(sl, gl)) return false;
             }
         }
         for (gated.clocks.items) |gc| {
-            if (!ctx.model.areAsync(sl, gc)) return false;
+            if (!ctx.model.declaredAsync(sl, gc)) return false;
         }
     }
     return true;

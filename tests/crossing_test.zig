@@ -814,6 +814,14 @@ const out_port_sdc =
     \\create_clock -name ca -period 10 [get_ports ca]
     \\create_clock -name virt -period 10
     \\set_output_delay -clock virt [get_ports q]
+    \\set_clock_groups -asynchronous -group {ca} -group {virt}
+;
+
+// No clock groups: SDC clocks are related unless declared apart.
+const out_port_related_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name virt -period 10
+    \\set_output_delay -clock virt [get_ports q]
 ;
 
 const out_port_untyped_sdc =
@@ -835,4 +843,12 @@ test "typed output ports sink pairs, untyped stay invisible" {
     var u = try loadAll(out_port, out_port_untyped_sdc);
     defer freeAll(&u);
     try std.testing.expect(xFor(&u, .flop_port, 10, 10) == null);
+}
+
+test "a typed output port in an undeclared relation is a related crossing" {
+    var l = try loadAll(out_port, out_port_related_sdc);
+    defer freeAll(&l);
+    const x = xFor(&l, .flop_port, 10, 10).?;
+    try std.testing.expectEqualStrings("virt", x.dst_clk);
+    try std.testing.expect(!x.async_per_sdc);
 }

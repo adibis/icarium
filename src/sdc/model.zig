@@ -46,6 +46,16 @@ pub const Model = struct {
     // Quadratic over groups is affordable: groups scale with
     // clock count (dozens), never with design size.
     pub fn areAsync(self: *const Model, a: []const u8, b: []const u8) bool {
+        return self.asyncWhen(a, b, true);
+    }
+
+    // Async only where the SDC says so: SDC clocks are related
+    // unless grouped apart. Metastability rules ask this.
+    pub fn declaredAsync(self: *const Model, a: []const u8, b: []const u8) bool {
+        return self.asyncWhen(a, b, false);
+    }
+
+    pub fn asyncWhen(self: *const Model, a: []const u8, b: []const u8, undeclared: bool) bool {
         if (std.mem.eql(u8, a, b)) return false;
         if (self.separatedByAsync(a, b)) return true;
         if (self.shareGroup(a, b)) return false;
@@ -53,8 +63,7 @@ pub const Model = struct {
         const ra = self.rootOf(a);
         const rb = self.rootOf(b);
         if (std.mem.eql(u8, ra, rb)) return false;
-        // Undeclared relations default async: doubt must fire, not pass.
-        return true;
+        return undeclared;
     }
 
     fn separatedByAsync(self: *const Model, a: []const u8, b: []const u8) bool {
@@ -311,8 +320,8 @@ fn dupeList(alloc: std.mem.Allocator, in: [][]const u8) ![][]const u8 {
     return out;
 }
 
-// Typo'd clock names would otherwise degrade silently into the
-// async-by-default bucket; exact names get checked, globs cannot be.
+// A typo'd clock name would otherwise drop out of its group
+// silently; exact names get checked, globs cannot be.
 fn checkUndeclared(
     alloc: std.mem.Allocator,
     clocks: std.StringHashMapUnmanaged(Clock),

@@ -295,6 +295,64 @@ test "a foreign SRST pin fires RDC-003 alone" {
     try std.testing.expect(onlyRule(fs, "RDC-003"));
 }
 
+// The destination clock is a mux of cb and cc: its domain name
+// "cb+cc" names no SDC clock, so asynchrony must come from its legs.
+const srst_crossing_muxed_clock =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "ca": {"direction": "input", "bits": [2]},
+    \\        "cb": {"direction": "input", "bits": [3]},
+    \\        "cc": {"direction": "input", "bits": [7]},
+    \\        "sel": {"direction": "input", "bits": [8]},
+    \\        "kill": {"direction": "input", "bits": [4]},
+    \\        "d": {"direction": "input", "bits": [5]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "src": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [4], "Q": [6]}
+    \\        },
+    \\        "cmux": {
+    \\          "type": "$mux",
+    \\          "port_directions": {"A": "input", "B": "input", "S": "input", "Y": "output"},
+    \\          "connections": {"A": [3], "B": [7], "S": [8], "Y": [9]}
+    \\        },
+    \\        "dst": {
+    \\          "type": "$sdff",
+    \\          "parameters": {"SRST_POLARITY": "1", "SRST_VALUE": "0"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "SRST": "input", "Q": "output"},
+    \\          "connections": {"CLK": [9], "D": [5], "SRST": [6], "Q": [12]}
+    \\        }
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+const srst_crossing_muxed_clock_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name cb -period 7 [get_ports cb]
+    \\create_clock -name cc -period 5 [get_ports cc]
+    \\set_clock_groups -asynchronous -group {ca} -group {cb cc}
+    \\set_input_delay -clock ca 1.0 [get_ports kill]
+    \\set_input_delay -clock cb 1.0 [get_ports d]
+;
+
+test "a foreign SRST into a muxed clock fires RDC-003 through the clock's legs" {
+    var l = try loadAll(srst_crossing_muxed_clock, srst_crossing_muxed_clock_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l);
+    var hit = false;
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, "RDC-003")) hit = true;
+    }
+    try std.testing.expect(hit);
+}
+
 const mux_reset_crossing =
     \\{
     \\  "modules": {

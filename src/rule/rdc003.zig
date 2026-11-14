@@ -49,7 +49,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const fdom = ctx.table.domainOf(f) orelse continue;
             if (std.mem.eql(u8, fdom.name, "unknown")) continue;
             if (std.mem.eql(u8, fdom.name, dom.name)) continue;
-            if (!ctx.model.areAsync(dom.name, fdom.name)) continue;
+            if (!ctx.domainsAsync(dom, fdom)) continue;
             const key = Group{ .src = f, .src_clk = fdom.name, .dst_clk = dom.name };
             const slot = try groups.getOrPut(ctx.tmp, key);
             if (!slot.found_existing) slot.value_ptr.* = .empty;

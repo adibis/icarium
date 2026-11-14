@@ -82,6 +82,7 @@ fn foreignResets(
     var out = std.ArrayListUnmanaged(Offender).empty;
     var seen = std.AutoHashMapUnmanaged(usize, void).empty;
     for (stages) |s| {
+        const sdom = ctx.table.domainOf(s) orelse continue;
         const arst = ctx.mod.cells[s].portBits("ARST") orelse continue;
         if (arst.len == 0) continue;
         const fanin = try context.backwardFlopFanin(ctx.tmp, ctx.mod, arst);
@@ -91,7 +92,7 @@ fn foreignResets(
             const dom = ctx.table.domainOf(f) orelse continue;
             if (std.mem.eql(u8, dom.name, "unknown")) continue;
             if (std.mem.eql(u8, dom.name, dst_clock)) continue;
-            if (!ctx.model.areAsync(dom.name, dst_clock)) continue;
+            if (!ctx.domainsAsync(dom, sdom)) continue;
             try out.append(ctx.tmp, .{ .name = ctx.mod.cells[f].name, .clk = dom.name });
         }
     }

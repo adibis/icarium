@@ -6,7 +6,7 @@ create_clock -name clk_kmac -period 10 [get_ports clk_kmac_i]
 # LC enables broadcast to receivers across the chip, outside every
 # clock declared here: one virtual clock models all of them async.
 create_clock -name virt_ext -period 10
-set_clock_groups -asynchronous -group {clk} -group {clk_kmac}
+set_clock_groups -asynchronous -group {clk} -group {clk_kmac} -group {virt_ext}
 set_input_delay -clock clk [get_ports regs_tl_i]
 set_input_delay -clock clk [get_ports dmi_tl_i]
 set_input_delay -clock clk [get_ports alert_rx_i]

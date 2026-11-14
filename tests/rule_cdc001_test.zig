@@ -342,6 +342,15 @@ const boundary_sdc =
     \\create_clock -name virt -period 10
     \\set_input_delay -clock ca [get_ports d]
     \\set_output_delay -clock virt [get_ports q]
+    \\set_clock_groups -asynchronous -group {ca} -group {virt}
+;
+
+// No clock groups: ca and virt are related, so the path is timed.
+const boundary_related_sdc =
+    \\create_clock -name ca -period 10 [get_ports ca]
+    \\create_clock -name virt -period 10
+    \\set_input_delay -clock ca [get_ports d]
+    \\set_output_delay -clock virt [get_ports q]
 ;
 
 test "boundary crossings fire with the port message" {
@@ -354,6 +363,13 @@ test "boundary crossings fire with the port message" {
     try std.testing.expectEqualStrings("q", fs[0].dst);
     try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "boundary crossing") != null);
     try std.testing.expect(std.mem.indexOf(u8, fs[0].message, "through port q") != null);
+}
+
+test "a boundary port in a related clock does not fire CDC-001" {
+    var l = try loadAll(boundary, boundary_related_sdc);
+    defer freeAll(&l);
+    const fs = try checkAll(&l, null, null);
+    try std.testing.expectEqual(@as(usize, 0), fs.len);
 }
 
 test "registry finds rules and stays sorted" {

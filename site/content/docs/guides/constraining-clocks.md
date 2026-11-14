@@ -39,10 +39,10 @@ third break).
 set_clock_groups -asynchronous -group {ca} -group {cb}
 ```
 
-The two clocks never meet in time. Write it even though the
-checker defaults ungrouped pairs to async (the first break
-proves it): the grouping documents intent, and intent is
-what the next reader audits.
+The two clocks never meet in time. This line is what makes the
+crossing asynchronous: as in timing analysis, clocks are related
+unless the SDC groups them apart, and a related crossing is a
+timed path, not a metastability risk. The first break proves it.
 
 ## Type the boundary
 
@@ -74,14 +74,13 @@ Delete the `set_clock_groups` line from
     --top bad_sync_missing --sdc /tmp/cdc-run/timing-nogroups.sdc --format ids
 ```
 
-```text
-CDC-001
-```
-
-Identical verdict, exit 1. Doubt fires, it does not pass:
-an ungrouped pair defaults to async, so the crossing still
-reports. The grouping line buys documentation, not
-detection — write it for the reader, not the tool.
+No output, exit 0. Without the group, `ca` and `cb` are
+related clocks, so the path from `src_q` to `dst_q` is an
+ordinary timed path and CDC-001 has nothing to report. Leave
+out a real asynchronous relation and every synchronizer check
+on it goes quiet, so declare every one. Rate hazards are the
+exception: CDC-009 and CDC-013 come from the clock periods and
+fire whether the clocks are related or not.
 
 ## Break it: untyped input
 

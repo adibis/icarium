@@ -21,6 +21,16 @@ aborts the run.
 | `set_false_path` | pairs excluded from analysis |
 | `set_input_delay` / `set_output_delay` | boundary timing context |
 
+## Clock relations
+
+Clocks are related unless the SDC says otherwise, as in timing
+analysis. `set_clock_groups` makes a pair asynchronous, and the
+metastability rules (missing or shallow synchronizers, logic
+before a synchronizer, reconvergence, unsafe buses) report only
+on asynchronous pairs. Rules about rates, such as a pulse or a
+toggle crossing fast to slow (CDC-009, CDC-013), use the declared
+periods and apply to related clocks too.
+
 ## Collections
 
 `get_clocks`, `get_ports`, `get_cells`, `get_nets`, `get_pins`

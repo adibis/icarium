@@ -37,6 +37,18 @@ pub const Context = struct {
     cfg: Config,
     alloc: std.mem.Allocator,
 
+    // Async when any leg pair is declared async, as the enumerator
+    // decides: a muxed clock is only as synchronous as its least
+    // synchronous leg, and its composite name names no SDC clock.
+    pub fn domainsAsync(ctx: *const Context, a: clock.trace.Domain, b: clock.trace.Domain) bool {
+        for (a.legs) |al| {
+            for (b.legs) |bl| {
+                if (ctx.model.declaredAsync(al, bl)) return true;
+            }
+        }
+        return false;
+    }
+
     // Binary search over the sorted bus index: a linear scan
     // costs O(buses) per crossing per rule — quadratic at scale.
     pub fn isBusMember(ctx: *const Context, x: crossing.enumerate.Crossing) bool {
