@@ -1,1 +1,1 @@
-{"bad_toggle_bare.sv": ["CDC-013"], "bad_xor_tail.sv": ["CDC-013"], "good_slow_toggle.sv": []}
+{"bad_toggle_bare.sv": ["CDC-013"], "bad_toggle_foreign_ack.sv": ["CDC-013"], "bad_xor_tail.sv": ["CDC-013"], "good_slow_toggle.sv": [], "good_toggle_ack.sv": []}

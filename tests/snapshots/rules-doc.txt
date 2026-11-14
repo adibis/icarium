@@ -93,6 +93,9 @@ two toggles between destination samples cancel to zero edges
 and both events are silently lost. A handshake or
 backpressure closes it. An XOR tail does not: it turns each
 toggle into a pulse, but cancelled toggles never reach it.
+A toggle whose enable waits on its own acknowledgement, the
+destination's synchronized toggle returned through a 2FF
+chain, never toggles twice between samples and is silent.
 honors: cdc_handshake
 fixtures: fixtures/CDC-013
 
