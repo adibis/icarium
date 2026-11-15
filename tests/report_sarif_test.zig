@@ -299,10 +299,10 @@ const golden =
     \\              "id": "CDC-018",
     \\              "name": "CDC-018",
     \\              "shortDescription": {
-    \\                "text": "Synchronizer chain deeper than the policy threshold"
+    \\                "text": "Synchronizer chain at or past the depth policy threshold"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "A destination chain runs deeper than the configured threshold\n(default 4). This is a policy check, not a defect: each extra\nstage adds resolution time as well as latency, and fast clocks\nor high data rates can need more than two. Stacked 2FF syncs\nand refactor leftovers are the usual causes. Trim the chain,\nset the threshold your library needs, or vouch the head."
+    \\                "text": "A destination chain whose depth is at least the configured\nthreshold warns: depth >= threshold, default 4, so a 3-deep\nchain is quiet and 4- and 5-deep chains warn. It reports once\nper source and destination clock, on the head of the longest\nchain; a head marked cdc_sync abstains. This is a latency and\narea policy, not a safety defect: every stage adds latency and\na flop, and also resolution time, which fast clocks or high\ndata rates can need. Stacked 2FF syncs and refactor leftovers\nare the usual causes. Trim the chain, set the threshold your\nlibrary needs, or vouch the head."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "warning"

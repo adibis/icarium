@@ -10,21 +10,25 @@ const registry = @import("registry.zig");
 pub const rule = registry.Rule{
     .id = "CDC-018",
     .severity = .warn,
-    .title = "Synchronizer chain deeper than the policy threshold",
+    .title = "Synchronizer chain at or past the depth policy threshold",
     .doc =
-    \\A destination chain runs deeper than the configured threshold
-    \\(default 4). This is a policy check, not a defect: each extra
-    \\stage adds resolution time as well as latency, and fast clocks
-    \\or high data rates can need more than two. Stacked 2FF syncs
-    \\and refactor leftovers are the usual causes. Trim the chain,
-    \\set the threshold your library needs, or vouch the head.
+    \\A destination chain whose depth is at least the configured
+    \\threshold warns: depth >= threshold, default 4, so a 3-deep
+    \\chain is quiet and 4- and 5-deep chains warn. It reports once
+    \\per source and destination clock, on the head of the longest
+    \\chain; a head marked cdc_sync abstains. This is a latency and
+    \\area policy, not a safety defect: every stage adds latency and
+    \\a flop, and also resolution time, which fast clocks or high
+    \\data rates can need. Stacked 2FF syncs and refactor leftovers
+    \\are the usual causes. Trim the chain, set the threshold your
+    \\library needs, or vouch the head.
     ,
     .honors = &.{"cdc_sync"},
     .check_all = checkAll,
 };
 
-// Deepest chain per (source, dst clock): at-threshold chains
-// report once, naming the longest head. Vouched heads abstain.
+// Deepest chain per (source, dst clock): chains at or past the
+// threshold report once, naming the longest head. Vouched heads abstain.
 pub const Accum = struct {
     groups: std.AutoHashMapUnmanaged(usize, std.StringHashMapUnmanaged(Best)) = .empty,
 };
@@ -90,7 +94,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         }
     }.less);
     for (keys.items) |k| {
-        const message = try std.fmt.allocPrint(ctx.tmp, "cascaded synchroniser chain: {d}-flop chain in {s} starting at {s} (source: {s}). It is deeper than the policy threshold; each stage adds latency as well as resolution time, and whether the extra resolution is needed depends on the library and clock rate. Trim the chain, set --cdc-018-depth-threshold to the depth your library needs, or mark the chain head (* cdc_sync *) if the depth is intentional.", .{ k.best.depth, k.clk, ctx.mod.cells[k.best.head].name, ctx.mod.cells[k.src].name });
+        const message = try std.fmt.allocPrint(ctx.tmp, "cascaded synchroniser chain: {d}-flop chain in {s} starting at {s} (source: {s}). It is at or past the policy threshold of {d}; each stage adds latency and a flop as well as resolution time, and whether that resolution is needed depends on the library and clock rate. Trim the chain, set --cdc-018-depth-threshold to the depth your library needs, or mark the chain head (* cdc_sync *) if the depth is intentional.", .{ k.best.depth, k.clk, ctx.mod.cells[k.best.head].name, ctx.mod.cells[k.src].name, ctx.cfg.cdc018_threshold });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

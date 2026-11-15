@@ -1,6 +1,6 @@
-// CDC-018: a 4-deep destination chain. It resolves fine, but
-// two stacked 2FF syncs smell of a doubled fix or a leftover
-// wrapper. Depth checks pass; only the cascade rule fires.
+// CDC-018: a 4-deep chain, at the default threshold. Safe, but two
+// stacked 2FF syncs cost latency and often mark a doubled fix or a
+// leftover wrapper. Depth checks pass; only the policy rule fires.
 module bad_deep_chain (
     input  logic src_clk,
     input  logic dst_clk,
