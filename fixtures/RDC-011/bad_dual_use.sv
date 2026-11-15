@@ -1,11 +1,12 @@
-// RDC-011: one reset net drives an async pin (a_q), a sync
-// pin (s_q), and both at once (c_q, whose D-mux keys on the
-// same net). The groups can never leave reset together.
+// RDC-011: one reset net is the async reset of a_q and the sync
+// reset of s_q. Each drives its own output, so synthesis keeps both
+// uses. The two groups can never leave reset together.
 module bad_dual_use (
     input  wire clk,
     input  wire rst,
     input  wire d,
-    output wire q
+    output wire qa,
+    output wire qs
 );
     reg a_q;
     always_ff @(posedge clk or posedge rst)
@@ -15,12 +16,8 @@ module bad_dual_use (
     reg s_q;
     always_ff @(posedge clk)
         if (rst) s_q <= 1'b0;
-        else     s_q <= a_q;
+        else     s_q <= d;
 
-    reg c_q;
-    always_ff @(posedge clk or posedge rst)
-        if (rst) c_q <= 1'b0;
-        else     c_q <= rst ? 1'b1 : d;
-
-    assign q = s_q & c_q;
+    assign qa = a_q;
+    assign qs = s_q;
 endmodule
