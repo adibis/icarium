@@ -250,7 +250,7 @@ const golden =
     \\                "text": "Combinational logic between synchronizer stages"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "A gate sits between two stages of a synchronizer: the second\nstage may sample the first while still metastable, destroying\nthe resolution time the chain was meant to provide. Move the\ngate past the chain's final stage."
+    \\                "text": "A gate sits between two stages of a synchronizer: its delay\neats into the resolution time the chain was meant to provide,\nand it can pass a metastable or glitching value on to the\nnext stage. Move the gate past the chain's final stage."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "error"
@@ -276,7 +276,7 @@ const golden =
     \\                "text": "Opposite-edge stages in a synchronizer chain"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "Adjacent chain stages sample on opposite edges of one clock,\nhalving the resolution time a same-edge chain would provide.\nThe RTL reads as a symmetric 2FF, but MTBF roughly halves.\nSample every stage on the same edge."
+    \\                "text": "Adjacent chain stages sample on opposite edges of one clock,\nso the earlier stage gets about half a period to resolve\ninstead of a full one (at 50% duty). MTBF falls exponentially\nwith resolution time; how far depends on the flop and the data\nrate, which icarium does not know, so it reports the shape,\nnot a number. Sample every stage on the same edge."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "error"
@@ -299,10 +299,10 @@ const golden =
     \\              "id": "CDC-018",
     \\              "name": "CDC-018",
     \\              "shortDescription": {
-    \\                "text": "Cascaded synchronizer chain past the depth threshold"
+    \\                "text": "Synchronizer chain deeper than the policy threshold"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "A destination chain runs deeper than the threshold (default\n4): two stacked 2FF syncs, or a refactor leftover. Extra\nstages add latency without improving resolution. Trim to 2,\nraise the threshold, or vouch the head."
+    \\                "text": "A destination chain runs deeper than the configured threshold\n(default 4). This is a policy check, not a defect: each extra\nstage adds resolution time as well as latency, and fast clocks\nor high data rates can need more than two. Stacked 2FF syncs\nand refactor leftovers are the usual causes. Trim the chain,\nset the threshold your library needs, or vouch the head."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "warning"
@@ -523,7 +523,7 @@ const golden =
     \\                "text": "Unqualified data crossing reset domains"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "A flop's data input is driven from another reset domain with\nno shared release: the source can come out of reset while the\nreceiver samples. Both sides need an async reset to trip it;\na side with none never releases, so unreset storage fed from\na reset domain stays silent. Clocks do not matter here."
+    \\                "text": "A flop's data input is driven from another reset domain with\nno shared release: the source can come out of reset while the\nreceiver samples. Both sides need an async reset to trip it.\nThis is a release check only: unreset storage fed from a reset\ndomain stays silent here, though an async assertion at the\nsource can still corrupt what it captures, a hazard icarium\ndoes not analyze. Clocks do not matter here."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "error"

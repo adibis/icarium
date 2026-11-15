@@ -10,12 +10,14 @@ const registry = @import("registry.zig");
 pub const rule = registry.Rule{
     .id = "CDC-018",
     .severity = .warn,
-    .title = "Cascaded synchronizer chain past the depth threshold",
+    .title = "Synchronizer chain deeper than the policy threshold",
     .doc =
-    \\A destination chain runs deeper than the threshold (default
-    \\4): two stacked 2FF syncs, or a refactor leftover. Extra
-    \\stages add latency without improving resolution. Trim to 2,
-    \\raise the threshold, or vouch the head.
+    \\A destination chain runs deeper than the configured threshold
+    \\(default 4). This is a policy check, not a defect: each extra
+    \\stage adds resolution time as well as latency, and fast clocks
+    \\or high data rates can need more than two. Stacked 2FF syncs
+    \\and refactor leftovers are the usual causes. Trim the chain,
+    \\set the threshold your library needs, or vouch the head.
     ,
     .honors = &.{"cdc_sync"},
     .check_all = checkAll,
@@ -88,7 +90,7 @@ pub fn finish(acc: *Accum, ctx: *context.Context) error{OutOfMemory}![]finding.F
         }
     }.less);
     for (keys.items) |k| {
-        const message = try std.fmt.allocPrint(ctx.tmp, "cascaded synchroniser chain: {d}-flop chain in {s} starting at {s} (source: {s}). The textbook 2FF sync is sufficient; every flop beyond the first 2 adds latency without improving metastability resolution. Trim the chain to 2 flops, or mark the chain head (* cdc_sync *) if the depth is intentional.", .{ k.best.depth, k.clk, ctx.mod.cells[k.best.head].name, ctx.mod.cells[k.src].name });
+        const message = try std.fmt.allocPrint(ctx.tmp, "cascaded synchroniser chain: {d}-flop chain in {s} starting at {s} (source: {s}). It is deeper than the policy threshold; each stage adds latency as well as resolution time, and whether the extra resolution is needed depends on the library and clock rate. Trim the chain, set --cdc-018-depth-threshold to the depth your library needs, or mark the chain head (* cdc_sync *) if the depth is intentional.", .{ k.best.depth, k.clk, ctx.mod.cells[k.best.head].name, ctx.mod.cells[k.src].name });
         try out.append(ctx.tmp, .{
             .rule = rule.id,
             .severity = rule.severity,

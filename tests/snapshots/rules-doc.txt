@@ -104,10 +104,10 @@ honors: cdc_handshake
 fixtures: fixtures/CDC-013
 
 CDC-014 [err] Combinational logic between synchronizer stages
-A gate sits between two stages of a synchronizer: the second
-stage may sample the first while still metastable, destroying
-the resolution time the chain was meant to provide. Move the
-gate past the chain's final stage.
+A gate sits between two stages of a synchronizer: its delay
+eats into the resolution time the chain was meant to provide,
+and it can pass a metastable or glitching value on to the
+next stage. Move the gate past the chain's final stage.
 honors: cdc_sync cdc_handshake
 fixtures: fixtures/CDC-014
 
@@ -121,9 +121,11 @@ fixtures: fixtures/CDC-015
 
 CDC-016 [err] Opposite-edge stages in a synchronizer chain
 Adjacent chain stages sample on opposite edges of one clock,
-halving the resolution time a same-edge chain would provide.
-The RTL reads as a symmetric 2FF, but MTBF roughly halves.
-Sample every stage on the same edge.
+so the earlier stage gets about half a period to resolve
+instead of a full one (at 50% duty). MTBF falls exponentially
+with resolution time; how far depends on the flop and the data
+rate, which icarium does not know, so it reports the shape,
+not a number. Sample every stage on the same edge.
 honors: cdc_sync
 fixtures: fixtures/CDC-016
 
@@ -135,11 +137,13 @@ time. Replace the latch with a 2FF chain on the dst clock.
 honors: cdc_sync
 fixtures: fixtures/CDC-017
 
-CDC-018 [warn] Cascaded synchronizer chain past the depth threshold
-A destination chain runs deeper than the threshold (default
-4): two stacked 2FF syncs, or a refactor leftover. Extra
-stages add latency without improving resolution. Trim to 2,
-raise the threshold, or vouch the head.
+CDC-018 [warn] Synchronizer chain deeper than the policy threshold
+A destination chain runs deeper than the configured threshold
+(default 4). This is a policy check, not a defect: each extra
+stage adds resolution time as well as latency, and fast clocks
+or high data rates can need more than two. Stacked 2FF syncs
+and refactor leftovers are the usual causes. Trim the chain,
+set the threshold your library needs, or vouch the head.
 honors: cdc_sync
 fixtures: fixtures/CDC-018
 
@@ -279,9 +283,11 @@ fixtures: fixtures/RDC-008
 RDC-009 [err] Unqualified data crossing reset domains
 A flop's data input is driven from another reset domain with
 no shared release: the source can come out of reset while the
-receiver samples. Both sides need an async reset to trip it;
-a side with none never releases, so unreset storage fed from
-a reset domain stays silent. Clocks do not matter here.
+receiver samples. Both sides need an async reset to trip it.
+This is a release check only: unreset storage fed from a reset
+domain stays silent here, though an async assertion at the
+source can still corrupt what it captures, a hazard icarium
+does not analyze. Clocks do not matter here.
 honors:
 fixtures: fixtures/RDC-009
 

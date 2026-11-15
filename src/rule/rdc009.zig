@@ -15,9 +15,11 @@ pub const rule = registry.Rule{
     .doc =
     \\A flop's data input is driven from another reset domain with
     \\no shared release: the source can come out of reset while the
-    \\receiver samples. Both sides need an async reset to trip it;
-    \\a side with none never releases, so unreset storage fed from
-    \\a reset domain stays silent. Clocks do not matter here.
+    \\receiver samples. Both sides need an async reset to trip it.
+    \\This is a release check only: unreset storage fed from a reset
+    \\domain stays silent here, though an async assertion at the
+    \\source can still corrupt what it captures, a hazard icarium
+    \\does not analyze. Clocks do not matter here.
     ,
 
     .honors = &.{},

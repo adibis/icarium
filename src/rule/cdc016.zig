@@ -14,9 +14,11 @@ pub const rule = registry.Rule{
     .title = "Opposite-edge stages in a synchronizer chain",
     .doc =
     \\Adjacent chain stages sample on opposite edges of one clock,
-    \\halving the resolution time a same-edge chain would provide.
-    \\The RTL reads as a symmetric 2FF, but MTBF roughly halves.
-    \\Sample every stage on the same edge.
+    \\so the earlier stage gets about half a period to resolve
+    \\instead of a full one (at 50% duty). MTBF falls exponentially
+    \\with resolution time; how far depends on the flop and the data
+    \\rate, which icarium does not know, so it reports the shape,
+    \\not a number. Sample every stage on the same edge.
     ,
     .honors = &.{"cdc_sync"},
     .check_all = checkAll,
@@ -48,7 +50,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const b = entry.stages[i + 1];
             if (isPosedge(ctx.mod.cells[a]) == isPosedge(ctx.mod.cells[b])) continue;
             try seen.put(ctx.tmp, dc, {});
-            const message = try std.fmt.allocPrint(ctx.tmp, "opposite-edge synchroniser on {s} -> {s}: chain stage {s} ({s}) and {s} ({s}) sample on different edges of {s}, which halves MTBF", .{ x.src_clk, x.dst_clk, ctx.mod.cells[a].name, edgeName(ctx.mod.cells[a]), ctx.mod.cells[b].name, edgeName(ctx.mod.cells[b]), x.dst_clk });
+            const message = try std.fmt.allocPrint(ctx.tmp, "opposite-edge synchroniser on {s} -> {s}: chain stage {s} ({s}) and {s} ({s}) sample on different edges of {s}, which cuts the earlier stage's resolution time to about half a period", .{ x.src_clk, x.dst_clk, ctx.mod.cells[a].name, edgeName(ctx.mod.cells[a]), ctx.mod.cells[b].name, edgeName(ctx.mod.cells[b]), x.dst_clk });
             try out.append(ctx.tmp, .{
                 .rule = rule.id,
                 .severity = rule.severity,

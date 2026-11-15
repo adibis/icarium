@@ -12,10 +12,10 @@ pub const rule = registry.Rule{
     .severity = .err,
     .title = "Combinational logic between synchronizer stages",
     .doc =
-    \\A gate sits between two stages of a synchronizer: the second
-    \\stage may sample the first while still metastable, destroying
-    \\the resolution time the chain was meant to provide. Move the
-    \\gate past the chain's final stage.
+    \\A gate sits between two stages of a synchronizer: its delay
+    \\eats into the resolution time the chain was meant to provide,
+    \\and it can pass a metastable or glitching value on to the
+    \\next stage. Move the gate past the chain's final stage.
     ,
     .honors = &.{ "cdc_sync", "cdc_handshake" },
     .check = check,

@@ -21,7 +21,9 @@ a rule set over them. New here? Work the
   full catalog.
 - **RDC**: the same races in reset trees — async resets
   released from foreign clock domains, combinational or muxed
-  reset sources, and reset-synchronizer chain integrity.
+  reset sources, and reset-synchronizer chain integrity. These
+  are reset-structure and reset-release checks: they ask how a
+  reset is built and where it deasserts.
 
 ## What it is not
 
@@ -29,6 +31,18 @@ icarium is structural and static: it reasons about the elaborated
 netlist, not simulation traces or formal proofs. It does not replace
 timing signoff (final static-timing closure); it catches the
 crossing bugs before signoff gets them.
+
+It does not analyze reset assertion. An async reset that asserts
+in one domain changes its flops asynchronously to any receiver that
+keeps running: another reset domain, or storage with no reset. What
+that receiver captures can be corrupt. Catching that needs reset
+sequencing and receiver-side qualification that icarium does not
+model; its RDC rules check structure and release only.
+
+It does not compute MTBF. Rules that concern resolution time
+(opposite-edge stages, gates inside a chain, chain depth) report the
+shape; how much margin a design needs depends on the flop library,
+clock rates and data rates, which the netlist does not carry.
 
 ## Pipeline
 

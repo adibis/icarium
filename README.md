@@ -11,8 +11,9 @@ Yosys elaborates from your RTL, plus your SDC clock constraints, and reports
 crossings that can go metastable or release out of order.
 
 - **36 rules**: unsynchronized and shallow synchronizers, logic before a
-  synchronizer, reconvergence, unsafe buses, async mux selects, foreign
-  reset releases, reset polarity and ordering, and more.
+  synchronizer, reconvergence, unsafe buses, clock-mux switching, foreign
+  reset releases, reset polarity and ordering, and more. RDC rules check
+  reset structure and release, not corruption on reset assertion.
 - **Full-chip scale**: a streaming mode checks OpenTitan's full EarlGrey top.
 - **Reports for people and tools**: text, JSON, SARIF (for code-scanning
   UIs) and TOON, with clock and reset domain maps.
