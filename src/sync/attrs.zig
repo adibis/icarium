@@ -164,6 +164,13 @@ pub fn collect(parent: std.mem.Allocator, mod: *const ir.types.Module) error{Out
             if (reset_sync_bits.contains(b.sig)) try reset_syncs.put(alloc, c.name, {});
         }
     }
+    // A port has no Q; its own wire carries the promise.
+    for (mod.ports) |p| {
+        if (p.direction == .output) continue;
+        for (p.bits) |b| {
+            if (b == .sig and static_bits.contains(b.sig)) try statics.put(alloc, p.name, {});
+        }
+    }
     return .{
         .backing = backing,
         .syncs = syncs,

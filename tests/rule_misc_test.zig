@@ -637,18 +637,25 @@ test "a port select async to every gated clock fires CDC-010" {
     }
 }
 
-test "a port select sharing a gated clock stays silent" {
-    var l = try loadAll(mux_port_ctl, mux_port_sync_sdc);
-    defer freeAll(&l);
-    const fs = try checkAll(&l);
-    try std.testing.expectEqual(@as(usize, 0), countRule(fs, "CDC-010"));
+fn onlySwitchFinding(fs: []const rule.finding.Finding) !void {
+    try std.testing.expectEqual(@as(usize, 1), countRule(fs, "CDC-010"));
+    for (fs) |f| {
+        if (std.mem.eql(u8, f.rule, "CDC-010")) {
+            try std.testing.expect(std.mem.indexOf(u8, f.message, "switches between asynchronous clocks") != null);
+        }
+    }
 }
 
-test "an untyped port select stays silent" {
+test "a port select sharing a gated clock still fires: the mux switches async clocks" {
+    var l = try loadAll(mux_port_ctl, mux_port_sync_sdc);
+    defer freeAll(&l);
+    try onlySwitchFinding(try checkAll(&l));
+}
+
+test "an untyped port select fires the async switch without a select clock" {
     var l = try loadAll(mux_port_ctl, mux_port_untyped_sdc);
     defer freeAll(&l);
-    const fs = try checkAll(&l);
-    try std.testing.expectEqual(@as(usize, 0), countRule(fs, "CDC-010"));
+    try onlySwitchFinding(try checkAll(&l));
 }
 
 const mux_shared =
@@ -702,11 +709,10 @@ const mux_shared_sdc =
     \\set_input_delay -clock ca 1.0 [get_ports d]
 ;
 
-test "a select sharing a gated clock stays silent" {
+test "a select flop sharing a gated clock still fires: the mux switches async clocks" {
     var l = try loadAll(mux_shared, mux_shared_sdc);
     defer freeAll(&l);
-    const fs = try checkAll(&l);
-    try std.testing.expect(onlyNotesFrom(fs, "CDC-026"));
+    try onlySwitchFinding(try checkAll(&l));
 }
 
 const mux_portsel =
@@ -755,11 +761,10 @@ const mux_portsel_sdc =
     \\set_input_delay -clock ca 1.0 [get_ports d]
 ;
 
-test "a port-driven select is not a wrong-domain flop" {
+test "a port-driven select is not a wrong-domain flop, but the switch still fires" {
     var l = try loadAll(mux_portsel, mux_portsel_sdc);
     defer freeAll(&l);
-    const fs = try checkAll(&l);
-    try std.testing.expect(onlyNotesFrom(fs, "CDC-026"));
+    try onlySwitchFinding(try checkAll(&l));
 }
 
 const fast_pulse =

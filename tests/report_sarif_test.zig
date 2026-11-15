@@ -195,10 +195,10 @@ const golden =
     \\              "id": "CDC-010",
     \\              "name": "CDC-010",
     \\              "shortDescription": {
-    \\                "text": "Glitch on the clock network from a wrong-domain control signal"
+    \\                "text": "Clock mux or gate control that can emit a runt pulse"
     \\              },
     \\              "fullDescription": {
-    \\                "text": "A clock mux select or gate enable is driven from a domain\nasync to every clock the cell gates: the transition chops the\noutput clock into runt pulses no sink synchronizer can heal.\nSynchronize the control into one of the gated-clock domains."
+    \\                "text": "A clock mux select or gate enable can chop the output clock\ninto runt pulses no sink synchronizer can heal. Two shapes\nfire. A control driven from a domain async to every clock the\ncell gates. And a plain mux switching between asynchronous\nclocks, whatever domain its select comes from: a select\nsynchronous to one leg still lands mid-phase on the other.\nUse a glitch-free (break-before-make) mux, or mark the select\ncdc_static if it only changes while the clocks are stopped."
     \\              },
     \\              "defaultConfiguration": {
     \\                "level": "error"

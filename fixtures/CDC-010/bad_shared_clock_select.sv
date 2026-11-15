@@ -1,4 +1,9 @@
-module good_shared_clock (
+// CDC-010 fires: the select is registered in cb, one of the muxed
+// clocks, but a plain mux still switches between asynchronous
+// clocks. A switch synchronous to cb lands mid-phase on ca and can
+// emit a runt pulse. Sharing a domain with the select is necessary,
+// not sufficient.
+module bad_shared_clock_select (
     input  logic ca,
     input  logic cb,
     input  logic en_d,

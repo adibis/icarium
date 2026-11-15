@@ -1,10 +1,12 @@
 // CDC-026: destination clocked by a $mux union of two async
 // clocks. The crossing is synchronized, so only the leg-pair
 // record fires: sets, pairs, select, and chain depth.
+// The select is a static mode select (cdc_static), so the runt
+// hazard CDC-010 covers is out of scope for this ledger test.
 module note_mux_union (
     input  logic ca,
     input  logic cb,
-    input  logic sel,
+    (* cdc_static *) input logic sel,
     input  logic d,
     output logic q
 );

@@ -2,10 +2,12 @@
 // Cross leg-pairs can never co-occur, so the record marks
 // them exclusive instead of async. CDC-006 joins in: port d
 // is async to the cb leg feeding the union-clocked head.
+// The select is a static mode select (cdc_static), so the runt
+// hazard CDC-010 covers is out of scope for this ledger test.
 module note_shared_select (
     input  logic ca,
     input  logic cb,
-    input  logic sel,
+    (* cdc_static *) input logic sel,
     input  logic d,
     output logic q
 );

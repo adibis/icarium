@@ -63,12 +63,16 @@ edges. Stretch the pulse, toggle it, or handshake it.
 honors:
 fixtures: fixtures/CDC-009
 
-CDC-010 [err] Glitch on the clock network from a wrong-domain control signal
-A clock mux select or gate enable is driven from a domain
-async to every clock the cell gates: the transition chops the
-output clock into runt pulses no sink synchronizer can heal.
-Synchronize the control into one of the gated-clock domains.
-honors:
+CDC-010 [err] Clock mux or gate control that can emit a runt pulse
+A clock mux select or gate enable can chop the output clock
+into runt pulses no sink synchronizer can heal. Two shapes
+fire. A control driven from a domain async to every clock the
+cell gates. And a plain mux switching between asynchronous
+clocks, whatever domain its select comes from: a select
+synchronous to one leg still lands mid-phase on the other.
+Use a glitch-free (break-before-make) mux, or mark the select
+cdc_static if it only changes while the clocks are stopped.
+honors: cdc_static
 fixtures: fixtures/CDC-010
 
 CDC-011 [warn] Unconstrained primary input captured by clocked logic

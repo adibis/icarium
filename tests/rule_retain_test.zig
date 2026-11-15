@@ -353,10 +353,16 @@ fn clockForest(muxes: usize, depth: usize) ![]u8 {
     return buf.toOwnedSlice();
 }
 
+// Related clocks: no finding fires, so the gross counts walks alone.
+const related_sdc =
+    \\create_clock -name clk_a -period 10 [get_ports clk_a]
+    \\create_clock -name clk_b -period 7 [get_ports clk_b]
+;
+
 fn runOnceGross(muxes: usize) !usize {
     const json = try clockForest(muxes, 6);
     defer std.testing.allocator.free(json);
-    var l = try loadAll(json, bus_sdc);
+    var l = try loadAll(json, related_sdc);
     defer freeAll(&l);
     var tmp_arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer tmp_arena.deinit();

@@ -11,19 +11,24 @@ const sdc = @import("../sdc.zig");
 pub const rule = registry.Rule{
     .id = "CDC-010",
     .severity = .err,
-    .title = "Glitch on the clock network from a wrong-domain control signal",
+    .title = "Clock mux or gate control that can emit a runt pulse",
     .doc =
-    \\A clock mux select or gate enable is driven from a domain
-    \\async to every clock the cell gates: the transition chops the
-    \\output clock into runt pulses no sink synchronizer can heal.
-    \\Synchronize the control into one of the gated-clock domains.
+    \\A clock mux select or gate enable can chop the output clock
+    \\into runt pulses no sink synchronizer can heal. Two shapes
+    \\fire. A control driven from a domain async to every clock the
+    \\cell gates. And a plain mux switching between asynchronous
+    \\clocks, whatever domain its select comes from: a select
+    \\synchronous to one leg still lands mid-phase on the other.
+    \\Use a glitch-free (break-before-make) mux, or mark the select
+    \\cdc_static if it only changes while the clocks are stopped.
     ,
-    .honors = &.{},
+    .honors = &.{"cdc_static"},
     .check_all = checkAll,
 };
 
 // Control fanin must share a gated clock, or the async edge
-// chops the output. Untyped ports defer: no clock, no verdict.
+// chops the output; untyped ports defer there. A plain mux of
+// async clocks fires either way: sharing a leg is not enough.
 pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
     const mod = ctx.mod;
     // Walks root here, never in tmp: the network walk is design-
@@ -51,6 +56,7 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
             const bits = c.portBits(cp) orelse continue;
             if (bits.len == 0) continue;
             if (anyGlitchless(ctx, bits)) continue;
+            const before = out.items.len;
             const fanin = try context.backwardFlopFanin(alloc, ctx.mod, bits);
             std.mem.sort(usize, fanin.items, {}, struct {
                 fn less(_: void, a: usize, b: usize) bool {
@@ -74,6 +80,17 @@ pub fn checkAll(ctx: *context.Context) error{OutOfMemory}![]finding.Finding {
                 });
             }
             try portDriven(ctx, alloc, c.name, c.type, cp, bits, gated, &out);
+            if (out.items.len != before) continue;
+            if (!clock.cells.isClockMux(c.type)) continue;
+            const pair = asyncPair(ctx, gated) orelse continue;
+            if (try staticSelect(ctx, alloc, bits, fanin.items)) continue;
+            const message = try std.fmt.allocPrint(ctx.tmp, "clock mux {s} ({s}) switches between asynchronous clocks {s} and {s} on select pin {s}: whatever domain the select comes from, a switch lands mid-phase on at least one leg and can emit a runt pulse. Use a glitch-free (break-before-make) clock mux, or mark the select cdc_static if it only changes while the clocks are stopped", .{ c.name, c.type, pair[0], pair[1], cp });
+            try out.append(ctx.tmp, .{
+                .rule = rule.id,
+                .severity = rule.severity,
+                .dst = c.name,
+                .message = message,
+            });
         }
     }
     return out.toOwnedSlice(ctx.tmp);
@@ -238,6 +255,51 @@ fn allAsync(ctx: *context.Context, sdom: clock.trace.Domain, gated: GatedDomains
         for (gated.clocks.items) |gc| {
             if (!ctx.model.declaredAsync(sl, gc)) return false;
         }
+    }
+    return true;
+}
+
+// Two gated clocks the SDC declares asynchronous, if any. Only a
+// declared relation counts: related clocks switch by design.
+fn asyncPair(ctx: *context.Context, gated: GatedDomains) ?[2][]const u8 {
+    var legs_buf: [32][]const u8 = undefined;
+    var n: usize = 0;
+    for (gated.cells.items) |gc| {
+        const gdom = ctx.table.domainOf(gc) orelse continue;
+        for (gdom.legs) |l| {
+            if (n < legs_buf.len) {
+                legs_buf[n] = l;
+                n += 1;
+            }
+        }
+    }
+    for (gated.clocks.items) |gc| {
+        if (n < legs_buf.len) {
+            legs_buf[n] = gc;
+            n += 1;
+        }
+    }
+    const legs = legs_buf[0..n];
+    for (legs, 0..) |a, i| {
+        for (legs[i + 1 ..]) |b| {
+            if (ctx.model.declaredAsync(a, b)) {
+                return if (std.mem.lessThan(u8, a, b)) .{ a, b } else .{ b, a };
+            }
+        }
+    }
+    return null;
+}
+
+// Static when every flop and port behind the select carries the
+// cdc_static promise. A select with no source at all is not.
+fn staticSelect(ctx: *context.Context, alloc: std.mem.Allocator, bits: []ir.bits.Bit, flops: []const usize) error{OutOfMemory}!bool {
+    const ports = try context.backwardPortFanin(alloc, ctx.mod, bits);
+    if (flops.len == 0 and ports.len == 0) return false;
+    for (flops) |f| {
+        if (!ctx.marks.hasStatic(ctx.mod.cells[f].name)) return false;
+    }
+    for (ports) |p| {
+        if (!ctx.marks.hasStatic(p)) return false;
     }
     return true;
 }

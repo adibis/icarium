@@ -1,11 +1,13 @@
 // CDC-026: nested clock muxes. The union still resolves, but
 // mode conditions past the outer select stay unrecorded, and
 // the ledger says so instead of guessing.
+// The select is a static mode select (cdc_static), so the runt
+// hazard CDC-010 covers is out of scope for this ledger test.
 module note_nested_mux (
     input  logic ca,
     input  logic cb,
-    input  logic s1,
-    input  logic s2,
+    (* cdc_static *) input logic s1,
+    (* cdc_static *) input logic s2,
     input  logic d,
     output logic q
 );

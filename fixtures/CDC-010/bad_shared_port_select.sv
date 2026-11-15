@@ -1,4 +1,7 @@
-module good_port_select (
+// CDC-010 fires: the select port is timed to ca, one of the muxed
+// clocks, but a plain mux still switches between asynchronous
+// clocks, so a switch can emit a runt pulse on the cb side.
+module bad_shared_port_select (
     input  logic ca,
     input  logic cb,
     input  logic sel,
