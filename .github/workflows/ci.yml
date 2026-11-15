@@ -44,20 +44,20 @@ jobs:
         run: pip install jsonschema || echo "jsonschema unavailable, schema-gated suites will skip"
       - name: Install toon-format for TOON round-trip proof
         run: pip install toon-format || echo "toon-format unavailable, round-trip will skip"
+      - run: zig build
       - name: TOON size proof (skips without yosys)
         run: |
-          sh bench/toon-tokens.sh; code=$?; if [ $code -eq 3 ]; then echo "toon proof skipped: yosys not installed"; else exit $code; fi
-      - run: zig build
+          code=0; sh bench/toon-tokens.sh || code=$?; if [ $code -eq 3 ]; then echo "toon proof skipped: yosys not installed"; else exit $code; fi
       - name: End-to-end suite (skips without yosys)
         run: |
-          sh tests/e2e/run.sh; code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi
+          code=0; sh tests/e2e/run.sh || code=$?; if [ $code -eq 3 ]; then echo "e2e skipped: yosys not installed"; else exit $code; fi
       - name: Rule fixtures (skips without yosys)
         run: |
-          sh fixtures/run.sh; code=$?; if [ $code -eq 3 ]; then echo "fixtures skipped: yosys not installed"; else exit $code; fi
+          code=0; sh fixtures/run.sh || code=$?; if [ $code -eq 3 ]; then echo "fixtures skipped: yosys not installed"; else exit $code; fi
       - name: Schema validation (skips without yosys/jsonschema)
-        run: sh scripts/validate-schemas.sh; code=$?; if [ $code -eq 3 ]; then echo "schemas skipped"; else exit $code; fi
+        run: code=0; sh scripts/validate-schemas.sh || code=$?; if [ $code -eq 3 ]; then echo "schemas skipped"; else exit $code; fi
       - name: Suppression suite (skips without yosys/jsonschema)
-        run: sh tests/suppress/run.sh; code=$?; if [ $code -eq 3 ]; then echo "suppress skipped"; else exit $code; fi
+        run: code=0; sh tests/suppress/run.sh || code=$?; if [ $code -eq 3 ]; then echo "suppress skipped"; else exit $code; fi
   cdc-rdc-tests:
     # The tool-neutral suite, at the commit pins.json names: bump the pin
     # when a rule change and its suite cases land together.
