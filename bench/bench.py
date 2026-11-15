@@ -208,12 +208,19 @@ def versions(icarium):
     return out
 
 
+def need_ot(ot, who):
+    # No default checkout location: the path is the caller's to give.
+    if not ot:
+        sys.exit(f"{who}: needs an OpenTitan checkout via --ot DIR or OTIP")
+    return ot
+
+
 def main():
     tiers = {1, 2}
     only = None
     reps = 3
     work = os.path.join(ROOT, "bench", "work")
-    ot = os.path.join(os.path.expanduser("~"), "opentitan")
+    ot = os.environ.get("OTIP", "")
     yosys_slang = os.environ.get("YOSYS_SLANG")
     args = sys.argv[1:]
     i = 0
@@ -251,7 +258,7 @@ def main():
         for name, spec in elaborate_tier1(work).items():
             designs[f"t1/{name}"] = spec
     if 2 in tiers:
-        for name, spec in elaborate_tier2(work, ot, yosys_slang).items():
+        for name, spec in elaborate_tier2(work, need_ot(ot, "bench"), yosys_slang).items():
             designs[f"t2/{name}"] = spec
     results = []
     for name, spec in designs.items():

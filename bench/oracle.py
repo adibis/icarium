@@ -16,10 +16,17 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OT = os.environ.get("OTIP", os.path.join(os.path.expanduser("~"), "opentitan"))
+OT = os.environ.get("OTIP", "")
 CDC = "hw/top_earlgrey/cdc"
 
 BLOCK_FILES = {"uart", "spi_device", "alert_handler", "gpio", "lc_ctrl"}
+
+
+def need_ot(ot, who):
+    # No default checkout location: the path is the caller's to give.
+    if not ot:
+        sys.exit(f"{who}: needs an OpenTitan checkout via --ot DIR or OTIP")
+    return ot
 
 
 def main():
@@ -33,7 +40,7 @@ def main():
         else:
             sys.exit(f"oracle: unknown flag {args[0]}")
     binary = os.path.join(ROOT, "zig-out", "bin", "icarium")
-    cdc = os.path.join(ot, CDC)
+    cdc = os.path.join(need_ot(ot, "oracle"), CDC)
     if not os.path.isdir(cdc):
         sys.exit(f"oracle: no cdc dir at {cdc}")
     pins = json.load(open(os.path.join(ROOT, "pins.json")))

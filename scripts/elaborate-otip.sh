@@ -31,9 +31,9 @@ command -v "$YOSYS" >/dev/null 2>&1 || { echo "elaborate-otip: $YOSYS not on PAT
     echo "elaborate-otip: $YOSYS lacks read_slang (need slang-capable yosys, e.g. OSS CAD Suite)" >&2
     exit 3
 }
+OT="${OT:-$OTIP}"
 if [ -z "$OT" ]; then
-    if [ -d "$HOME/opentitan" ]; then OT="$HOME/opentitan";
-    else echo "elaborate-otip: pass --ot DIR (OpenTitan checkout)" >&2; exit 2; fi
+    echo "elaborate-otip: pass --ot DIR or set OTIP (OpenTitan checkout)" >&2; exit 2
 fi
 
 # FuseSoC file list via the verilator backend (setup only: no build).

@@ -387,9 +387,16 @@ def measure_scope(spec, findings, work, oracle, rules, report,
         "findings": len(findings), **counts}
 
 
+def need_ot(ot, who):
+    # No default checkout location: the path is the caller's to give.
+    if not ot:
+        sys.exit(f"{who}: needs an OpenTitan checkout via --ot DIR or OTIP")
+    return ot
+
+
 def main():
     work = os.path.join(ROOT, "bench", "work")
-    ot = os.path.join(os.path.expanduser("~"), "opentitan")
+    ot = os.environ.get("OTIP", "")
     yosys_slang = os.environ.get("YOSYS_SLANG")
     baseline_path = os.path.join(ROOT, "bench", "recall_baseline.json")
     bless = False
@@ -419,7 +426,7 @@ def main():
     os.makedirs(work, exist_ok=True)
     if any(not os.path.exists(os.path.join(work, f"t2-{d['name']}.json"))
            for d in TIER2):
-        elaborate_tier2(work, ot, yosys_slang)
+        elaborate_tier2(work, need_ot(ot, "recall"), yosys_slang)
     binary = os.path.join(ROOT, "zig-out", "bin", "icarium")
     rules = subprocess.run([binary, "rules", "--list"], capture_output=True,
                            text=True).stdout.split()
@@ -428,7 +435,7 @@ def main():
         print("recall: waiver oracle missing, rebuilding via oracle.py")
         r = subprocess.run([sys.executable,
                             os.path.join(ROOT, "bench", "oracle.py"),
-                            "--ot", ot])
+                            "--ot", need_ot(ot, "recall")])
         if r.returncode != 0 or not os.path.exists(oracle_path):
             sys.exit("recall: cannot build waiver oracle "
                      "(needs OpenTitan checkout via --ot or OTIP)")
