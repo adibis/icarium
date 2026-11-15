@@ -9,8 +9,8 @@ to the full EarlGrey top.
 
 - License: Apache-2.0 (see `LICENSE`).
 - Source: [GitHub](https://github.com/adibis/icarium).
-- Interchange: Accellera CDC/RDC 1.0 via Tcl converters;
-  JSON schemas under `schema/` are the native contract.
+- Interchange: JSON schemas under `schema/` are the native
+  contract; `import-meridian` converts Meridian Tcl waivers.
 
 Status: tier-3 complete — the full flat top checks streamed
 in about an hour. See [Benchmarks]({{% relref "docs/benchmarks.md" %}}),

@@ -26,7 +26,7 @@ edges, as converters.
 same findings for LLM pipelines. TOON is emit-only: icarium
 never parses it back.
 
-## Accellera 1.0 interchange
+## Meridian waiver import
 
 `icarium import-meridian --in WAIVERS.tcl --map bench/meridian_map.json
 --out waivers.json` converts `set_rule_status` Tcl waiver files

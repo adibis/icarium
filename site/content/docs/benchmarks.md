@@ -50,8 +50,8 @@ waives the scan-clocked paths.
 ## Recall gate
 
 Separately from scale tiers, OpenTitan's Meridian waivers
-(Tcl `set_rule_status` files, converted via
-[Accellera 1.0 interchange]({{% relref "docs/formats.md" %}}))
+(Tcl `set_rule_status` files, converted by
+[`import-meridian`]({{% relref "docs/formats.md" %}}))
 replay as a recall gate over 465 in-scope entries. An entry is
 found when a finding lands on both of its endpoints (full) or
 one (partial):

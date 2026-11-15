@@ -7,7 +7,7 @@ enableRobotsTXT: true
 enableGitInfo: true
 
 params:
-  description: "Open-source structural CDC/RDC checker in Zig: full-chip SystemVerilog, JSON-native formats, Accellera 1.0 interchange."
+  description: "Open-source structural CDC/RDC checker in Zig: full-chip SystemVerilog, JSON-native formats, benchmarked against OpenTitan's own waivers."
 
   navbar:
     displayTitle: true
