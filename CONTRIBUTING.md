@@ -27,6 +27,10 @@ proprietary RTL.
 - New behavior needs a fixture or e2e case, not just a unit test: the
   SystemVerilog suite is the contract. A fix lands with a test that failed
   before it.
+- CI also runs every case of
+  [cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests) at the commit
+  `pins.json` names. A rule change that moves a suite verdict lands with the
+  matching suite change, and the pin moves to that commit.
 - Run the pre-commit check before every commit:
 
   ```sh

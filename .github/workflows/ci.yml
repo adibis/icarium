@@ -58,6 +58,41 @@ jobs:
         run: sh scripts/validate-schemas.sh; code=$?; if [ $code -eq 3 ]; then echo "schemas skipped"; else exit $code; fi
       - name: Suppression suite (skips without yosys/jsonschema)
         run: sh tests/suppress/run.sh; code=$?; if [ $code -eq 3 ]; then echo "suppress skipped"; else exit $code; fi
+  cdc-rdc-tests:
+    # The tool-neutral suite, at the commit pins.json names: bump the pin
+    # when a rule change and its suite cases land together.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned Zig version and suite commit
+        id: pins
+        run: |
+          echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+          echo "suite=$(sed -n 's/.*"cdc-rdc-tests": { "commit": "\([0-9a-f]*\)" }.*/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ steps.pins.outputs.zig }}
+      - id: yosys-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/oss-cad-suite
+          key: oss-cad-suite-20261014-${{ runner.os }}
+      - name: Download Yosys
+        if: steps.yosys-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sSL https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-14/oss-cad-suite-linux-x64-20261014.tgz | tar -xz -C ~
+      - run: |
+          echo "$HOME/oss-cad-suite/bin" >> "$GITHUB_PATH"
+      - run: zig build
+      - uses: actions/checkout@v4
+        with:
+          repository: adibis/cdc-rdc-tests
+          ref: ${{ steps.pins.outputs.suite }}
+          path: cdc-rdc-tests
+      - name: Every case, strict
+        run: python3 cdc-rdc-tests/run.py --icarium-bin zig-out/bin/icarium
+      - name: Every case, notes ignored
+        run: python3 cdc-rdc-tests/run.py --icarium-bin zig-out/bin/icarium --ignore-notes
   contributors:
     # Every commit author must have signed CONTRIBUTORS (the DCO).
     if: github.event_name == 'pull_request'

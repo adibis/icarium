@@ -30,8 +30,8 @@ fail() { red    "FAIL: $*"; errors=$((errors + 1)); }
 warn() { yellow "WARN: $*"; warnings=$((warnings + 1)); }
 pass() { green  "PASS: $*"; }
 
-# Only code and its tests are scanned: docs legitimately name roadmap
-# phases. The self-exclusion is load-bearing, not defensive — the
+# Only code and its tests are scanned; docs use "phase" in its plain
+# sense. The self-exclusion is load-bearing, not defensive — the
 # TODO pattern below would otherwise match its own source line.
 self_exclude=':(exclude)scripts/precommit-check.sh'
 
