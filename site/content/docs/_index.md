@@ -44,6 +44,17 @@ It does not compute MTBF. Rules that concern resolution time
 shape; how much margin a design needs depends on the flop library,
 clock rates and data rates, which the netlist does not carry.
 
+## Assumptions
+
+icarium assumes what the
+[cdc-rdc-tests assumptions](https://github.com/adibis/cdc-rdc-tests/blob/master/docs/assumptions.md)
+state for every checker. Clocks and their relations come only from
+the SDC, and undeclared pairs are related. Resets are as the netlist
+builds them. Unreset state is unknown and never relied on. Inputs may
+change on any edge of the clock they are typed to; an untyped input
+gets a typing finding rather than a guess. No rule assumes a traffic
+rate beyond the declared clock periods.
+
 ## Pipeline
 
 ![icarium pipeline](/images/overview/pipeline.svg)
