@@ -73,9 +73,9 @@ open ground truths:
   269 of 444; for 174 more, the expected rule fires elsewhere in the design,
   and none is missed outright. See
   [Benchmarks](https://adibis.github.io/icarium/docs/benchmarks/).
-- **[cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests)**, a tool-neutral
-  suite of 206 small designs with exact expected verdicts. icarium passes all
-  206.
+- **[cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests)**, an emerging
+  tool-neutral conformance suite of small designs with exact expected
+  verdicts. icarium passes all 213 cases of its v0.1.0 release, in CI.
 
 ## Status
 

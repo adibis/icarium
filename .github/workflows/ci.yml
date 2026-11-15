@@ -59,8 +59,9 @@ jobs:
       - name: Suppression suite (skips without yosys/jsonschema)
         run: code=0; sh tests/suppress/run.sh || code=$?; if [ $code -eq 3 ]; then echo "suppress skipped"; else exit $code; fi
   cdc-rdc-tests:
-    # The tool-neutral suite, at the commit pins.json names: bump the pin
-    # when a rule change and its suite cases land together.
+    # The tool-neutral suite, at the release pins.json names. The commit is
+    # what CI checks out; the tag must still point at it, so a moved tag
+    # fails loudly instead of changing what was tested.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +69,8 @@ jobs:
         id: pins
         run: |
           echo "zig=$(sed -n 's/^  "zig_version": "\(.*\)",$/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
-          echo "suite=$(sed -n 's/.*"cdc-rdc-tests": { "commit": "\([0-9a-f]*\)" }.*/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+          echo "suite=$(sed -n 's/.*"cdc-rdc-tests": { "tag": "v[0-9.]*", "commit": "\([0-9a-f]*\)" }.*/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
+          echo "suite_tag=$(sed -n 's/.*"cdc-rdc-tests": { "tag": "\(v[0-9.]*\)".*/\1/p' pins.json)" >> "$GITHUB_OUTPUT"
       - uses: mlugg/setup-zig@v2
         with:
           version: ${{ steps.pins.outputs.zig }}
@@ -89,6 +91,11 @@ jobs:
           repository: adibis/cdc-rdc-tests
           ref: ${{ steps.pins.outputs.suite }}
           path: cdc-rdc-tests
+          fetch-depth: 0
+      - name: Release tag still names the pinned commit
+        run: |
+          tagged=$(git -C cdc-rdc-tests rev-parse "${{ steps.pins.outputs.suite_tag }}^{commit}")
+          [ "$tagged" = "${{ steps.pins.outputs.suite }}" ] || { echo "${{ steps.pins.outputs.suite_tag }} is $tagged, pins.json says ${{ steps.pins.outputs.suite }}"; exit 1; }
       - name: Every case, strict
         run: python3 cdc-rdc-tests/run.py --icarium-bin zig-out/bin/icarium
       - name: Every case, notes ignored

@@ -5,6 +5,6 @@
     "yosys":         { "minimum": "0.67", "oss-cad-suite": "2026-10-14" },
     "rtl-buddy-cdc": { "version": "0.7.3", "commit": "16bb74272b79a799e0fb6c53e6d3204bda6cb620" },
     "opentitan":     { "commit": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170" },
-    "cdc-rdc-tests": { "commit": "7e2b7dd3e537231aa9287523870ca0fbdc801ac6" }
+    "cdc-rdc-tests": { "tag": "v0.1.0", "commit": "737825c08067c9c76730bd648474b300ce0c2d93" }
   }
 }

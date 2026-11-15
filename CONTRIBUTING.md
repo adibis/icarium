@@ -28,9 +28,10 @@ proprietary RTL.
   SystemVerilog suite is the contract. A fix lands with a test that failed
   before it.
 - CI also runs every case of
-  [cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests) at the commit
-  `pins.json` names. A rule change that moves a suite verdict lands with the
-  matching suite change, and the pin moves to that commit.
+  [cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests) at the release
+  `pins.json` names, checked out by commit; CI fails if the tag has moved.
+  A rule change that moves a suite verdict waits for a suite release with the
+  matching cases, and the pin moves to that release.
 - Run the pre-commit check before every commit:
 
   ```sh
