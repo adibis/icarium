@@ -69,10 +69,10 @@ entry is a known modeling gap. See
 ## Test suite
 
 [cdc-rdc-tests](https://github.com/adibis/cdc-rdc-tests) is a
-separate, tool-neutral suite: 206 small designs, each with the
+separate, tool-neutral suite: 213 small designs, each with the
 exact findings a correct checker reports, including the
 designs where it must report nothing. Any CDC/RDC checker can
 run it. Every case also compiles in Verilator, Xezim and slang
 and synthesizes cleanly in Yosys, so a failure is about the
 crossing, never the SystemVerilog.
-icarium passes all 206.
+icarium passes all 213 cases of its v0.1.0 release.
