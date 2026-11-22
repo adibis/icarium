@@ -1,5 +1,5 @@
 {
- "blessed_at": "229396d0e717f99680a7ab8aeb6efb36477fdbaf",
+ "blessed_at": "0dd0bb5132e161496e061fd073bd2e8f3dc89a61",
  "opentitan": "c2dbfc95e05ed40fb219da02d6fe39fbeb729170",
  "blocks": {
   "uart": {
@@ -43,7 +43,7 @@
    "modeling-gap": 0
   },
   "top_earlgrey": {
-   "findings": 1977807,
+   "findings": 2080199,
    "full": 49,
    "partial": 220,
    "rule-only": 174,
