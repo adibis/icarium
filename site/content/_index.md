@@ -53,7 +53,7 @@ or both of its endpoints.
 | design | waived violations | both endpoints | one endpoint | rule only | missed | icarium findings |
 | ------ | ----------------: | -------------: | -----------: | --------: | -----: | ---------------: |
 | 5 OpenTitan blocks | 21 | 9 | 10 | 2 | 0 | 39,739 |
-| full EarlGrey top | 444 | 49 | 220 | 174 | 0 | 1,977,807 |
+| full EarlGrey top | 444 | 49 | 220 | 174 | 0 | 2,080,199 |
 
 "Rule only" means the expected rule fired in that design, but not on the waived signals; the one remaining top entry is a known modeling gap.
 The finding counts are high because each bit of a bus is reported on its own; grouping

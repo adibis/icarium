@@ -38,8 +38,10 @@ Check time tracks pairs, not netlist size.
 ## Tier-3: full EarlGrey top
 
 The 983 MB flat top (178,656 sources) checks streamed in 65
-minutes: 637,274 chunks, 1,977,807 findings across 18 rules,
-peak RSS 14.8 GB. Streaming caps memory at one pair budget
+minutes: 637,274 chunks, peak RSS 14.8 GB, measured before
+CDC-010 learned to flag plain muxes that switch asynchronous
+clocks. With that rule, v0.2.0 reports 2,080,199 findings
+across 18 rules, 102,418 of them CDC-010. Streaming caps memory at one pair budget
 instead of the widest broadcast (see
 [Streaming]({{% relref "docs/dev/streaming.md" %}})). 63 flops
 stay unknown (unassignable to any declared clock): 28 undriven
