@@ -31,9 +31,9 @@ always_ff @(posedge cb) dst_q <= src_q;   // line 10: ca and cb are asynchronous
 
 ```text
 CDC-001 [error] Unsynchronized control crossing (1 finding)
-  $procdff$3 @ bad_sync_missing.sv:10.3-10.42 <- $procdff$4 @ bad_sync_missing.sv:9.3-9.38:
-  unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop
-  $procdff$3 has no second-stage synchronizer (chain depth = 1)
+  dst_q @ bad_sync_missing.sv:10.3-10.42 <- src_q @ bad_sync_missing.sv:9.3-9.38:
+  unsynchronized control crossing ca -> cb (src: flop src_q): destination flop
+  dst_q has no second-stage synchronizer (chain depth = 1)
 ```
 
 ## Install
@@ -81,7 +81,6 @@ open ground truths:
 
 icarium is young. Known limitations, all on the roadmap:
 
-- Findings name Yosys cells (`$procdff$3`) rather than RTL signals.
 - Each bit of a bus is reported as its own crossing.
 - Elaboration and checking are two commands.
 

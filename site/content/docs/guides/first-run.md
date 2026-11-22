@@ -69,8 +69,8 @@ Creating register for signal `\bad_sync_missing.\src_q' using process `\bad_sync
 End of script. Logfile hash: f8de42fd25, time: [varies run to run]
 ```
 
-Note the two `$procdff` cells and their source lines — those
-names appear in the finding next:
+Yosys calls the two flops `$procdff$3` and `$procdff$4`. The
+finding names them by the registers they came from instead:
 
 ```sh
 ./zig-out/bin/icarium check --yosys-json /tmp/guide.json \
@@ -79,7 +79,7 @@ names appear in the finding next:
 
 ```text
 CDC-001 [error] Unsynchronized control crossing (1 finding)
-  $procdff$3 @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42 <- $procdff$4 @ fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38: unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop $procdff$3 has no second-stage synchronizer (chain depth = 1)
+  dst_q @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42 <- src_q @ fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38: unsynchronized control crossing ca -> cb (src: flop src_q): destination flop dst_q has no second-stage synchronizer (chain depth = 1)
 ```
 
 Exit code 1. The destination flop at line 10 takes its data

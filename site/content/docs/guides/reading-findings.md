@@ -8,24 +8,26 @@ run]({{% relref "docs/guides/first-run.md" %}}):
 
 ```text
 CDC-001 [error] Unsynchronized control crossing (1 finding)
-  $procdff$3 @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42 <- $procdff$4 @ fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38: unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop $procdff$3 has no second-stage synchronizer (chain depth = 1)
+  dst_q @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42 <- src_q @ fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38: unsynchronized control crossing ca -> cb (src: flop src_q): destination flop dst_q has no second-stage synchronizer (chain depth = 1)
 ```
 
 ## Anatomy
 
 The header names the rule (`CDC-001`), its severity
 (`error`), its title, and how many findings share the group.
-The indented line pins the destination first (`$procdff$3 @
+The indented line pins the destination first (`dst_q @
 ...sv:10.3-10.42`), then `<-`, then the source behind it.
 The message states the shape (`ca -> cb`, chain depth 1)
 and the fix direction (add the second stage).
 
-The cell names are Yosys-generated, not yours: `$procdff$3`
-is the third process flop the elaborator created. Map them
-back through the `@ file:line:col-col` suffix —
-`10.3-10.42` means line 10, columns 3 to 42, the `dst_q`
-assignment. Destination comes first because that is where
-you start reading: the capture flop, then what feeds it.
+The names are your RTL's: `dst_q` is the register the
+`always_ff` on line 10 assigns, with a bit range when a flop
+covers part of a bus (`bus[5:4]`). The `@ file:line:col-col`
+suffix points at that statement: `10.3-10.42` means line 10,
+columns 3 to 42. Destination comes first because that is
+where you start reading: the capture flop, then what feeds
+it. A cell with no RTL name of its own, which is rare, keeps
+the netlist name Yosys gave it.
 
 ## Grouped findings pin one end
 
@@ -35,7 +37,7 @@ four source flops but pins the first:
 
 ```text
 CDC-019 [warning] Independently-synced one-hot decode across CDC (1 finding)
-  $procdff$21 @ cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:18.5-23.8: independently-synced one-hot decode across CDC: comb cell $shift$cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:14$9 drives 4 separate WIDTH=1 source flops ($procdff$21, $procdff$22, $procdff$23, $procdff$24) that each cross independently to clock domain dst_clk. The shared driver makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.
+  d0 @ cases/tier1/fx_cdc019_bad_onehot_decode/design.sv:18.5-23.8: independently-synced one-hot decode across CDC: comb cell one_hot drives 4 separate WIDTH=1 source flops (d0, d1, d2, d3) that each cross independently to clock domain dst_clk. The shared driver makes the lanes change together at the source, but each destination sync chain resolves on its own schedule. Fix: gray-code the source or gate the destination sample behind a req/ack handshake.
 ```
 
 Read the pinned line first, then the message's list. Which
@@ -57,7 +59,7 @@ one source fanning to two synchronizers (test-suite case
 
 ```text
 CDC-024 [warning] Single source fanning to multiple synchronizers (1 finding)
-  $procdff$10 @ cases/tier1/cdc024_fanout_pair/design.sv:16.5-16.36: fanout to 2 synchronizers: source $procdff$10 reaches independent sync chains in domain cb (chain heads: $procdff$7, $procdff$9); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values
+  a @ cases/tier1/cdc024_fanout_pair/design.sv:16.5-16.36: fanout to 2 synchronizers: source a reaches independent sync chains in domain cb (chain heads: b1, a1); each chain resolves metastability on its own edge, so confirm the destinations never recombine the separately-resolved values
 ```
 
 Outcome one: the destinations stay independent — no shared
@@ -110,11 +112,13 @@ CDC-001
 ```
 
 `json` emits the full versioned record — endpoints,
-positions, message, waiver slot:
+positions, message, waiver slot. Each endpoint carries both
+names: `signal` is the RTL name the text shows, and `name` is
+the netlist key that waivers and baselines also accept:
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "design": {
     "top": "bad_sync_missing"
   },
@@ -134,17 +138,19 @@ positions, message, waiver slot:
           "severity": "error",
           "dst": {
             "name": "$procdff$3",
+            "signal": "dst_q",
             "kind": "cell",
             "instance": "",
             "src": "fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42"
           },
           "driver": {
             "name": "$procdff$4",
+            "signal": "src_q",
             "kind": "cell",
             "instance": "",
             "src": "fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38"
           },
-          "message": "unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop $procdff$3 has no second-stage synchronizer (chain depth = 1)",
+          "message": "unsynchronized control crossing ca -> cb (src: flop src_q): destination flop dst_q has no second-stage synchronizer (chain depth = 1)",
           "waiver": null
         }
       ]
@@ -167,7 +173,7 @@ schema header, then one result per finding):
       "tool": {
         "driver": {
           "name": "icarium",
-          "version": "0.1.0-dev",
+          "version": "0.1.0",
 [... 524 more lines: rule metadata, then the finding as a result ...]
 ```
 
@@ -175,8 +181,8 @@ schema header, then one result per finding):
 pipelines:
 
 ```text
-[1|]{rule|severity|title|dst|dst_kind|dst_instance|dst_src|driver|driver_kind|driver_instance|driver_src|message|waiver_id|waiver_reason|waiver_location}:
-  CDC-001|error|Unsynchronized control crossing|$procdff$3|cell|""|"fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42"|$procdff$4|cell|""|"fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38"|"unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop $procdff$3 has no second-stage synchronizer (chain depth = 1)"|null|null|null
+[1|]{rule|severity|title|dst|dst_signal|dst_kind|dst_instance|dst_src|driver|driver_signal|driver_kind|driver_instance|driver_src|message|waiver_id|waiver_reason|waiver_location}:
+  CDC-001|error|Unsynchronized control crossing|$procdff$3|dst_q|cell|""|"fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42"|$procdff$4|src_q|cell|""|"fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38"|"unsynchronized control crossing ca -> cb (src: flop src_q): destination flop dst_q has no second-stage synchronizer (chain depth = 1)"|null|null|null
 ```
 
 Start in text, automate in `ids`, archive in `json`. Reach

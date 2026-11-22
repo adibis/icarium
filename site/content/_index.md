@@ -33,13 +33,13 @@ always_ff @(posedge cb) dst_q <= src_q;
 ```text
 $ icarium check --yosys-json design.json --top bad_sync_missing --sdc clocks.sdc
 CDC-001 [error] Unsynchronized control crossing (1 finding)
-  $procdff$3 @ bad_sync_missing.sv:10.3-10.42 <- $procdff$4 @ bad_sync_missing.sv:9.3-9.38:
-  unsynchronized control crossing ca -> cb (src: flop $procdff$4): destination flop
-  $procdff$3 has no second-stage synchronizer (chain depth = 1)
+  dst_q @ bad_sync_missing.sv:10.3-10.42 <- src_q @ bad_sync_missing.sv:9.3-9.38:
+  unsynchronized control crossing ca -> cb (src: flop src_q): destination flop
+  dst_q has no second-stage synchronizer (chain depth = 1)
 ```
 
-The source locations point at the two `always_ff` lines. Findings name the flops by their
-Yosys cell (`$procdff$3`) for now; RTL signal names are next on the list.
+The names are the registers your RTL declares, and the source locations point at the two
+`always_ff` lines that assign them.
 
 ## How it runs
 

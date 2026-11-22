@@ -11,7 +11,8 @@ edges, as converters.
 
 | Schema | Artifact |
 | ------ | -------- |
-| `findings-1.0` | `check --format json` report: design, summary, rule groups |
+| `findings-1.1` | `check --format json` report: design, summary, rule groups; each endpoint names its netlist cell and its RTL signal |
+| `findings-1.0` | the same report from icarium 0.1, without `signal` |
 | `waivers-1.0` | native waivers (`check --waivers`) |
 | `clock-map-1.0` | `--emit-domain-map`: clocks, generated clocks, flop domains |
 | `reset-map-1.0` | `--emit-reset-domain-map`: reset sources, chains, crossings |

@@ -1,5 +1,20 @@
 # Release notes
 
+## v0.2.0
+
+- **Findings name your RTL.** Every report shows the register or net a flop came from
+  (`dst_q`, `u_a.q_reg`, `bus[5:4]`) instead of the Yosys cell (`$procdff$3`), in the
+  endpoint and in the message. JSON and TOON keep the netlist name beside it: findings
+  schema 1.1 adds `signal` to each endpoint, and `name` is unchanged.
+- **Waivers may name signals.** A `dst` or `driver` pattern matches the RTL signal or the
+  netlist name, so waivers written from a report work, and existing ones keep matching.
+- **Baselines** match the messages reports now print, and still accept a 0.1 baseline.
+- **Instance paths** drop Yosys's `$flatten\` and `\` spellings (`u_mid/u_leaf`, not
+  `$flatten\u_mid/\u_leaf`), and a gate's generated name no longer splits on the dot in
+  its source path.
+- **CDC-018** states its contract: it warns at depth >= threshold (default 4), as it
+  always did, and its message names the threshold.
+
 ## v0.1.0
 
 First public release: a structural CDC/RDC checker for elaborated SystemVerilog.

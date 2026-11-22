@@ -112,14 +112,14 @@ full text:
     --top bad_sync_missing --sdc /tmp/cdc-run/timing-nocb.sdc
 ```
 
-The crossing now reads `ca -> port:cb`, and CDC-021 names
-the missing declaration — including the exact line to add:
+CDC-001 goes quiet: with `cb` undeclared, the destination
+flop has no clock domain, so no crossing check can judge it.
+CDC-021 says so and names the missing declaration, including
+the exact line to add:
 
 ```text
-CDC-001 [error] Unsynchronized control crossing (1 finding)
-  $procdff$3 @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42 <- $procdff$4 @ fixtures/CDC-001/bad_sync_missing.sv:9.3-9.38: unsynchronized control crossing ca -> port:cb (src: flop $procdff$4): destination flop $procdff$3 has no second-stage synchronizer (chain depth = 1)
 CDC-021 [error] Flop clock driven by an undeclared port (1 finding)
-  $procdff$3 @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42: flop CLK driven by undeclared port: top-level input port 'cb' drives flop $procdff$3 but has no create_clock declaration in the SDC. All other CDC checks that touch this domain are silently skipped. Add `create_clock -name cb -period <T> [get_ports cb]` to the SDC.
+  dst_q @ fixtures/CDC-001/bad_sync_missing.sv:10.3-10.42: flop CLK driven by undeclared port: top-level input port 'cb' drives flop dst_q but has no create_clock declaration in the SDC. All other CDC checks that touch this domain are silently skipped. Add `create_clock -name cb -period <T> [get_ports cb]` to the SDC.
 ```
 
 (The tool prints each finding on one long line; wrapped
