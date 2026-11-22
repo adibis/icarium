@@ -173,7 +173,7 @@ schema header, then one result per finding):
       "tool": {
         "driver": {
           "name": "icarium",
-          "version": "0.1.0",
+          "version": "0.2.0",
 [... 524 more lines: rule metadata, then the finding as a result ...]
 ```
 
