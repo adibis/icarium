@@ -149,6 +149,12 @@ def end_ok(s, blob):
     return end_in_blob(s, blob)
 
 
+def hits(pattern, f, end):
+    # An end of finding f matches by either of its names.
+    return overlap(pattern, f[end]) or \
+        overlap(pattern, f.get(end + "_sig", ""))
+
+
 def overlap(pattern, name):
     pv, nv = variants(pattern), variants(name)
     if _hit(pv, nv):
@@ -204,16 +210,20 @@ def check_block(binary, work, spec, reuse=False):
             return None, f"check failed: {r.stderr.strip()[-200:]}"
         json.dump(json.loads(r.stdout), open(out, "w"))
     flat = []
+    # An endpoint carries the netlist name and, since findings 1.1,
+    # the RTL signal behind it. Waivers name RTL, so either may match.
     def ep(e):
         if isinstance(e, dict):
-            return e.get("name", "")
-        return str(e or "")
+            return e.get("name", ""), e.get("signal", "")
+        return str(e or ""), ""
 
     for g in json.load(open(out))["groups"]:
         for it in g["items"]:
+            dst, dst_sig = ep(it.get("dst"))
+            drv, drv_sig = ep(it.get("driver"))
             flat.append({"rule": g["rule"],
-                         "dst": ep(it.get("dst")),
-                         "driver": ep(it.get("driver")),
+                         "dst": dst, "dst_sig": dst_sig,
+                         "driver": drv, "driver_sig": drv_sig,
                          "message": it.get("message", "")})
     return flat, None
 
@@ -252,10 +262,10 @@ def verdict(entry, cands, gap_pool, blob):
         both_located = True
     if not cands:
         for f in gap_pool:
-            if overlap(entry["driver"], f["driver"]) or \
-               overlap(entry["driver"], f["dst"]) or \
-               overlap(entry["dst"], f["dst"]) or \
-               overlap(entry["dst"], f["driver"]):
+            if hits(entry["driver"], f, "driver") or \
+               hits(entry["driver"], f, "dst") or \
+               hits(entry["dst"], f, "dst") or \
+               hits(entry["dst"], f, "driver"):
                 return "modeling-gap", f, unloc
         return "missed", None, unloc
     # Single-ended entries can never satisfy d-and-r (a null end
@@ -275,10 +285,10 @@ def verdict(entry, cands, gap_pool, blob):
     for f in cands:
         if not wild and not _prefilter(f, toks, joined):
             continue
-        d = overlap(entry["driver"], f["driver"]) or \
-            overlap(entry["driver"], f["dst"])
-        r = overlap(entry["dst"], f["dst"]) or \
-            overlap(entry["dst"], f["driver"])
+        d = hits(entry["driver"], f, "driver") or \
+            hits(entry["driver"], f, "dst")
+        r = hits(entry["dst"], f, "dst") or \
+            hits(entry["dst"], f, "driver")
         if d and r and both_located:
             return "full", f, unloc
         if single and (d or r) and both_located:
@@ -286,10 +296,10 @@ def verdict(entry, cands, gap_pool, blob):
     for f in cands:
         if not wild and not _prefilter(f, toks, joined):
             continue
-        if overlap(entry["driver"], f["driver"]) or \
-           overlap(entry["driver"], f["dst"]) or \
-           overlap(entry["dst"], f["dst"]) or \
-           overlap(entry["dst"], f["driver"]):
+        if hits(entry["driver"], f, "driver") or \
+           hits(entry["driver"], f, "dst") or \
+           hits(entry["dst"], f, "dst") or \
+           hits(entry["dst"], f, "driver"):
             return "partial", f, unloc
     return "rule-only", cands[0], unloc
 
@@ -298,7 +308,8 @@ def _prefilter(f, toks, joined):
     # Literal tokens prune regexes both directions: a regex hit
     # needs its longest literal present, so absence skips safely.
     # One joined scan per token; newline-free tokens cannot span.
-    fends = [n for e in (f["driver"], f["dst"]) if e
+    fends = [n for e in (f["driver"], f["dst"], f.get("driver_sig"),
+                         f.get("dst_sig")) if e
              for n in variants(e)]
     if not fends:
         return False
@@ -381,7 +392,7 @@ def measure_scope(spec, findings, work, oracle, rules, report,
             "meridian_rule": e["meridian_rule"],
             "icarium_rules": e["icarium_rules"],
             "verdict": v,
-            "finding": {k: f[k] for k in ("rule", "dst", "driver")}
+            "finding": {k: f[k] for k in ("rule", "dst", "dst_sig", "driver", "driver_sig")}
             if f else None})
     report["blocks"][name] = {
         "findings": len(findings), **counts}
