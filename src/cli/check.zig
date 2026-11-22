@@ -350,7 +350,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
                 err.print("check: bad baseline file {s}\n", .{bp}) catch {};
                 return 2;
             };
-            const kept = suppress.baseline.partition(scratch, findings, &base.?) catch return 3;
+            const kept = suppress.baseline.partition(scratch, &mod, findings, &base.?) catch return 3;
             carried = @intCast(findings.len - kept);
             findings = findings[0..kept];
             if (carried > 0) err.print("check: carried over {d} finding(s) from baseline\n", .{carried}) catch {};

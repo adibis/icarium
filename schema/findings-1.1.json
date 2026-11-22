@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://icarium.dev/schema/findings-1.1.json",
+  "title": "icarium findings",
+  "description": "Rule-grouped CDC/RDC verdicts. Additive evolution: new keys may appear; existing keys keep their meaning within major version 1.",
+  "type": "object",
+  "required": ["schema_version", "design", "summary", "groups", "unmatched_waivers"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.1"},
+    "design": {
+      "type": "object",
+      "required": ["top"],
+      "properties": {"top": {"type": "string"}}
+    },
+    "summary": {
+      "type": "object",
+      "required": ["errors", "warnings", "notes", "carried_over"],
+      "properties": {
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "notes": {"type": "integer", "minimum": 0},
+        "carried_over": {"type": "integer", "minimum": 0}
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "severity", "title", "items"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {"type": "string"},
+          "severity": {"enum": ["error", "warning", "note"]},
+          "title": {"type": "string"},
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["severity", "dst", "driver", "message", "waiver"],
+              "additionalProperties": false,
+              "properties": {
+                "severity": {"enum": ["error", "warning", "note"]},
+                "dst": {"$ref": "#/$defs/endpoint"},
+                "driver": {
+                  "anyOf": [{"$ref": "#/$defs/endpoint"}, {"type": "null"}]
+                },
+                "message": {"type": "string"},
+                "waiver": {
+                  "description": "The suppression excuses this item, or null where the finding stands.",
+                  "anyOf": [
+                    {"type": "null"},
+                    {
+                      "type": "object",
+                      "required": ["waiver_id", "reason"],
+                      "properties": {
+                        "waiver_id": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "location": {"type": ["string", "null"]}
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "unmatched_waivers": {
+      "description": "Waiver IDs that matched no finding in this run.",
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "required": ["name", "signal", "kind", "instance", "src"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Netlist name: the Yosys cell or port. Waivers and baselines match on it."
+        },
+        "signal": {
+          "type": "string",
+          "description": "The RTL register or net the cell drives, with a bit range when it covers part of one; the name itself when no RTL name is known."
+        },
+        "kind": {"enum": ["cell", "port", "other"]},
+        "instance": {
+          "type": "string",
+          "description": "Slash-joined hierarchy below top; empty for top-level cells and ports."
+        },
+        "src": {
+          "description": "Yosys src location (file:line.col-line.col) or null when absent.",
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

@@ -130,7 +130,7 @@ pub fn apply(
     now: Date,
     source_path: []const u8,
 ) error{OutOfMemory}!Applied {
-    const idx = try report_common.Index.build(alloc, mod);
+    const idx = try report_common.Index.buildFor(alloc, mod, findings);
     var hits = try alloc.alloc(?rule.finding.WaiverHit, findings.len);
     @memset(hits, null);
     var matched = try alloc.alloc(bool, loaded.waivers.len);
@@ -167,7 +167,9 @@ pub fn apply(
 
 // Rule equality (or a `*` wildcard) plus optional endpoint
 // patterns. `inst:`-prefixed patterns glob the slash-joined
-// instance path; bare patterns glob the cell or port name.
+// instance path; bare patterns glob the RTL signal or the netlist
+// name, so a waiver written from a report and one written against
+// an older netlist key both still match.
 fn matches(
     alloc: std.mem.Allocator,
     mod: *const ir.types.Module,
@@ -200,11 +202,10 @@ fn endMatches(
     name: []const u8,
     pattern: []const u8,
 ) error{OutOfMemory}!bool {
-    if (std.mem.startsWith(u8, pattern, "inst:")) {
-        const r = try report_common.resolve(alloc, mod, idx, name);
-        return glob.match(pattern["inst:".len..], r.instance);
-    }
-    return glob.match(pattern, name);
+    const r = try report_common.resolve(alloc, mod, idx, name);
+    if (std.mem.startsWith(u8, pattern, "inst:")) return glob.match(pattern["inst:".len..], r.instance);
+    // The RTL signal reports show, or the netlist name behind it.
+    return glob.match(pattern, r.signal) or glob.match(pattern, name);
 }
 
 // Strict YYYY-MM-DD: malformed dates fail the load, never

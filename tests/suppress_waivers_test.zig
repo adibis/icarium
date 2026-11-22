@@ -103,3 +103,54 @@ test "waiver expiry compares calendar dates" {
     try std.testing.expect(suppress.waivers.parseDate("2026-11-5") == null);
     try std.testing.expect(suppress.waivers.parseDate("") == null);
 }
+
+const named_netlist =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "$flatten\\u_blk.$procdff$1": {
+    \\          "type": "$dff",
+    \\          "attributes": {"src": "top.sv:10.3-10.20"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [11]}
+    \\        },
+    \\        "$procdff$2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
+    \\        }
+    \\      },
+    \\      "netnames": {
+    \\        "$flatten\\u_blk.$0\\state[0:0]": {"hide_name": 1, "bits": [3], "attributes": {}},
+    \\        "u_blk.state": {"hide_name": 0, "bits": [11], "attributes": {}},
+    \\        "q": {"hide_name": 0, "bits": [12], "attributes": {}}
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "a waiver may name the RTL signal a report shows" {
+    var mod = try ir.load.loadFromSlice(std.testing.allocator, named_netlist, null);
+    defer mod.deinit();
+    var loaded = try suppress.waivers.load(std.testing.allocator,
+        \\{"schema_version": "1.0", "waivers": [
+        \\  {"id": "w-sig", "rules": ["CDC-001"], "dst": "q", "driver": "u_blk.st*", "reason": "reviewed"}
+        \\]}
+    );
+    defer loaded.deinit();
+    var fs = [_]rule.finding.Finding{
+        .{ .rule = "CDC-001", .severity = .err, .dst = "$procdff$2", .driver = "$flatten\\u_blk.$procdff$1", .message = "m1" },
+    };
+    const now = suppress.waivers.Date{ .year = 2026, .month = 11, .day = 5 };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const applied = try suppress.waivers.apply(scratch.allocator(), &mod, &fs, &loaded, now, "w.json");
+    try std.testing.expectEqualStrings("w-sig", applied.hits[0].?.id);
+}

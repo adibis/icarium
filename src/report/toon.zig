@@ -14,11 +14,12 @@ const rule = @import("../rule.zig");
 pub const delimiter: u8 = '|';
 
 const finding_fields = [_][]const u8{
-    "rule",            "severity",      "title",
-    "dst",             "dst_kind",      "dst_instance",
-    "dst_src",         "driver",        "driver_kind",
-    "driver_instance", "driver_src",    "message",
-    "waiver_id",       "waiver_reason", "waiver_location",
+    "rule",          "severity",        "title",
+    "dst",           "dst_signal",      "dst_kind",
+    "dst_instance",  "dst_src",         "driver",
+    "driver_signal", "driver_kind",     "driver_instance",
+    "driver_src",    "message",         "waiver_id",
+    "waiver_reason", "waiver_location",
 };
 
 pub fn writeFindingsToon(
@@ -32,7 +33,7 @@ pub fn writeFindingsToon(
     const tmp = arena.allocator();
     const ordered = try tmp.dupe(rule.finding.Finding, findings);
     std.mem.sort(rule.finding.Finding, ordered, {}, rule.finding.Finding.less);
-    const idx = try common.Index.build(tmp, mod);
+    const idx = try common.Index.buildFor(tmp, mod, ordered);
     if (ordered.len == 0) {
         writer.writeAll("[]") catch return error.WriteFailed;
         return;
@@ -42,17 +43,17 @@ pub fn writeFindingsToon(
         const dst = try common.resolve(tmp, mod, &idx, f.dst);
         var cells = std.ArrayListUnmanaged(?[]const u8).empty;
         try cells.appendSlice(tmp, &.{
-            f.rule,  common.severityWord(f.severity), common.ruleTitle(f.rule),
-            f.dst,   kindWord(dst.kind),              dst.instance,
-            dst.src,
+            f.rule,       common.severityWord(f.severity), common.ruleTitle(f.rule),
+            f.dst,        dst.signal,                      kindWord(dst.kind),
+            dst.instance, dst.src,
         });
         if (f.driver) |d| {
             const drv = try common.resolve(tmp, mod, &idx, d);
-            try cells.appendSlice(tmp, &.{ d, kindWord(drv.kind), drv.instance, drv.src });
+            try cells.appendSlice(tmp, &.{ d, drv.signal, kindWord(drv.kind), drv.instance, drv.src });
         } else {
-            try cells.appendSlice(tmp, &.{ null, null, null, null });
+            try cells.appendSlice(tmp, &.{ null, null, null, null, null });
         }
-        try cells.append(tmp, f.message);
+        try cells.append(tmp, try common.displayMessage(tmp, &idx, f.message));
         if (f.waiver) |w| {
             try cells.appendSlice(tmp, &.{ w.id, w.reason, w.location });
         } else {

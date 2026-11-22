@@ -32,9 +32,12 @@ pub fn build(alloc: std.mem.Allocator, mod: *const types.Module, cells: []const 
     while (it.next()) |e| {
         const name = e.key_ptr.*;
         const nn = e.value_ptr.*;
-        if (try regOfNextState(alloc, name)) |reg| {
+        // Every flop has one of these; build the register name only
+        // for flops a finding names.
+        if (std.mem.indexOf(u8, name, "$0\\") != null) {
             const b = firstSig(nn.bits) orelse continue;
             if (!want_d.contains(b)) continue;
+            const reg = (try regOfNextState(alloc, name)) orelse continue;
             const slot = try next.getOrPut(alloc, b);
             if (!slot.found_existing) slot.value_ptr.* = .empty;
             try slot.value_ptr.append(alloc, .{ .reg = reg, .bits = nn.bits });

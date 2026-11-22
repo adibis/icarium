@@ -22,7 +22,7 @@ pub fn writeSarif(
 
     const ordered = try tmp.dupe(rule.finding.Finding, findings);
     std.mem.sort(rule.finding.Finding, ordered, {}, rule.finding.Finding.less);
-    const idx = try common.Index.build(tmp, mod);
+    const idx = try common.Index.buildFor(tmp, mod, ordered);
 
     var rules = std.json.Array.init(tmp);
     for (rule.registry.rules) |r| {
@@ -44,7 +44,7 @@ pub fn writeSarif(
     var results = std.json.Array.init(tmp);
     for (ordered) |f| {
         var msg = std.json.ObjectMap.empty;
-        try msg.put(tmp, "text", .{ .string = f.message });
+        try msg.put(tmp, "text", .{ .string = try common.displayMessage(tmp, &idx, f.message) });
         var res = std.json.ObjectMap.empty;
         try res.put(tmp, "ruleId", .{ .string = f.rule });
         try res.put(tmp, "level", .{ .string = common.severityWord(f.severity) });
@@ -103,7 +103,7 @@ fn location(
     if (r.src) |s| {
         try loc.put(alloc, "physicalLocation", try physical(alloc, s));
     }
-    const leaf = try common.leafName(alloc, name);
+    const leaf = try common.leafName(alloc, r.signal);
     const fqn = if (r.instance.len == 0)
         try std.fmt.allocPrint(alloc, "{s}/{s}", .{ mod.name, leaf })
     else

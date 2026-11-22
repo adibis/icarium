@@ -104,3 +104,67 @@ test "grouped text stays silent when clean" {
     defer std.testing.allocator.free(out);
     try std.testing.expectEqualStrings("", out);
 }
+
+const named_netlist =
+    \\{
+    \\  "modules": {
+    \\    "top": {
+    \\      "ports": {
+    \\        "clk": {"direction": "input", "bits": [2]},
+    \\        "d": {"direction": "input", "bits": [3]},
+    \\        "q": {"direction": "output", "bits": [12]}
+    \\      },
+    \\      "cells": {
+    \\        "$flatten\\u_blk.$procdff$1": {
+    \\          "type": "$dff",
+    \\          "attributes": {"src": "top.sv:10.3-10.20"},
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [3], "Q": [11]}
+    \\        },
+    \\        "$procdff$2": {
+    \\          "type": "$dff",
+    \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
+    \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
+    \\        }
+    \\      },
+    \\      "netnames": {
+    \\        "$flatten\\u_blk.$0\\state[0:0]": {"hide_name": 1, "bits": [3], "attributes": {}},
+    \\        "u_blk.state": {"hide_name": 0, "bits": [11], "attributes": {}},
+    \\        "q": {"hide_name": 0, "bits": [12], "attributes": {}}
+    \\      }
+    \\    }
+    \\  }
+    \\}
+;
+
+test "grouped text names RTL signals, not Yosys cells" {
+    var mod = try ir.load.loadFromSlice(std.testing.allocator, named_netlist, null);
+    defer mod.deinit();
+    var fs = [_]rule.finding.Finding{
+        .{ .rule = "CDC-001", .severity = .err, .dst = "$procdff$2", .driver = "$flatten\\u_blk.$procdff$1", .message = "m1" },
+    };
+    const out = try render(&mod, &fs);
+    defer std.testing.allocator.free(out);
+    const want =
+        \\CDC-001 [error] Unsynchronized control crossing (1 finding)
+        \\  q <- u_blk.state @ top.sv:10.3-10.20: m1
+        \\
+    ;
+    try std.testing.expectEqualStrings(want, out);
+}
+
+test "messages show RTL signals too, and leave near-miss names alone" {
+    var mod = try ir.load.loadFromSlice(std.testing.allocator, named_netlist, null);
+    defer mod.deinit();
+    var fs = [_]rule.finding.Finding{
+        .{ .rule = "CDC-001", .severity = .err, .dst = "$procdff$2", .message = "head $procdff$2, fed by $flatten\\u_blk.$procdff$1. Not $procdff$20." },
+    };
+    const out = try render(&mod, &fs);
+    defer std.testing.allocator.free(out);
+    const want =
+        \\CDC-001 [error] Unsynchronized control crossing (1 finding)
+        \\  q: head q, fed by u_blk.state. Not $procdff$20.
+        \\
+    ;
+    try std.testing.expectEqualStrings(want, out);
+}

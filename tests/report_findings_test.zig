@@ -26,6 +26,10 @@ const netlist =
     \\          "port_directions": {"CLK": "input", "D": "input", "Q": "output"},
     \\          "connections": {"CLK": [2], "D": [11], "Q": [12]}
     \\        }
+    \\      },
+    \\      "netnames": {
+    \\        "u_blk.state": {"hide_name": 0, "bits": [11], "attributes": {}},
+    \\        "q": {"hide_name": 0, "bits": [12], "attributes": {}}
     \\      }
     \\    }
     \\  }
@@ -59,12 +63,12 @@ test "findings.json minified has no whitespace padding" {
     try report.findings.writeJsonOptions(std.testing.allocator, &aw.writer, &mod, &fs, &.{}, 0, .{ .minify = true });
     const out = aw.written();
     try std.testing.expect(std.mem.indexOf(u8, out, "\n") == null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_version\":\"1.0\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "\"schema_version\":\"1.1\"") != null);
 }
 
 const golden =
     \\{
-    \\  "schema_version": "1.0",
+    \\  "schema_version": "1.1",
     \\  "design": {
     \\    "top": "top"
     \\  },
@@ -84,6 +88,7 @@ const golden =
     \\          "severity": "error",
     \\          "dst": {
     \\            "name": "d",
+    \\            "signal": "d",
     \\            "kind": "port",
     \\            "instance": "",
     \\            "src": null
@@ -96,12 +101,14 @@ const golden =
     \\          "severity": "error",
     \\          "dst": {
     \\            "name": "u_blk.$procdff$1",
+    \\            "signal": "u_blk.state",
     \\            "kind": "cell",
     \\            "instance": "u_blk",
     \\            "src": "top.sv:10.3-10.20"
     \\          },
     \\          "driver": {
     \\            "name": "$procdff$2",
+    \\            "signal": "q",
     \\            "kind": "cell",
     \\            "instance": "",
     \\            "src": null
@@ -120,12 +127,14 @@ const golden =
     \\          "severity": "warning",
     \\          "dst": {
     \\            "name": "ghost",
+    \\            "signal": "ghost",
     \\            "kind": "other",
     \\            "instance": "",
     \\            "src": null
     \\          },
     \\          "driver": {
     \\            "name": "d",
+    \\            "signal": "d",
     \\            "kind": "port",
     \\            "instance": "",
     \\            "src": null

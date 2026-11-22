@@ -21,7 +21,7 @@ pub fn writeText(
 
     const ordered = try tmp.dupe(rule.finding.Finding, findings);
     std.mem.sort(rule.finding.Finding, ordered, {}, rule.finding.Finding.less);
-    const idx = try common.Index.build(tmp, mod);
+    const idx = try common.Index.buildFor(tmp, mod, ordered);
 
     var i: usize = 0;
     while (i < ordered.len) {
@@ -101,14 +101,14 @@ fn writeItem(
 ) error{ OutOfMemory, WriteFailed }!void {
     const dst = try common.resolve(alloc, mod, idx, f.dst);
     writer.writeAll(indent) catch return error.WriteFailed;
-    writer.writeAll(f.dst) catch return error.WriteFailed;
+    writer.writeAll(dst.signal) catch return error.WriteFailed;
     if (dst.src) |s| writer.print(" @ {s}", .{s}) catch return error.WriteFailed;
     if (f.driver) |d| {
         const drv = try common.resolve(alloc, mod, idx, d);
-        writer.print(" <- {s}", .{d}) catch return error.WriteFailed;
+        writer.print(" <- {s}", .{drv.signal}) catch return error.WriteFailed;
         if (drv.src) |s| writer.print(" @ {s}", .{s}) catch return error.WriteFailed;
     }
-    writer.print(": {s}", .{f.message}) catch return error.WriteFailed;
+    writer.print(": {s}", .{try common.displayMessage(alloc, idx, f.message)}) catch return error.WriteFailed;
     if (f.waiver) |w| {
         writer.print(" [waived {s}: {s}", .{ w.id, w.reason }) catch return error.WriteFailed;
         if (w.location) |l| writer.print(" @ {s}", .{l}) catch return error.WriteFailed;

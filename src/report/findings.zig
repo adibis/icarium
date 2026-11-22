@@ -5,11 +5,12 @@ const common = @import("common.zig");
 const ir = @import("../ir.zig");
 const rule = @import("../rule.zig");
 
-pub const schema_version = "1.0";
+pub const schema_version = "1.1";
 
 // Native findings.json: rule-grouped verdicts with receiver and
-// driver endpoints resolved to cells, instance paths, and Yosys
-// src locations. Reporters render this model; they never analyze.
+// driver endpoints resolved to cells, RTL signals, instance paths,
+// and Yosys src locations. `name` stays the netlist key waivers and
+// baselines match; `signal` is what the designer wrote. Reporters render this model; they never analyze.
 pub const Options = struct {
     minify: bool = false,
 };
@@ -41,7 +42,7 @@ pub fn writeJsonOptions(
     const ordered = try tmp.dupe(rule.finding.Finding, findings);
     std.mem.sort(rule.finding.Finding, ordered, {}, rule.finding.Finding.less);
 
-    const idx = try common.Index.build(tmp, mod);
+    const idx = try common.Index.buildFor(tmp, mod, ordered);
 
     var errors: u32 = 0;
     var warnings: u32 = 0;
@@ -74,7 +75,7 @@ pub fn writeJsonOptions(
             } else {
                 try item.put(tmp, "driver", .null);
             }
-            try item.put(tmp, "message", .{ .string = f.message });
+            try item.put(tmp, "message", .{ .string = try common.displayMessage(tmp, &idx, f.message) });
             if (f.waiver) |w| {
                 var wo = std.json.ObjectMap.empty;
                 try wo.put(tmp, "waiver_id", .{ .string = w.id });
@@ -137,6 +138,7 @@ fn endpoint(
     };
     var ep = std.json.ObjectMap.empty;
     try ep.put(alloc, "name", .{ .string = name });
+    try ep.put(alloc, "signal", .{ .string = r.signal });
     try ep.put(alloc, "kind", .{ .string = kind });
     try ep.put(alloc, "instance", .{ .string = r.instance });
     if (r.src) |s| {

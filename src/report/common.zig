@@ -9,6 +9,8 @@ const rule = @import("../rule.zig");
 pub const Index = struct {
     by_cell: std.StringHashMapUnmanaged(usize),
     ports: std.StringHashMapUnmanaged(void),
+    // RTL names for the cells some finding names; see ir/names.zig.
+    signals: ir.names.Names = .empty,
 
     pub fn build(alloc: std.mem.Allocator, mod: *const ir.types.Module) error{OutOfMemory}!Index {
         var by_cell = std.StringHashMapUnmanaged(usize).empty;
@@ -17,7 +19,81 @@ pub const Index = struct {
         for (mod.ports) |p| try ports.put(alloc, p.name, {});
         return .{ .by_cell = by_cell, .ports = ports };
     }
+
+    // An index that also knows the RTL signal of every cell these
+    // findings name, for reporters that show signals.
+    pub fn buildFor(
+        alloc: std.mem.Allocator,
+        mod: *const ir.types.Module,
+        findings: []const rule.finding.Finding,
+    ) error{OutOfMemory}!Index {
+        var idx = try build(alloc, mod);
+        var cells = std.ArrayListUnmanaged(usize).empty;
+        for (findings) |f| {
+            if (idx.by_cell.get(f.dst)) |ci| try cells.append(alloc, ci);
+            if (f.driver) |d| if (idx.by_cell.get(d)) |ci| try cells.append(alloc, ci);
+            var it = CellRefs{ .idx = &idx, .text = f.message };
+            while (it.next()) |ref| try cells.append(alloc, ref.cell);
+        }
+        idx.signals = try ir.names.build(alloc, mod, cells.items);
+        return idx;
+    }
 };
+
+// Generated cell names inside free text. Only tokens holding a `$`
+// can be one, and a token may run into sentence punctuation
+// ("at $procdff$9."), so trailing dots, colons and commas come off
+// until the rest names a cell.
+const CellRef = struct { start: usize, end: usize, cell: usize };
+
+const CellRefs = struct {
+    idx: *const Index,
+    text: []const u8,
+    pos: usize = 0,
+
+    fn next(self: *CellRefs) ?CellRef {
+        const t = self.text;
+        while (self.pos < t.len) {
+            while (self.pos < t.len and !nameChar(t[self.pos])) self.pos += 1;
+            const start = self.pos;
+            while (self.pos < t.len and nameChar(t[self.pos])) self.pos += 1;
+            var end = self.pos;
+            if (std.mem.indexOfScalar(u8, t[start..end], '$') == null) continue;
+            while (end > start) {
+                if (self.idx.by_cell.get(t[start..end])) |ci| return .{ .start = start, .end = end, .cell = ci };
+                const last = t[end - 1];
+                if (last != '.' and last != ':' and last != ',') break;
+                end -= 1;
+            }
+        }
+        return null;
+    }
+};
+
+fn nameChar(ch: u8) bool {
+    return std.ascii.isAlphanumeric(ch) or switch (ch) {
+        '_', '$', '\\', '.', ':', '/' => true,
+        else => false,
+    };
+}
+
+// A rule message with each generated cell name it mentions shown as
+// its RTL signal, as the endpoints already are. Findings keep the
+// raw text; only what a reader sees changes.
+pub fn displayMessage(alloc: std.mem.Allocator, idx: *const Index, msg: []const u8) error{OutOfMemory}![]const u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var last: usize = 0;
+    var it = CellRefs{ .idx = idx, .text = msg };
+    while (it.next()) |ref| {
+        const sig = idx.signals.get(ref.cell) orelse continue;
+        try out.appendSlice(alloc, msg[last..ref.start]);
+        try out.appendSlice(alloc, sig);
+        last = ref.end;
+    }
+    if (last == 0) return msg;
+    try out.appendSlice(alloc, msg[last..]);
+    return out.toOwnedSlice(alloc);
+}
 
 pub const Kind = enum { cell, port, other };
 
@@ -25,6 +101,9 @@ pub const Resolved = struct {
     kind: Kind,
     instance: []const u8,
     src: ?[]const u8,
+    // What a designer would call it: the register or net for a
+    // generated cell, else the name itself.
+    signal: []const u8,
 };
 
 // Cells resolve to instance + src; ports and unknown names
@@ -37,10 +116,15 @@ pub fn resolve(
 ) error{OutOfMemory}!Resolved {
     if (idx.by_cell.get(name)) |ci| {
         const c = mod.cells[ci];
-        return .{ .kind = .cell, .instance = try joinPath(alloc, c.instance_path), .src = c.src };
+        return .{
+            .kind = .cell,
+            .instance = try joinPath(alloc, c.instance_path),
+            .src = c.src,
+            .signal = idx.signals.get(ci) orelse name,
+        };
     }
-    if (idx.ports.contains(name)) return .{ .kind = .port, .instance = "", .src = null };
-    return .{ .kind = .other, .instance = "", .src = null };
+    if (idx.ports.contains(name)) return .{ .kind = .port, .instance = "", .src = null, .signal = name };
+    return .{ .kind = .other, .instance = "", .src = null, .signal = name };
 }
 
 // The leaf below the instance path: flattened Yosys names

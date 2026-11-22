@@ -223,9 +223,9 @@ test "toon golden pins quoting of adversarial values" {
     const bytes = try emitFindings(&fs);
     defer std.testing.allocator.free(bytes);
     const want =
-        \\[2|]{rule|severity|title|dst|dst_kind|dst_instance|dst_src|driver|driver_kind|driver_instance|driver_src|message|waiver_id|waiver_reason|waiver_location}:
-        \\  CDC-001|error|Unsynchronized control crossing|d|port|""|null|src|cell|""|"top.sv:4.3-4.20"|"pipe|colon:quote\"back\\slash[bracket]{brace} #hash -dash"|w1|"  padded  "|null
-        \\  CDC-002|warning|Insufficient synchronizer depth|mid|cell|""|null|null|null|null|null|"42"|null|null|null
+        \\[2|]{rule|severity|title|dst|dst_signal|dst_kind|dst_instance|dst_src|driver|driver_signal|driver_kind|driver_instance|driver_src|message|waiver_id|waiver_reason|waiver_location}:
+        \\  CDC-001|error|Unsynchronized control crossing|d|d|port|""|null|src|src|cell|""|"top.sv:4.3-4.20"|"pipe|colon:quote\"back\\slash[bracket]{brace} #hash -dash"|w1|"  padded  "|null
+        \\  CDC-002|warning|Insufficient synchronizer depth|mid|mid|cell|""|null|null|null|null|null|null|"42"|null|null|null
     ;
     try std.testing.expectEqualStrings(want, bytes);
 }
@@ -240,15 +240,16 @@ test "toon findings round-trip through the test decoder" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const doc = try decode(arena.allocator(), bytes);
-    try std.testing.expectEqual(@as(usize, 15), doc.fields.len);
+    try std.testing.expectEqual(@as(usize, 17), doc.fields.len);
     try std.testing.expectEqual(@as(usize, 2), doc.rows.len);
     try std.testing.expectEqualStrings("CDC-001", doc.rows[0][0].string);
     try std.testing.expectEqualStrings("mid", doc.rows[0][3].string);
-    try std.testing.expectEqualStrings("src", doc.rows[0][7].string);
-    try std.testing.expectEqualStrings("top.sv:4.3-4.20", doc.rows[0][10].string);
-    try std.testing.expect(doc.rows[0][12] == .null);
+    try std.testing.expectEqualStrings("mid", doc.rows[0][4].string);
+    try std.testing.expectEqualStrings("src", doc.rows[0][8].string);
+    try std.testing.expectEqualStrings("top.sv:4.3-4.20", doc.rows[0][12].string);
+    try std.testing.expect(doc.rows[0][14] == .null);
     try std.testing.expectEqualStrings("ghost", doc.rows[1][3].string);
-    try std.testing.expect(doc.rows[1][7] == .null);
+    try std.testing.expect(doc.rows[1][8] == .null);
 }
 
 test "toon empty findings emit a bare root array" {

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const std = @import("std");
+const ir = @import("../ir.zig");
+const report_common = @import("../report/common.zig");
 const rule = @import("../rule.zig");
 
 // Baseline carryover: findings identical to a prior run's are
 // set aside so CI fails only on new verdicts. The match key is
 // rule + receiver + driver + message with waiver state
 // excluded, so a finding re-firing after waiver expiry still
-// matches its own baseline entry.
+// matches its own baseline entry. A report prints messages with RTL
+// signal names, so that is the message a baseline holds; one written
+// by icarium 0.1 holds the raw netlist names, and still matches.
 pub const LoadError = error{ OutOfMemory, BadBaseline };
 
 pub const Baseline = struct {
@@ -86,13 +90,17 @@ pub fn findingKey(alloc: std.mem.Allocator, f: *const rule.finding.Finding) erro
 // slots, carried-over compact behind. Returns the new count.
 pub fn partition(
     alloc: std.mem.Allocator,
+    mod: *const ir.types.Module,
     findings: []rule.finding.Finding,
     baseline: *const Baseline,
 ) error{OutOfMemory}!usize {
+    const idx = try report_common.Index.buildFor(alloc, mod, findings);
     var kept: usize = 0;
     for (findings) |f| {
-        const key = try findingKey(alloc, &f);
+        const shown = try report_common.displayMessage(alloc, &idx, f.message);
+        const key = try keyFor(alloc, f.rule, f.dst, f.driver orelse "", shown);
         if (baseline.contains(key)) continue;
+        if (shown.ptr != f.message.ptr and baseline.contains(try findingKey(alloc, &f))) continue;
         findings[kept] = f;
         kept += 1;
     }

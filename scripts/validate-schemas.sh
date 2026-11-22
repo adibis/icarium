@@ -32,9 +32,9 @@ check_one() {
     fi
 }
 
-check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_reset_unsync.sdc json schema/findings-1.0.json "findings/warning"
-check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc json schema/findings-1.0.json "findings/error-grouped"
-check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc json schema/findings-1.0.json "findings/empty"
+check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_reset_unsync.sdc json schema/findings-1.1.json "findings/warning"
+check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc json schema/findings-1.1.json "findings/error-grouped"
+check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc json schema/findings-1.1.json "findings/empty"
 check_one fixtures/RDC-006/bad_muxed_reset_unsync.sv fixtures/RDC-006/bad_muxed_reset_unsync.sdc sarif schema/sarif-2.1.0.json "sarif/warning"
 check_one fixtures/RDC-008/bad_reset_port_missed_domain.sv fixtures/RDC-008/bad_reset_port_missed_domain.sdc sarif schema/sarif-2.1.0.json "sarif/error-grouped"
 check_one fixtures/RDC-008/good_reset_port_both_domains.sv fixtures/RDC-008/good_reset_port_both_domains.sdc sarif schema/sarif-2.1.0.json "sarif/empty"
