@@ -53,10 +53,29 @@ fn pickTop(mods: std.json.Value, top_name: ?[]const u8) !Picked {
         const v = mods.object.get(want) orelse return error.MissingTop;
         return .{ .name = want, .value = v };
     }
-    if (mods.object.count() != 1) return error.AmbiguousTop;
     var it = mods.object.iterator();
-    const entry = it.next().?;
-    return .{ .name = entry.key_ptr.*, .value = entry.value_ptr.* };
+    if (mods.object.count() == 1) {
+        const entry = it.next().?;
+        return .{ .name = entry.key_ptr.*, .value = entry.value_ptr.* };
+    }
+    // `hierarchy` marks the top it chose; blackboxes and unused
+    // modules stay in the netlist beside it.
+    var found: ?Picked = null;
+    while (it.next()) |e| {
+        if (!markedTop(e.value_ptr.*)) continue;
+        if (found != null) return error.AmbiguousTop;
+        found = .{ .name = e.key_ptr.*, .value = e.value_ptr.* };
+    }
+    return found orelse error.AmbiguousTop;
+}
+
+fn markedTop(m: std.json.Value) bool {
+    if (m != .object) return false;
+    const attrs = m.object.get("attributes") orelse return false;
+    if (attrs != .object) return false;
+    const t = attrs.object.get("top") orelse return false;
+    if (t != .string) return false;
+    return std.mem.indexOfScalar(u8, t.string, '1') != null;
 }
 
 fn reqObjField(v: std.json.Value, key: []const u8) !std.json.Value {

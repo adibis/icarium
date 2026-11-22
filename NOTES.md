@@ -2,6 +2,13 @@
 
 ## v0.2.0
 
+- **One command.** `icarium check --top T --sdc c.sdc rtl/*.sv` elaborates with Yosys
+  and checks in one step, with `-I`, `-D` and `--frontend slang`. Yosys comes from
+  `PATH`, or `YOSYS`. `--yosys-json` still checks a saved netlist. An argument Yosys
+  would misread, such as an include directory with a space, is refused rather than
+  passed through.
+- **`check --help`** prints the check options instead of "bad argument", and without
+  `--top` the module Yosys marked top is chosen even when blackboxes sit beside it.
 - **Findings name your RTL.** Every report shows the register or net a flop came from
   (`dst_q`, `u_a.q_reg`, `bus[5:4]`) instead of the Yosys cell (`$procdff$3`), in the
   endpoint and in the message. JSON and TOON keep the netlist name beside it: findings

@@ -16,9 +16,11 @@ title: CLI reference
 weight: 10
 ---
 
-`check` is the main entry point: it reads an elaborated netlist
-from `scripts/elaborate.sh` (`--yosys-json`) plus an optional
-SDC file (`--sdc`). `domains`, `resets`, and `crossings` read
+`check` is the main entry point: it takes SystemVerilog sources,
+elaborates them with Yosys, and checks the result against an
+optional SDC file (`--sdc`). It also reads a netlist saved by
+`scripts/elaborate.sh` (`--yosys-json`), which skips elaboration
+when the same design is checked again. `domains`, `resets`, and `crossings` read
 the same inputs to expose the intermediate models for debugging —
 which flop belongs to which clock, which reset releases it,
 and which signal paths cross domains. `stats` takes the

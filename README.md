@@ -54,9 +54,12 @@ zig build test            # unit tests
 ## Check a design
 
 ```sh
-elaborate.sh --top my_top --out my_top.json rtl/*.sv
-icarium check --yosys-json my_top.json --top my_top --sdc my_top.sdc
+icarium check --top my_top --sdc my_top.sdc -I rtl/include rtl/*.sv
 ```
+
+icarium runs Yosys to elaborate the sources (`--frontend slang` uses
+yosys-slang). To check the same netlist again without re-elaborating, save
+it with `elaborate.sh` and pass it as `--yosys-json`.
 
 `icarium check` exits 1 when error-severity findings remain, so it can gate CI.
 See [Getting started](https://adibis.github.io/icarium/docs/getting-started/)
@@ -82,7 +85,6 @@ open ground truths:
 icarium is young. Known limitations, all on the roadmap:
 
 - Each bit of a bus is reported as its own crossing.
-- Elaboration and checking are two commands.
 
 Release notes are in [NOTES.md](NOTES.md).
 

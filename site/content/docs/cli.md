@@ -3,9 +3,11 @@ title: CLI reference
 weight: 10
 ---
 
-`check` is the main entry point: it reads an elaborated netlist
-from `scripts/elaborate.sh` (`--yosys-json`) plus an optional
-SDC file (`--sdc`). `domains`, `resets`, and `crossings` read
+`check` is the main entry point: it takes SystemVerilog sources,
+elaborates them with Yosys, and checks the result against an
+optional SDC file (`--sdc`). It also reads a netlist saved by
+`scripts/elaborate.sh` (`--yosys-json`), which skips elaboration
+when the same design is checked again. `domains`, `resets`, and `crossings` read
 the same inputs to expose the intermediate models for debugging —
 which flop belongs to which clock, which reset releases it,
 and which signal paths cross domains. `stats` takes the
@@ -51,29 +53,34 @@ usage: icarium <command>
   version           show version
   stats             summarize a Yosys JSON netlist
       --yosys-json FILE   input from scripts/elaborate.sh
-      --top TOP           top module (default: single module)
+      --top TOP           top module (default: the one Yosys marks top)
   clocks            show clocks parsed from an SDC file
       --sdc FILE          constraints file
   domains           show clock domain per sequential cell
       --yosys-json FILE   input from scripts/elaborate.sh
-      --top TOP           top module (default: single module)
+      --top TOP           top module (default: the one Yosys marks top)
       --sdc FILE          constraints file (optional)
   resets            show reset source per sequential cell
       --yosys-json FILE   input from scripts/elaborate.sh
-      --top TOP           top module (default: single module)
+      --top TOP           top module (default: the one Yosys marks top)
       --sdc FILE          constraints file (optional)
   crossings         enumerate structural crossings
       --yosys-json FILE   input from scripts/elaborate.sh
-      --top TOP           top module (default: single module)
+      --top TOP           top module (default: the one Yosys marks top)
       --sdc FILE          constraints file (optional)
       --format FMT        text (default) or toon
       --stream            walk in chunks, keep findings only
       --stream-chunk N    sources per chunk (default 256)
       --pair-budget N     pairs per chunk (default 2000000)
       --progress          per-chunk counts on stderr
-  check             run CDC/RDC rules over a netlist
-      --yosys-json FILE   input from scripts/elaborate.sh
-      --top TOP           top module (default: single module)
+  check             run CDC/RDC rules over RTL or a netlist
+      FILE...             SystemVerilog sources, elaborated with Yosys
+      -I DIR              include directory (repeatable)
+      -D NAME[=VALUE]     preprocessor define (repeatable)
+      --frontend FE       stock (default) or slang (needs yosys-slang)
+                          Yosys is `yosys` on PATH, or $YOSYS if set
+      --yosys-json FILE   netlist from scripts/elaborate.sh, instead of FILE...
+      --top TOP           top module (default: the one Yosys marks top)
       --sdc FILE          constraints file (optional)
       --only IDS          comma-separated rule allowlist
       --skip IDS          comma-separated rule blocklist

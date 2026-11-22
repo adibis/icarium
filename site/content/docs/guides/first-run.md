@@ -108,14 +108,14 @@ Add the missing stage to `/tmp/cdc-run/design.sv`:
   assign q = s2_q;
 ```
 
-Re-elaborate the copy (the netlist changed, so this step is
-not skippable) and re-check against the same SDC:
+The netlist changed, so it needs elaborating again. This time
+let `check` do both steps: given source files instead of
+`--yosys-json`, it runs Yosys itself, then checks against the
+same SDC:
 
 ```sh
-sh scripts/elaborate.sh --top bad_sync_missing --out /tmp/guide-ok.json \
-    /tmp/cdc-run/design.sv >/dev/null
-./zig-out/bin/icarium check --yosys-json /tmp/guide-ok.json \
-    --top bad_sync_missing --sdc fixtures/CDC-001/bad_sync_missing.sdc
+./zig-out/bin/icarium check --top bad_sync_missing \
+    --sdc fixtures/CDC-001/bad_sync_missing.sdc /tmp/cdc-run/design.sv
 echo "exit=$?"
 ```
 

@@ -64,50 +64,30 @@ fn usage(w: anytype) !void {
         \\  version           show version
         \\  stats             summarize a Yosys JSON netlist
         \\      --yosys-json FILE   input from scripts/elaborate.sh
-        \\      --top TOP           top module (default: single module)
+        \\      --top TOP           top module (default: the one Yosys marks top)
         \\  clocks            show clocks parsed from an SDC file
         \\      --sdc FILE          constraints file
         \\  domains           show clock domain per sequential cell
         \\      --yosys-json FILE   input from scripts/elaborate.sh
-        \\      --top TOP           top module (default: single module)
+        \\      --top TOP           top module (default: the one Yosys marks top)
         \\      --sdc FILE          constraints file (optional)
         \\  resets            show reset source per sequential cell
         \\      --yosys-json FILE   input from scripts/elaborate.sh
-        \\      --top TOP           top module (default: single module)
+        \\      --top TOP           top module (default: the one Yosys marks top)
         \\      --sdc FILE          constraints file (optional)
         \\  crossings         enumerate structural crossings
         \\      --yosys-json FILE   input from scripts/elaborate.sh
-        \\      --top TOP           top module (default: single module)
+        \\      --top TOP           top module (default: the one Yosys marks top)
         \\      --sdc FILE          constraints file (optional)
         \\      --format FMT        text (default) or toon
         \\      --stream            walk in chunks, keep findings only
         \\      --stream-chunk N    sources per chunk (default 256)
         \\      --pair-budget N     pairs per chunk (default 2000000)
         \\      --progress          per-chunk counts on stderr
-        \\  check             run CDC/RDC rules over a netlist
-        \\      --yosys-json FILE   input from scripts/elaborate.sh
-        \\      --top TOP           top module (default: single module)
-        \\      --sdc FILE          constraints file (optional)
-        \\      --only IDS          comma-separated rule allowlist
-        \\      --skip IDS          comma-separated rule blocklist
-        \\      --format FMT        text (default), ids, json, sarif, or toon
-        \\      --minify            minified json (with --format json)
-        \\      --emit-domain-map FILE  write clock-domain map alongside (no --stream)
-        \\      --emit-reset-domain-map FILE  write reset-domain map alongside
-        \\      --waivers FILE        native waivers to apply
-        \\      --strict-waivers      unmatched waivers fail the run
-        \\      --baseline FILE       carry over matching prior findings
-        \\      --ignore-scan-mode    waive scan-tagged clock/reset paths
-        \\      --reset-hints FILE    external reset polarity/sync hints (JSON)
-        \\      --no-findings       skip rules; maps only (exit 0)
-        \\      --sync-depth N      required chain depth (default 2)
-        \\      --cdc-010-no-heuristic  disable library pin-name guessing
-        \\      --cdc-018-depth-threshold N  cascade warn depth (default 4)
-        \\      --sync-primitive NAME   site CDC macro (repeatable)
-        \\      --stream            walk in chunks, keep findings only
-        \\      --stream-chunk N    sources per chunk (default 256)
-        \\      --pair-budget N     pairs per chunk (default 2000000)
-        \\      --progress          per-chunk counts on stderr
+        \\
+    );
+    try w.writeAll(check.usage);
+    try w.writeAll(
         \\  rules             list rules (--list) or show docs (--doc)
         \\  import-meridian   convert set_rule_status Tcl to waivers.json
         \\      --in FILE           input Tcl file

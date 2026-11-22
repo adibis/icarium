@@ -3,6 +3,7 @@
 const std = @import("std");
 const clock = @import("../clock.zig");
 const crossing = @import("../crossing.zig");
+const elaborate = @import("elaborate.zig");
 const ir = @import("../ir.zig");
 const clockmap = @import("../report.zig").clockmap;
 const findings_json = @import("../report.zig").findings;
@@ -16,6 +17,40 @@ const reset = @import("../reset.zig");
 const rule = @import("../rule.zig");
 const sdc = @import("../sdc.zig");
 const sync = @import("../sync.zig");
+
+// Shared with `icarium help`.
+pub const usage =
+    \\  check             run CDC/RDC rules over RTL or a netlist
+    \\      FILE...             SystemVerilog sources, elaborated with Yosys
+    \\      -I DIR              include directory (repeatable)
+    \\      -D NAME[=VALUE]     preprocessor define (repeatable)
+    \\      --frontend FE       stock (default) or slang (needs yosys-slang)
+    \\                          Yosys is `yosys` on PATH, or $YOSYS if set
+    \\      --yosys-json FILE   netlist from scripts/elaborate.sh, instead of FILE...
+    \\      --top TOP           top module (default: the one Yosys marks top)
+    \\      --sdc FILE          constraints file (optional)
+    \\      --only IDS          comma-separated rule allowlist
+    \\      --skip IDS          comma-separated rule blocklist
+    \\      --format FMT        text (default), ids, json, sarif, or toon
+    \\      --minify            minified json (with --format json)
+    \\      --emit-domain-map FILE  write clock-domain map alongside (no --stream)
+    \\      --emit-reset-domain-map FILE  write reset-domain map alongside
+    \\      --waivers FILE        native waivers to apply
+    \\      --strict-waivers      unmatched waivers fail the run
+    \\      --baseline FILE       carry over matching prior findings
+    \\      --ignore-scan-mode    waive scan-tagged clock/reset paths
+    \\      --reset-hints FILE    external reset polarity/sync hints (JSON)
+    \\      --no-findings       skip rules; maps only (exit 0)
+    \\      --sync-depth N      required chain depth (default 2)
+    \\      --cdc-010-no-heuristic  disable library pin-name guessing
+    \\      --cdc-018-depth-threshold N  cascade warn depth (default 4)
+    \\      --sync-primitive NAME   site CDC macro (repeatable)
+    \\      --stream            walk in chunks, keep findings only
+    \\      --stream-chunk N    sources per chunk (default 256)
+    \\      --pair-budget N     pairs per chunk (default 2000000)
+    \\      --progress          per-chunk counts on stderr
+    \\
+;
 
 pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []const u8) u8 {
     var json_path: ?[]const u8 = null;
@@ -41,10 +76,31 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
     var depth_threshold: u32 = 4;
     var heuristic = true;
     var prims = std.ArrayListUnmanaged([]const u8).empty;
+    var files = std.ArrayListUnmanaged([]const u8).empty;
+    var includes = std.ArrayListUnmanaged([]const u8).empty;
+    var defines = std.ArrayListUnmanaged([]const u8).empty;
+    var frontend: elaborate.Frontend = .stock;
+    const arena = init.arena.allocator();
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {
         const a = argv[i];
-        if (std.mem.eql(u8, a, "--yosys-json") and i + 1 < argv.len) {
+        if (std.mem.eql(u8, a, "--help") or std.mem.eql(u8, a, "-h")) {
+            out.writeAll(usage) catch {};
+            return 0;
+        } else if (a.len > 0 and a[0] != '-') {
+            files.append(arena, a) catch return 3;
+        } else if ((std.mem.eql(u8, a, "-I") or std.mem.eql(u8, a, "-D")) and i + 1 < argv.len) {
+            (if (a[1] == 'I') &includes else &defines).append(arena, argv[i + 1]) catch return 3;
+            i += 1;
+        } else if (a.len > 2 and (std.mem.startsWith(u8, a, "-I") or std.mem.startsWith(u8, a, "-D"))) {
+            (if (a[1] == 'I') &includes else &defines).append(arena, a[2..]) catch return 3;
+        } else if (std.mem.eql(u8, a, "--frontend") and i + 1 < argv.len) {
+            frontend = std.meta.stringToEnum(elaborate.Frontend, argv[i + 1]) orelse {
+                err.print("check: --frontend must be stock or slang: {s}\n", .{argv[i + 1]}) catch {};
+                return 2;
+            };
+            i += 1;
+        } else if (std.mem.eql(u8, a, "--yosys-json") and i + 1 < argv.len) {
             json_path = argv[i + 1];
             i += 1;
         } else if (std.mem.eql(u8, a, "--sdc") and i + 1 < argv.len) {
@@ -118,7 +174,7 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             };
             i += 1;
         } else if (std.mem.eql(u8, a, "--sync-primitive") and i + 1 < argv.len) {
-            prims.append(init.arena.allocator(), argv[i + 1]) catch return 3;
+            prims.append(arena, argv[i + 1]) catch return 3;
             i += 1;
         } else if (std.mem.eql(u8, a, "--cdc-018-depth-threshold") and i + 1 < argv.len) {
             depth_threshold = std.fmt.parseInt(u32, argv[i + 1], 10) catch {
@@ -131,12 +187,31 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
             }
             i += 1;
         } else {
-            err.print("check: bad argument: {s}\n", .{a}) catch {};
+            err.print("check: bad argument: {s} (see icarium check --help)\n", .{a}) catch {};
             return 2;
         }
     }
-    const path = json_path orelse {
-        err.writeAll("check: missing --yosys-json FILE\n") catch {};
+    if (json_path != null and files.items.len > 0) {
+        err.writeAll("check: give RTL files or --yosys-json FILE, not both\n") catch {};
+        return 2;
+    }
+    if (json_path == null and files.items.len == 0) {
+        err.writeAll("check: no input: give RTL files or --yosys-json FILE (see icarium check --help)\n") catch {};
+        return 2;
+    }
+    if (json_path != null and (includes.items.len > 0 or defines.items.len > 0 or frontend != .stock)) {
+        err.writeAll("check: -I, -D and --frontend apply to RTL files, not --yosys-json\n") catch {};
+        return 2;
+    }
+    const rtl: elaborate.Options = .{
+        .top = top,
+        .frontend = frontend,
+        .includes = includes.items,
+        .defines = defines.items,
+        .files = files.items,
+    };
+    if (json_path == null) if (elaborate.validate(rtl)) |bad| {
+        err.print("check: Yosys would misread {s} '{s}'; elaborate it yourself and pass --yosys-json\n", .{ bad.what, bad.arg }) catch {};
         return 2;
     };
     const fmt: enum { text, ids, json, sarif, toon } = if (std.mem.eql(u8, format, "text"))
@@ -170,8 +245,16 @@ pub fn run(init: std.process.Init, out: anytype, err: anytype, argv: []const []c
         }
     }
 
-    const bytes = std.Io.Dir.cwd().readFileAlloc(init.io, path, init.gpa, .limited(1 << 30)) catch {
+    const bytes = if (json_path) |path| std.Io.Dir.cwd().readFileAlloc(init.io, path, init.gpa, .limited(1 << 30)) catch {
         err.print("check: cannot read {s}\n", .{path}) catch {};
+        return 3;
+    } else elaborate.run(init.gpa, init.io, init.environ_map, err, rtl) catch |e| {
+        switch (e) {
+            error.NoYosys => err.writeAll("check: yosys not found (install it, or set YOSYS to its path)\n") catch {},
+            error.NoSlang => err.writeAll("check: this yosys has no read_slang; install yosys-slang or use --frontend stock\n") catch {},
+            error.Failed => err.writeAll("check: elaboration failed; Yosys's errors are above\n") catch {},
+            error.OutOfMemory => {},
+        }
         return 3;
     };
     defer init.gpa.free(bytes);

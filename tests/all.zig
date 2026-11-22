@@ -2,6 +2,7 @@
 
 test {
     _ = @import("cli_args_test.zig");
+    _ = @import("cli_elaborate_test.zig");
     _ = @import("clock_trace_test.zig");
     _ = @import("crossing_test.zig");
     _ = @import("crossing_stream_test.zig");

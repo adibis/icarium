@@ -25,13 +25,23 @@ yosys on `PATH` and skips cleanly without it.
 
 ## First check
 
-Elaboration turns SystemVerilog into the flat netlist icarium
-reads: `scripts/elaborate.sh` runs Yosys (`read_verilog -sv`,
-`hierarchy -check -top`, `proc`, `flatten`) with no
-optimization passes, so flops and muxes stay visible. With
-your own `design.sv` and a hand-written `spi.sdc` (see
+With your own `design.sv` and a hand-written `spi.sdc` (see
 [SDC subset]({{% relref "docs/sdc.md" %}}); examples under
 `bench/sdc/`):
+
+```sh
+./zig-out/bin/icarium check --top spi_device --sdc spi.sdc design.sv
+```
+
+icarium first elaborates the sources into the flat netlist it
+reads, by running Yosys (`read_verilog -sv`, `hierarchy -check`,
+`proc`, `flatten`) with no optimization passes, so flops and
+muxes stay visible. Pass include directories with `-I DIR` and
+defines with `-D NAME=VALUE`; `--frontend slang` reads the
+sources with yosys-slang instead.
+
+Elaborating a large design takes a while. To check the same
+netlist again, save it once and pass it with `--yosys-json`:
 
 ```sh
 sh scripts/elaborate.sh --top spi_device --out spi.json design.sv

@@ -119,6 +119,21 @@ test "top selection rules" {
     }
 }
 
+test "without --top, the module hierarchy marked top is chosen" {
+    const marked = "{\"modules\": {\"bb\": {\"attributes\": {\"blackbox\": \"1\"}, \"cells\": {}}, " ++
+        "\"t\": {\"attributes\": {\"top\": \"00000000000000000000000000000001\"}, \"cells\": {}}}}";
+    var mod = try load.loadFromSlice(std.testing.allocator, marked, null);
+    defer mod.deinit();
+    try std.testing.expectEqualStrings("t", mod.name);
+
+    const both = "{\"modules\": {\"a\": {\"attributes\": {\"top\": \"1\"}, \"cells\": {}}, " ++
+        "\"b\": {\"attributes\": {\"top\": \"1\"}, \"cells\": {}}}}";
+    try std.testing.expectError(error.AmbiguousTop, load.loadFromSlice(std.testing.allocator, both, null));
+    const zero = "{\"modules\": {\"a\": {\"attributes\": {\"top\": \"0\"}, \"cells\": {}}, " ++
+        "\"b\": {\"cells\": {}}}}";
+    try std.testing.expectError(error.AmbiguousTop, load.loadFromSlice(std.testing.allocator, zero, null));
+}
+
 test "wide fanout indexes completely" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

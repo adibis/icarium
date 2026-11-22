@@ -103,5 +103,81 @@ for casedir in tests/e2e/*/; do
     fi
 done
 
+# One-command check: RTL in must give exactly what the two-step
+# elaborate-then-check flow gives.
+for casedir in tests/e2e/*/; do
+    name="$(basename "$casedir")"
+    case="tests/e2e/$name"
+    [ -f "$case/design.sv" ] && [ -f "$TMP/$name.json" ] || continue
+    set -- --top "$name" --format json
+    if [ -f "$case/constraints.sdc" ]; then set -- "$@" --sdc "$case/constraints.sdc"; fi
+    "$BIN" check "$@" --yosys-json "$TMP/$name.json" >"$TMP/$name.two" 2>/dev/null || true
+    "$BIN" check "$@" "$case/design.sv" >"$TMP/$name.one" 2>/dev/null || true
+    check "$name" "check from RTL" "$TMP/$name.two" "$TMP/$name.one"
+done
+
+# expect <label> <code> <stderr pattern> -- <check args>: exit code and
+# the message a user sees.
+expect() {
+    label="$1"; want="$2"; pat="$3"; shift 4
+    code=0
+    "$BIN" check "$@" >"$TMP/x.out" 2>"$TMP/x.err" || code=$?
+    if [ "$code" -eq "$want" ] && grep -q -- "$pat" "$TMP/x.err"; then
+        echo "PASS check $label"
+    else
+        echo "FAIL check $label: exit $code, want $want and /$pat/"
+        cat "$TMP/x.err"
+        fail=1
+    fi
+}
+
+# A path with a space, an include directory and a define all reach Yosys:
+# the crossing exists only when the define is set, and its width only
+# when the include is found.
+src="$TMP/rtl dir"
+mkdir -p "$src" "$TMP/inc"
+printf '`define W 1\n' >"$TMP/inc/w.svh"
+cat >"$src/def top.sv" <<'SV'
+`include "w.svh"
+module def_top (input logic ca, input logic cb, input logic [`W-1:0] d, output logic [`W-1:0] q);
+  logic [`W-1:0] a, b;
+  always_ff @(posedge ca) a <= d;
+`ifdef BAD
+  always_ff @(posedge cb) b <= a;
+`else
+  always_ff @(posedge ca) b <= a;
+`endif
+  assign q = b;
+endmodule
+SV
+printf 'create_clock -name ca -period 10 [get_ports ca]\ncreate_clock -name cb -period 7 [get_ports cb]\nset_clock_groups -asynchronous -group {ca} -group {cb}\nset_input_delay -clock ca 1 [get_ports d]\n' >"$src/c.sdc"
+code=0
+"$BIN" check --sdc "$src/c.sdc" -I "$TMP/inc" -DBAD --only CDC-001 --format ids "$src/def top.sv" >"$TMP/def.on" 2>"$TMP/def.err" || code=$?
+"$BIN" check --sdc "$src/c.sdc" -I "$TMP/inc" --only CDC-001 --format ids "$src/def top.sv" >"$TMP/def.off" 2>>"$TMP/def.err" || true
+if [ "$code" -eq 1 ] && [ "$(cat "$TMP/def.on")" = CDC-001 ] && [ ! -s "$TMP/def.off" ]; then
+    echo "PASS check -I and -D reach Yosys"
+else
+    echo "FAIL check -I and -D reach Yosys: exit $code, on=[$(cat "$TMP/def.on")] off=[$(cat "$TMP/def.off")]"
+    cat "$TMP/def.err"
+    fail=1
+fi
+
+printf 'module broken(input a); assign = a; endmodule\n' >"$TMP/broken.sv"
+expect "syntax error" 3 "elaboration failed" -- "$TMP/broken.sv"
+expect "missing source" 3 "not found" -- "$TMP/nope.sv"
+expect "unknown top" 3 "nosuch" -- --top nosuch "$src/def top.sv" -I "$TMP/inc"
+expect "unsafe include" 2 "would misread include directory" -- -I "$src/inc dir" "$src/def top.sv"
+expect "frontend with netlist" 2 "apply to RTL files" -- --frontend slang --yosys-json "$TMP/x.json"
+expect "both inputs" 2 "not both" -- --yosys-json "$TMP/x.json" "$src/def top.sv"
+expect "no input" 2 "no input" --
+expect "typo" 2 "bad argument: --sdcc" -- --sdcc x "$src/def top.sv"
+YOSYS=/nonexistent/yosys expect "no yosys" 3 "yosys not found" -- "$src/def top.sv"
+if "$BIN" check --help | grep -q -- "--yosys-json FILE"; then
+    echo "PASS check --help"
+else
+    echo "FAIL check --help"
+    fail=1
+fi
+
 echo "e2e: $ran cases, $([ "$fail" -eq 0 ] && echo pass || echo FAIL)"
 exit "$fail"
