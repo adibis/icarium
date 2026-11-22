@@ -176,9 +176,13 @@ fn indexNetnames(alloc: std.mem.Allocator, mod: *types.Module, picked: std.json.
         if (v != .object) return error.BadShape;
         var attrs: std.ArrayListUnmanaged(types.Attr) = .empty;
         if (v.object.get("attributes")) |a| try appendAttrs(alloc, &attrs, a);
+        const offset = v.object.get("offset");
+        const upto = v.object.get("upto");
         try mod.netnames.put(alloc, entry.key_ptr.*, .{
             .bits = try bits.listFromJson(alloc, try reqObjField(v, "bits")),
             .attrs = try attrs.toOwnedSlice(alloc),
+            .offset = if (offset != null and offset.? == .integer) offset.?.integer else 0,
+            .upto = upto != null and upto.? == .integer and upto.?.integer != 0,
         });
     }
 }

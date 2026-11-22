@@ -64,6 +64,10 @@ pub const Loc = struct {
 pub const Netname = struct {
     bits: []bits.Bit,
     attrs: []Attr,
+    // Declared index of bits[0], and whether the range ascends
+    // ([0:7]): what turns a bit position back into `name[i]`.
+    offset: i64 = 0,
+    upto: bool = false,
 };
 
 pub const DriverMap = std.AutoHashMapUnmanaged(u32, Loc);

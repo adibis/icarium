@@ -8,6 +8,7 @@ test {
     _ = @import("ir_bits_test.zig");
     _ = @import("ir_path_test.zig");
     _ = @import("ir_load_test.zig");
+    _ = @import("ir_names_test.zig");
     _ = @import("ir_stats_test.zig");
     _ = @import("reset_trace_test.zig");
     _ = @import("reset_chains_test.zig");

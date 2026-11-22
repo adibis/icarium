@@ -29,3 +29,21 @@ test "escaped dots stay literal" {
     try std.testing.expectEqualStrings("top", p[0]);
     try std.testing.expectEqualStrings("weird.name", p[1]);
 }
+
+test "flatten prefix and escape marks are not part of the path" {
+    const p = try path.splitInstancePath(std.testing.allocator, "$flatten\\u_mid.\\u_leaf.$procdff$9");
+    defer freePath(p);
+    try std.testing.expectEqual(@as(usize, 2), p.len);
+    try std.testing.expectEqualStrings("u_mid", p[0]);
+    try std.testing.expectEqualStrings("u_leaf", p[1]);
+}
+
+test "a source path inside a generated name does not split" {
+    const top = try path.splitInstancePath(std.testing.allocator, "$xor$rtl/top.sv:39$8");
+    defer freePath(top);
+    try std.testing.expectEqual(@as(usize, 0), top.len);
+    const sub = try path.splitInstancePath(std.testing.allocator, "$flatten\\u_a.$and$rtl/a.sv:3$5");
+    defer freePath(sub);
+    try std.testing.expectEqual(@as(usize, 1), sub.len);
+    try std.testing.expectEqualStrings("u_a", sub[0]);
+}
